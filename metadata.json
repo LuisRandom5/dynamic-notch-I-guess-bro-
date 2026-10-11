@@ -1,0 +1,6 @@
+{
+  "name": "Mac Dynamic Notch",
+  "description": "Isla dinámica interactiva para el notch de MacBook con animaciones fluidas, control de música y notificaciones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
