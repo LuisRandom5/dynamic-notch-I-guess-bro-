@@ -9,6 +9,7 @@ public final class NotchWindowManager: ObservableObject {
     private var hitTestView: NotchHitTestView?
     private var hostingView: NSHostingView<AnyView>?
     private var cancellables = Set<AnyCancellable>()
+    private var globalClickMonitor: Any?
     
     private let maxWindowWidth: CGFloat = 680
     private let maxWindowHeight: CGFloat = 320
@@ -70,15 +71,31 @@ public final class NotchWindowManager: ObservableObject {
         let geom = ScreenService.shared.currentGeometry
         let mode = AppState.shared.mode
         
+        if mode == .expanded || mode == .shelf {
+            updateHitArea(width: max(PlayerMetrics.cardWidth + 24, 330), height: PlayerMetrics.cardHeight + 70)
+            return
+        }
+        
+        if let activity = ActivityCenter.shared.currentActivity {
+            switch activity.style {
+            case .pill:
+                updateHitArea(width: max(270, geom.width + 80), height: max(50, geom.height + 14))
+            case .sliderPill:
+                updateHitArea(width: 340, height: max(50, geom.height + 14))
+            case .card:
+                updateHitArea(width: 410, height: 125)
+            }
+            return
+        }
+        
         switch mode {
         case .idle:
-            updateHitArea(width: geom.width, height: geom.height)
+            // Dar margen para la animación de squish & stretch (1.065x), latido y la sombra inferior
+            updateHitArea(width: geom.width + 24, height: geom.height + 10)
         case .compact:
-            updateHitArea(width: geom.width + 104, height: geom.height)
-        case .expanded:
-            updateHitArea(width: 520, height: 250)
-        case .shelf:
-            updateHitArea(width: 480, height: 215)
+            updateHitArea(width: geom.width + 120, height: geom.height + 10)
+        case .expanded, .shelf:
+            updateHitArea(width: 430, height: 240)
         }
     }
     
@@ -90,12 +107,55 @@ public final class NotchWindowManager: ObservableObject {
             .store(in: &cancellables)
             
         AppState.shared.$mode
+            .sink { [weak self] newMode in
+                DispatchQueue.main.async {
+                    self?.updateHitAreaForCurrentState()
+                    self?.handleModeForGlobalClickMonitor(newMode)
+                }
+            }
+            .store(in: &cancellables)
+            
+        ActivityCenter.shared.$currentActivity
             .sink { [weak self] _ in
                 DispatchQueue.main.async {
                     self?.updateHitAreaForCurrentState()
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    private var escKeyMonitor: Any?
+    
+    private func handleModeForGlobalClickMonitor(_ mode: NotchMode) {
+        if mode == .expanded {
+            if globalClickMonitor == nil {
+                globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
+                    DispatchQueue.main.async {
+                        AppState.shared.collapse()
+                    }
+                }
+            }
+            if escKeyMonitor == nil {
+                escKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    if event.keyCode == 53 { // Tecla Escape (Esc)
+                        DispatchQueue.main.async {
+                            AppState.shared.collapse()
+                        }
+                        return nil
+                    }
+                    return event
+                }
+            }
+        } else {
+            if let monitor = globalClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                globalClickMonitor = nil
+            }
+            if let monitor = escKeyMonitor {
+                NSEvent.removeMonitor(monitor)
+                escKeyMonitor = nil
+            }
+        }
     }
     
     public func repositionWindow() {

@@ -5,7 +5,12 @@ public struct NotchCompactView: View {
     @EnvironmentObject var musicService: MusicService
     @EnvironmentObject var screenService: ScreenService
     
+    public var namespace: Namespace.ID?
     private let wingWidth: CGFloat = 52
+    
+    public init(namespace: Namespace.ID? = nil) {
+        self.namespace = namespace
+    }
     
     private var trackColor: Color {
         if musicService.currentTrack.appSource == "Spotify" {
@@ -17,7 +22,7 @@ public struct NotchCompactView: View {
     
     public var body: some View {
         HStack(spacing: 0) {
-            // Left compact wing (Leading)
+            // Ala izquierda compacta (Leading): Carátula
             ZStack {
                 if let art = musicService.currentTrack.artwork {
                     Image(nsImage: art)
@@ -53,23 +58,25 @@ public struct NotchCompactView: View {
                         )
                 }
             }
+            .modifier(OptionalMatchedGeometry(id: "albumArtwork", namespace: namespace))
             .frame(width: wingWidth, height: screenService.currentGeometry.height)
             .contentShape(Rectangle())
             
-            // Center area matching the physical MacBook notch cutout
+            // Área central que coincide con el sensor de la cámara
             Color.clear
                 .frame(
                     width: screenService.currentGeometry.width,
                     height: screenService.currentGeometry.height
                 )
             
-            // Right compact wing (Trailing)
+            // Ala derecha compacta (Trailing): Visualizador
             ZStack {
-                AnimatedEqualizerView(
+                AudioVisualizer(
                     isPlaying: musicService.currentTrack.isPlaying,
-                    color: trackColor
+                    colorMode: .fromArtwork(musicService.currentTrack.artwork)
                 )
             }
+            .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
             .frame(width: wingWidth, height: screenService.currentGeometry.height)
             .contentShape(Rectangle())
         }
@@ -77,9 +84,24 @@ public struct NotchCompactView: View {
             width: screenService.currentGeometry.width + (wingWidth * 2),
             height: screenService.currentGeometry.height
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            appState.toggleExpand()
+    }
+}
+
+// Modificador condicional para matchedGeometryEffect
+public struct OptionalMatchedGeometry: ViewModifier {
+    public let id: String
+    public let namespace: Namespace.ID?
+    
+    public init(id: String, namespace: Namespace.ID?) {
+        self.id = id
+        self.namespace = namespace
+    }
+    
+    public func body(content: Content) -> some View {
+        if let namespace = namespace {
+            content.matchedGeometryEffect(id: id, in: namespace)
+        } else {
+            content
         }
     }
 }

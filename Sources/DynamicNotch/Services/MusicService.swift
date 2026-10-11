@@ -46,13 +46,16 @@ public final class MusicService: ObservableObject {
         let album = userInfo["Album"] as? String ?? ""
         let totalTimeMs = userInfo["Total Time"] as? Double ?? 180000.0
         
+        // Sincronizar posición real
+        let position = fetchCurrentPlaybackPosition(app: "Apple Music")
+        
         self.currentTrack = MusicTrack(
             title: title,
             artist: artist,
             album: album,
             artwork: fetchAppleMusicArtwork(),
             isPlaying: isPlaying,
-            playbackPosition: 0,
+            playbackPosition: position,
             duration: totalTimeMs / 1000.0,
             appSource: "Apple Music"
         )
@@ -70,6 +73,7 @@ public final class MusicService: ObservableObject {
         let album = userInfo["Album"] as? String ?? ""
         let durationSec = userInfo["Duration"] as? Double ?? 180.0
         
+        let position = fetchCurrentPlaybackPosition(app: "Spotify")
         let artwork = fetchSpotifyArtwork()
         
         self.currentTrack = MusicTrack(
@@ -78,12 +82,26 @@ public final class MusicService: ObservableObject {
             album: album,
             artwork: artwork,
             isPlaying: isPlaying,
-            playbackPosition: 0,
+            playbackPosition: position,
             duration: durationSec,
             appSource: "Spotify"
         )
         self.hasActiveMusic = isPlaying
         updateProgressTimer(isPlaying: isPlaying)
+    }
+    
+    public func openMusicApp() {
+        if currentTrack.appSource == "Spotify" {
+            if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") {
+                NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration())
+            }
+        } else {
+            if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
+                NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration())
+            } else if let url = URL(string: "music://") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
     
     public func togglePlayPause() {
@@ -96,6 +114,38 @@ public final class MusicService: ObservableObject {
             currentTrack.isPlaying.toggle()
             hasActiveMusic = currentTrack.isPlaying
             updateProgressTimer(isPlaying: currentTrack.isPlaying)
+        }
+    }
+    
+    @Published public var isShuffle: Bool = false
+    
+    public func toggleShuffle() {
+        if currentTrack.appSource == "Spotify" {
+            let script = """
+            tell application "Spotify"
+                set shuffling to not shuffling
+                return shuffling
+            end tell
+            """
+            if let result = runAppleScript(script) {
+                isShuffle = result.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true"
+            } else {
+                isShuffle.toggle()
+            }
+        } else if currentTrack.appSource == "Apple Music" {
+            let script = """
+            tell application "Music"
+                set shuffle enabled to not shuffle enabled
+                return shuffle enabled
+            end tell
+            """
+            if let result = runAppleScript(script) {
+                isShuffle = result.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true"
+            } else {
+                isShuffle.toggle()
+            }
+        } else {
+            isShuffle.toggle()
         }
     }
     
@@ -182,34 +232,101 @@ public final class MusicService: ObservableObject {
         return nil
     }
     
+    public func fetchCurrentPlaybackPosition(app: String) -> TimeInterval {
+        if app == "Spotify" {
+            let script = "tell application \"Spotify\" to player position"
+            if let str = runAppleScript(script), let pos = Double(str.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return pos
+            }
+        } else {
+            let script = "tell application \"Music\" to player position"
+            if let str = runAppleScript(script), let pos = Double(str.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return pos
+            }
+        }
+        return 0
+    }
+    
     private func checkActivePlayers() {
-        // Query initial status quietly in background
-        DispatchQueue.global(qos: .background).async {
-            // Check if Spotify is running
-            if NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").first != nil {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Check Apple Music first
+            if NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").first != nil {
                 let script = """
-                tell application "Spotify"
-                    return {player state as string, name of current track, artist of current track, album of current track}
+                tell application "Music"
+                    if player state is not stopped then
+                        return {player state as string, name of current track, artist of current track, album of current track, player position as string, duration of current track as string}
+                    end if
                 end tell
                 """
                 if let scriptObj = NSAppleScript(source: script) {
                     var error: NSDictionary?
                     let desc = scriptObj.executeAndReturnError(&error)
-                    if error == nil && desc.numberOfItems >= 4 {
+                    if error == nil && desc.numberOfItems >= 6 {
                         let state = desc.atIndex(1)?.stringValue ?? ""
                         let isPlaying = state.lowercased() == "playing"
-                        let title = desc.atIndex(2)?.stringValue ?? ""
-                        let artist = desc.atIndex(3)?.stringValue ?? ""
+                        let title = desc.atIndex(2)?.stringValue ?? "Desconocido"
+                        let artist = desc.atIndex(3)?.stringValue ?? "Desconocido"
                         let album = desc.atIndex(4)?.stringValue ?? ""
+                        let posStr = desc.atIndex(5)?.stringValue?.replacingOccurrences(of: ",", with: ".") ?? "0"
+                        let durStr = desc.atIndex(6)?.stringValue?.replacingOccurrences(of: ",", with: ".") ?? "180"
+                        let pos = Double(posStr) ?? 0
+                        let dur = Double(durStr) ?? 180
+                        
+                        let artwork = self.fetchAppleMusicArtwork()
                         DispatchQueue.main.async {
                             self.currentTrack = MusicTrack(
                                 title: title,
                                 artist: artist,
                                 album: album,
-                                artwork: self.fetchSpotifyArtwork(),
+                                artwork: artwork,
                                 isPlaying: isPlaying,
-                                playbackPosition: 0,
-                                duration: 180,
+                                playbackPosition: pos,
+                                duration: dur,
+                                appSource: "Apple Music"
+                            )
+                            self.hasActiveMusic = isPlaying
+                            self.updateProgressTimer(isPlaying: isPlaying)
+                        }
+                        return
+                    }
+                }
+            }
+            
+            // Check Spotify
+            if NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").first != nil {
+                let script = """
+                tell application "Spotify"
+                    if player state is not stopped then
+                        return {player state as string, name of current track, artist of current track, album of current track, player position as string, duration of current track as string}
+                    end if
+                end tell
+                """
+                if let scriptObj = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    let desc = scriptObj.executeAndReturnError(&error)
+                    if error == nil && desc.numberOfItems >= 6 {
+                        let state = desc.atIndex(1)?.stringValue ?? ""
+                        let isPlaying = state.lowercased() == "playing"
+                        let title = desc.atIndex(2)?.stringValue ?? "Desconocido"
+                        let artist = desc.atIndex(3)?.stringValue ?? "Desconocido"
+                        let album = desc.atIndex(4)?.stringValue ?? ""
+                        let posStr = desc.atIndex(5)?.stringValue?.replacingOccurrences(of: ",", with: ".") ?? "0"
+                        let durStr = desc.atIndex(6)?.stringValue?.replacingOccurrences(of: ",", with: ".") ?? "180"
+                        let pos = Double(posStr) ?? 0
+                        let dur = Double(durStr) ?? 180
+                        
+                        let artwork = self.fetchSpotifyArtwork()
+                        DispatchQueue.main.async {
+                            self.currentTrack = MusicTrack(
+                                title: title,
+                                artist: artist,
+                                album: album,
+                                artwork: artwork,
+                                isPlaying: isPlaying,
+                                playbackPosition: pos,
+                                duration: dur,
                                 appSource: "Spotify"
                             )
                             self.hasActiveMusic = isPlaying

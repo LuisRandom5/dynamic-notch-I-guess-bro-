@@ -57,10 +57,44 @@ public final class StatusItemManager: NSObject {
         hapticItem.state = AppState.shared.enableHaptics ? .on : .off
         menu.addItem(hapticItem)
         
+        // Volume suppression toggle
+        let hasPermission = VolumeInterceptorService.shared.hasAccessibilityPermission
+        
+        let hudSuppressItem = NSMenuItem(
+            title: "Ocultar HUD nativo de macOS (Volumen y Brillo)",
+            action: #selector(toggleSuppressNativeHUD),
+            keyEquivalent: ""
+        )
+        hudSuppressItem.target = self
+        hudSuppressItem.state = VolumeInterceptorService.shared.suppressNativeHUD ? .on : .off
+        menu.addItem(hudSuppressItem)
+        
+        let accessItem = NSMenuItem(
+            title: hasPermission ? "✓ Permiso de Accesibilidad Concedido" : "⚠️ Configurar Permisos de Accesibilidad...",
+            action: #selector(openAccessibilityOnboarding),
+            keyEquivalent: ""
+        )
+        accessItem.target = self
+        menu.addItem(accessItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Test demos submenu
         let testMenu = NSMenu()
+        
+        let brightnessTest = NSMenuItem(title: "Slider Brillo (75%)", action: #selector(testBrightnessSlider), keyEquivalent: "")
+        brightnessTest.target = self
+        testMenu.addItem(brightnessTest)
+        
+        let volumeTest = NSMenuItem(title: "Slider Volumen (60%)", action: #selector(testVolumeSlider), keyEquivalent: "")
+        volumeTest.target = self
+        testMenu.addItem(volumeTest)
+        
+        let muteTest = NSMenuItem(title: "Slider Volumen Silenciado (Mute)", action: #selector(testMuteSlider), keyEquivalent: "")
+        muteTest.target = self
+        testMenu.addItem(muteTest)
+        
+        testMenu.addItem(NSMenuItem.separator())
         
         let magSafeTest = NSMenuItem(title: "Animación MagSafe (88%)", action: #selector(testMagSafe), keyEquivalent: "")
         magSafeTest.target = self
@@ -85,6 +119,14 @@ public final class StatusItemManager: NSObject {
         let testSubmenuItem = NSMenuItem(title: "Demostraciones de prueba", action: nil, keyEquivalent: "")
         testSubmenuItem.submenu = testMenu
         menu.addItem(testSubmenuItem)
+        
+        let debugPanelItem = NSMenuItem(
+            title: "Panel de Pruebas (Live Activities)...",
+            action: #selector(openDebugPanel),
+            keyEquivalent: "p"
+        )
+        debugPanelItem.target = self
+        menu.addItem(debugPanelItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -113,7 +155,7 @@ public final class StatusItemManager: NSObject {
     }
     
     @objc private func testMagSafe() {
-        AppState.shared.triggerAlert(.magsafe(percent: BatteryService.shared.status.percentage), duration: 4.0)
+        ChargingActivityProvider.shared.publishChargingActivity(percentage: 88, isLowPower: false, isPluggedIn: true)
     }
     
     @objc private func testAirPods() {
@@ -155,6 +197,31 @@ public final class StatusItemManager: NSObject {
         withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
             AppState.shared.mode = .expanded
         }
+    }
+    
+    @objc private func openDebugPanel() {
+        ActivityDebugWindow.shared.show()
+    }
+    
+    @objc private func toggleSuppressNativeHUD() {
+        VolumeInterceptorService.shared.suppressNativeHUD.toggle()
+        buildMenu()
+    }
+    
+    @objc private func openAccessibilityOnboarding() {
+        AccessibilityOnboardingWindowController.showAlways()
+    }
+    
+    @objc private func testBrightnessSlider() {
+        BrightnessService.shared.publishBrightnessActivity(0.75)
+    }
+    
+    @objc private func testVolumeSlider() {
+        AudioDeviceService.shared.publishVolumeActivity(volume: 0.60, isMuted: false)
+    }
+    
+    @objc private func testMuteSlider() {
+        AudioDeviceService.shared.publishVolumeActivity(volume: 0.60, isMuted: true)
     }
     
     @objc private func quitApp() {

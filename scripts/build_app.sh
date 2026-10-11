@@ -13,12 +13,11 @@ cd "${PROJECT_DIR}"
 swift build -c release
 
 echo "📦 Empaquetando DynamicNotch.app..."
-rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}"
 mkdir -p "${RESOURCES_DIR}"
 
 # Copy binary
-cp "${PROJECT_DIR}/.build/release/DynamicNotch" "${MACOS_DIR}/DynamicNotch"
+cp -f "${PROJECT_DIR}/.build/release/DynamicNotch" "${MACOS_DIR}/DynamicNotch"
 chmod +x "${MACOS_DIR}/DynamicNotch"
 
 # Create Info.plist
@@ -56,7 +55,8 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
 EOF
 
 echo "✍️ Firmando app localmente (ad-hoc signing)..."
-xattr -cr "${APP_BUNDLE}"
+dot_clean "${APP_BUNDLE}" 2>/dev/null || true
+xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
 codesign --force --deep --sign - "${APP_BUNDLE}"
 
 echo "✅ DynamicNotch.app creada y firmada exitosamente en: ${APP_BUNDLE}"

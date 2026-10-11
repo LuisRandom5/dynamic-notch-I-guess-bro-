@@ -10,6 +10,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NotchWindowManager.shared.setupWindow()
         StatusItemManager.shared.setupStatusItem()
         _ = BluetoothAudioService.shared
+        ChargingActivityProvider.shared.start()
+        _ = VolumeInterceptorService.shared
+        _ = BrightnessService.shared
+        
+        // Mostrar pantalla de onboarding si no se cuenta aún con permisos de accesibilidad
+        AccessibilityOnboardingWindowController.showIfNeeded()
         
         print("🍏 Dynamic Notch iniciado con éxito en macOS.")
         print("📐 Dimensiones del notch físico: \(ScreenService.shared.currentGeometry.width)x\(ScreenService.shared.currentGeometry.height)pt")

@@ -36,7 +36,7 @@ public struct AnimatedEqualizerView: View {
         .onAppear {
             updateAnimationState()
         }
-        .onChange(of: isPlaying) { _ in
+        .onChange(of: isPlaying) { _, _ in
             updateAnimationState()
         }
     }
