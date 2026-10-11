@@ -249,51 +249,48 @@ public struct NotchPlayerView: View {
                     // Controles Laterales: Shuffle a la izquierda y AirPlay a la derecha
                     HStack {
                         // Shuffle a la izquierda
-                        Button(action: {
+                        PlayerControlButton(scaleAmount: 0.85, haloSize: 26) {
                             musicService.toggleShuffle()
                             appState.hapticService.triggerSnap()
-                        }) {
+                        } content: {
                             Image(systemName: "shuffle")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(musicService.isShuffle ? Color.orange : PlayerMetrics.sideButtonColor)
                                 .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: PlayerMetrics.buttonPressScale))
                         
                         Spacer()
                         
                         // Botón de AirPlay a la derecha (visible y funcional como botón robusto)
-                        Button(action: {
+                        PlayerControlButton(scaleAmount: 0.85, haloSize: 26) {
                             appState.hapticService.triggerSnap()
                             showAirPlayMenu()
-                        }) {
+                        } content: {
                             Image(systemName: "airplayaudio")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(audioService.isAirPlayActive ? Color.blue : PlayerMetrics.sideButtonColor)
                                 .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: PlayerMetrics.buttonPressScale))
                     }
                     
                     // Tres controles centrales centrados horizontalmente
                     HStack(spacing: PlayerMetrics.controlsCenterSpacing - PlayerMetrics.playPauseWidth) {
-                        // Retroceso (~28 x 18 pt, blanco con micro-animación hacia la izquierda tipo Dynamic Island)
-                        Button(action: {
+                        // Retroceso (~28 x 18 pt, blanco con micro-animación hacia la izquierda y confirmación visual)
+                        PlayerControlButton(xOffset: -4.5, scaleAmount: 0.80, haloSize: 32) {
                             appState.hapticService.triggerSnap()
                             musicService.previousTrack()
-                        }) {
+                        } content: {
                             Image(systemName: "backward.fill")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.84, xOffset: -4.0))
                         
-                        // Play / Pausa en el centro
-                        Button(action: {
+                        // Play / Pausa en el centro con halo de confirmación
+                        PlayerControlButton(scaleAmount: 0.82, haloSize: 38) {
                             appState.hapticService.triggerExpand()
                             musicService.togglePlayPause()
-                        }) {
+                        } content: {
                             ZStack {
                                 if track.isPlaying {
                                     // Pausa: dos barras redondeadas personalizadas
@@ -317,20 +314,18 @@ public struct NotchPlayerView: View {
                             }
                             .frame(width: PlayerMetrics.playPauseWidth, height: PlayerMetrics.playPauseHeight)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.85))
                         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: track.isPlaying)
                         
-                        // Avance (~28 x 18 pt, blanco con micro-animación hacia la derecha tipo Dynamic Island)
-                        Button(action: {
+                        // Avance (~28 x 18 pt, blanco con micro-animación hacia la derecha y confirmación visual)
+                        PlayerControlButton(xOffset: 4.5, scaleAmount: 0.80, haloSize: 32) {
                             appState.hapticService.triggerSnap()
                             musicService.nextTrack()
-                        }) {
+                        } content: {
                             Image(systemName: "forward.fill")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.84, xOffset: 4.0))
                     }
                 }
                 .notchContentExit(isExiting: controlsExiting)

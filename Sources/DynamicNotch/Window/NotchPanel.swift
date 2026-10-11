@@ -21,6 +21,7 @@ public final class NotchPanel: NSPanel {
         self.isMovableByWindowBackground = false
         self.acceptsMouseMovedEvents = true
         self.hidesOnDeactivate = false
+        self.registerForDraggedTypes([.fileURL])
     }
     
     public override var canBecomeKey: Bool {
@@ -35,6 +36,16 @@ public final class NotchPanel: NSPanel {
 public final class NotchHitTestView: NSView {
     public var hitAreaRect: CGRect = .zero
     private var trackingArea: NSTrackingArea?
+    
+    public override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
     
     public override func hitTest(_ point: NSPoint) -> NSView? {
         if hitAreaRect.contains(point) {
@@ -83,5 +94,92 @@ public final class NotchHitTestView: NSView {
         } else {
             AppState.shared.handleMouseLeave()
         }
+    }
+    
+    // MARK: - Drag & Drop Proximity (Notch Vivo - Se abre al acercar archivos)
+    public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let types = sender.draggingPasteboard.types, types.contains(.fileURL) else {
+            return []
+        }
+        
+        let point = convert(sender.draggingLocation, from: nil)
+        // Proximidad: parte superior de la ventana cerca del notch
+        let isNearNotch = point.y >= (bounds.height - 220) && abs(point.x - (bounds.width / 2.0)) <= 260
+        
+        if isNearNotch {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.44, dampingFraction: 0.82)) {
+                    AppState.shared.mode = .shelf
+                }
+                AppState.shared.hapticService.triggerSnap()
+            }
+            return .copy
+        }
+        return []
+    }
+    
+    public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let types = sender.draggingPasteboard.types, types.contains(.fileURL) else {
+            return []
+        }
+        
+        let point = convert(sender.draggingLocation, from: nil)
+        let isNearNotch = point.y >= (bounds.height - 220) && abs(point.x - (bounds.width / 2.0)) <= 260
+        
+        if isNearNotch {
+            if AppState.shared.mode != .shelf {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.44, dampingFraction: 0.82)) {
+                        AppState.shared.mode = .shelf
+                    }
+                    AppState.shared.hapticService.triggerSnap()
+                }
+            }
+            return .copy
+        } else {
+            // Si el cursor se aleja del notch y no se ha soltado nada
+            if AppState.shared.shelfItems.isEmpty && AppState.shared.mode == .shelf {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.50, dampingFraction: 0.86)) {
+                        if AppState.shared.musicService.hasActiveMusic && AppState.shared.showCompactWhenPlaying {
+                            AppState.shared.mode = .compact
+                        } else {
+                            AppState.shared.mode = .idle
+                        }
+                    }
+                }
+            }
+            return []
+        }
+    }
+    
+    public override func draggingExited(_ sender: NSDraggingInfo?) {
+        DispatchQueue.main.async {
+            if AppState.shared.shelfItems.isEmpty && AppState.shared.mode == .shelf {
+                withAnimation(.spring(response: 0.50, dampingFraction: 0.86)) {
+                    if AppState.shared.musicService.hasActiveMusic && AppState.shared.showCompactWhenPlaying {
+                        AppState.shared.mode = .compact
+                    } else {
+                        AppState.shared.mode = .idle
+                    }
+                }
+            }
+        }
+    }
+    
+    public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pasteboard = sender.draggingPasteboard
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty else {
+            return false
+        }
+        
+        DispatchQueue.main.async {
+            for url in urls {
+                AppState.shared.addShelfFile(url: url)
+            }
+            AppState.shared.mode = .shelf
+            AppState.shared.hapticService.triggerDrop()
+        }
+        return true
     }
 }

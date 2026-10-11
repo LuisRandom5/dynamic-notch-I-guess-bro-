@@ -58,6 +58,7 @@ public struct NotchContainerView: View {
     @State private var animStage2: Bool = false
     @State private var animStage3: Bool = false
     @State private var isFileDragTargeted: Bool = false
+    @State private var isTransitioningFromActivity: Bool = false
     
     // Estados de salida escalonada (Exit Animation con Springs)
     @State private var isCollapsing: Bool = false
@@ -295,6 +296,7 @@ public struct NotchContainerView: View {
                             NotchCompactView(namespace: notchNamespace)
                                 .frame(width: currentWidth, height: currentHeight)
                                 .blur(radius: dragBlur)
+                                .opacity(isTransitioningFromActivity ? 0.0 : 1.0)
                                 .transition(.asymmetric(
                                     insertion: .opacity.combined(with: .scale(scale: 0.96)),
                                     removal: .opacity.combined(with: .scale(scale: 0.96))
@@ -399,6 +401,18 @@ public struct NotchContainerView: View {
                 }
             }
         }
+        .onChange(of: activityCenter.currentActivity?.id) { oldId, newId in
+            if oldId != nil && newId == nil {
+                // Al cerrarse el slider de volumen/brillo, ocultar el contenido de música
+                // brevemente para que el notch se encoja limpiamente con fluidez antes de revelar la música
+                isTransitioningFromActivity = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                    withAnimation(.easeIn(duration: 0.15)) {
+                        self.isTransitioningFromActivity = false
+                    }
+                }
+            }
+        }
         .onChange(of: appState.mode) { _, newMode in
             handleModeChange(newMode)
         }
@@ -414,7 +428,7 @@ public struct NotchContainerView: View {
     }
     
     private var morphSpring: Animation {
-        speedManager.spring(response: 0.48, dampingFraction: 0.88)
+        speedManager.spring(response: 0.40, dampingFraction: 0.88)
     }
     
     private var currentShapeSpring: Animation {

@@ -15,18 +15,18 @@ public struct NotchShelfView: View {
                 // MARK: - Estado Vacío: Zona de recepción al arrastrar
                 VStack(spacing: 8) {
                     Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(isTargeted ? DesignTokens.blue : Color.white.opacity(0.45))
-                        .scaleEffect(isTargeted ? 1.12 : 1.0)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(DesignTokens.blue)
+                        .scaleEffect(isTargeted ? 1.15 : 1.05)
                         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isTargeted)
                     
-                    Text(isTargeted ? "¡Suelta para guardar en el Notch!" : "Arrastra un archivo aquí")
-                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                    Text("¡Suelta tu archivo aquí!")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
                     
-                    Text("Guarda archivos temporalmente para moverlos con facilidad")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(Color.white.opacity(0.45))
+                    Text("Se guardará en el Notch para moverlo a donde quieras")
+                        .font(.system(size: 11.5, weight: .regular))
+                        .foregroundColor(Color.white.opacity(0.60))
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -34,9 +34,13 @@ public struct NotchShelfView: View {
                 .padding(.vertical, 14)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(DesignTokens.blue.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(
-                            isTargeted ? DesignTokens.blue : Color.white.opacity(0.14),
-                            style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4])
+                            DesignTokens.blue.opacity(isTargeted ? 1.0 : 0.65),
+                            style: StrokeStyle(lineWidth: isTargeted ? 2.2 : 1.5, dash: [6, 4])
                         )
                 )
             } else {
