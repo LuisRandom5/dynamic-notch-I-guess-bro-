@@ -29,6 +29,10 @@ public final class VolumeInterceptorService: ObservableObject {
     }
     
     public func checkPermission() -> Bool {
+        if isIntercepting {
+            self.hasAccessibilityPermission = true
+            return true
+        }
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
         let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
         self.hasAccessibilityPermission = trusted
@@ -40,14 +44,12 @@ public final class VolumeInterceptorService: ObservableObject {
         _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
     
-    /// Monitor periódico cada 1.5s: si el usuario otorga el permiso de Accesibilidad
-    /// mientras la app está abierta, el interceptor se conecta inmediatamente en automático.
+    /// Monitor periódico cada 1.0s: intenta conectar el interceptor en automático
     private func startHealthCheck() {
         healthCheckTimer?.invalidate()
-        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            let trusted = self.checkPermission()
-            if trusted && !self.isIntercepting {
+            if !self.isIntercepting {
                 self.startInterception()
             }
         }
@@ -165,6 +167,8 @@ public final class VolumeInterceptorService: ObservableObject {
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         self.isIntercepting = true
+        self.hasAccessibilityPermission = true
+        print("✅ VolumeInterceptorService: Interceptor multimedia activo (.cghidEventTap / .cgSessionEventTap)")
     }
     
     public func reenableTap() {

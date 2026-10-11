@@ -54,9 +54,9 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
 </plist>
 EOF
 
-echo "✍️ Firmando app localmente (ad-hoc signing)..."
+echo "✍️ Firmando app localmente con Designated Requirement estable..."
 dot_clean "${APP_BUNDLE}" 2>/dev/null || true
 xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
-codesign --force --deep --sign - "${APP_BUNDLE}"
+codesign --force --deep -s - -r='designated => identifier "com.luisrandom.DynamicNotch"' "${APP_BUNDLE}"
 
 echo "✅ DynamicNotch.app creada y firmada exitosamente en: ${APP_BUNDLE}"

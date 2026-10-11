@@ -79,11 +79,11 @@ public final class NotchWindowManager: ObservableObject {
         if let activity = ActivityCenter.shared.currentActivity {
             switch activity.style {
             case .pill:
-                updateHitArea(width: max(270, geom.width + 80), height: max(50, geom.height + 14))
+                updateHitArea(width: geom.width + 140, height: max(50, geom.height + 14))
             case .sliderPill:
-                updateHitArea(width: 340, height: max(50, geom.height + 14))
+                updateHitArea(width: geom.width + 240, height: max(50, geom.height + 14))
             case .card:
-                updateHitArea(width: 410, height: 125)
+                updateHitArea(width: 410, height: 130)
             }
             return
         }

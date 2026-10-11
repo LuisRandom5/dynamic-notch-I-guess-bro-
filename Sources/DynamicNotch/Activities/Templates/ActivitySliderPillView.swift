@@ -1,18 +1,22 @@
 import SwiftUI
 
-// MARK: - ActivitySliderPillView (Plantilla Unificada de SliderPill con Estados)
-/// Renderiza la barra de control interactiva para Brillo, Volumen y Silenciado (Mute).
-/// - Ancho: 320 pt, Alto: 36 pt, Forma: Cápsula estilizada.
-/// - Barra con animación spring corta y reactiva al mantener teclas.
-/// - Transiciones suaves de símbolo (`.symbolEffect(.replace)`) y crossfade de color (Verde ↔ Rojo en mute).
+// MARK: - ActivitySliderPillView (Diseño Minimalista Integrado en las Alas del Notch - Imagen 1)
+/// Extiende el notch físico horizontalmente hacia los lados:
+/// - Ala izquierda: Icono de volumen/brillo + texto "Volume" / "Brightness".
+/// - Centro: Espacio libre para la cámara física del notch.
+/// - Ala derecha: Pequeña cápsula de progreso horizontal + nivel numérico (ej. "46").
 public struct ActivitySliderPillView: View {
     public let activity: LiveActivity
+    @EnvironmentObject var screenService: ScreenService
     
     public init(activity: LiveActivity) {
         self.activity = activity
     }
     
-    // MARK: - Propiedades Derivadas del Estado
+    private var geometry: NotchGeometry {
+        screenService.currentGeometry
+    }
+    
     private var sliderState: SliderPillState? {
         activity.sliderState
     }
@@ -25,22 +29,33 @@ public struct ActivitySliderPillView: View {
         sliderState?.isMuted ?? false
     }
     
+    private var titleText: String {
+        if let state = sliderState {
+            switch state {
+            case .brightness:
+                return "Brightness"
+            case .volume(_, let muted):
+                return muted ? "Mute" : "Volume"
+            }
+        }
+        return "Volume"
+    }
+    
     // Icono correspondiente según el tipo y nivel
     @ViewBuilder
     private var leadingIconView: some View {
         if let state = sliderState {
             switch state {
             case .brightness(let lvl):
-                // Icono de sol cuyo relleno/rayos crecen con el nivel usando variableValue
                 Image(systemName: "sun.max.fill", variableValue: Double(max(0.12, lvl)))
-                    .font(.system(size: 15.5, weight: .semibold))
+                    .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(.white)
                     .contentTransition(.symbolEffect(.replace))
                     
             case .volume(let lvl, let muted):
                 if muted {
                     Image(systemName: "speaker.slash.fill")
-                        .font(.system(size: 15.5, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold))
                         .foregroundColor(DesignTokens.red)
                         .contentTransition(.symbolEffect(.replace))
                 } else {
@@ -56,95 +71,97 @@ public struct ActivitySliderPillView: View {
                         }
                     }()
                     Image(systemName: iconName)
-                        .font(.system(size: 15.5, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold))
                         .foregroundColor(.white)
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-        } else if let leading = activity.leading {
-            leading
         } else {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 14, weight: .semibold))
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 13.5, weight: .semibold))
                 .foregroundColor(.white)
         }
     }
     
-    // Color de la barra de progreso con soporte de crossfade
+    // Color de la barra de progreso
     private var barFillColor: Color {
         if let state = sliderState {
             switch state {
             case .brightness:
                 return .white
             case .volume(_, let muted):
-                return muted ? DesignTokens.red : DesignTokens.green
+                // Verde brillante idéntico a la referencia (#30D158) o Rojo en mute
+                return muted ? DesignTokens.red : Color(red: 0x30 / 255.0, green: 0xD1 / 255.0, blue: 0x58 / 255.0)
             }
         }
-        return activity.tint
+        return Color(red: 0x30 / 255.0, green: 0xD1 / 255.0, blue: 0x58 / 255.0)
+    }
+    
+    // Pista oscura sutil detrás de la barra
+    private var barTrackColor: Color {
+        if let state = sliderState {
+            switch state {
+            case .brightness:
+                return Color.white.opacity(0.18)
+            case .volume(_, let muted):
+                return muted ? DesignTokens.red.opacity(0.25) : Color(red: 0x14 / 255.0, green: 0x5E / 255.0, blue: 0x28 / 255.0)
+            }
+        }
+        return Color.white.opacity(0.18)
     }
     
     public var body: some View {
-        HStack(spacing: 12) {
-            // Icono Leading (22 x 22 pt centrado)
-            leadingIconView
-                .frame(width: 22, height: 22, alignment: .center)
-            
-            // Barra de Progreso en Cápsula (Alto 5.5 pt, Pista al 20%)
-            GeometryReader { geo in
-                let clampedLevel = min(1.0, max(0.0, level))
-                let fillWidth = max(5.5, geo.size.width * CGFloat(clampedLevel))
+        let wingWidth: CGFloat = 110.0
+        let clampedLevel = min(1.0, max(0.0, level))
+        let barWidth: CGFloat = 46.0
+        let fillWidth = max(4.0, barWidth * CGFloat(clampedLevel))
+        
+        HStack(spacing: 0) {
+            // MARK: - ALA IZQUIERDA: Icono + "Volume" / "Brightness"
+            HStack(spacing: 7) {
+                leadingIconView
+                    .frame(width: 18, height: 18)
                 
+                Text(titleText)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                
+                Spacer(minLength: 0)
+            }
+            .frame(width: wingWidth)
+            .padding(.leading, 14)
+            
+            // MARK: - CENTRO: Espacio bajo la cámara física del notch
+            Spacer(minLength: 0)
+                .frame(width: geometry.width)
+            
+            // MARK: - ALA DERECHA: Barra cápsula verde + Nivel numérico (ej. "46")
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                
+                // Cápsula horizontal de progreso
                 ZStack(alignment: .leading) {
-                    // Pista de fondo
                     Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.20))
-                        .frame(height: 5.5)
+                        .fill(barTrackColor)
+                        .frame(width: barWidth, height: 4.5)
                     
-                    // Relleno animado
                     Capsule(style: .continuous)
                         .fill(barFillColor)
-                        .frame(width: fillWidth, height: 5.5)
-                        // Spring corto y reactivo para cambios fluidos al mantener presionada la tecla
-                        .animation(.spring(response: 0.20, dampingFraction: 0.78), value: level)
-                        // Crossfade suave para el color entre verde y rojo al mutear
-                        .animation(.easeInOut(duration: 0.24), value: isMuted)
+                        .frame(width: fillWidth, height: 4.5)
+                        .animation(.spring(response: 0.16, dampingFraction: 0.82), value: level)
                 }
-                .frame(maxHeight: .infinity, alignment: .center)
-            }
-            .frame(height: 18)
-            
-            // Número 0-100 Trailing con tipografía monospaced SF Pro Rounded
-            if sliderState != nil {
+                .frame(height: 14)
+                
+                // Nivel numérico 0-100
                 Text("\(Int(round(level * 100)))")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundColor(isMuted ? DesignTokens.red.opacity(0.9) : .white)
-                    .contentTransition(.numericText())
-                    .frame(minWidth: 28, alignment: .trailing)
-                    .animation(.easeInOut(duration: 0.20), value: isMuted)
-            } else if let trailing = activity.trailing {
-                trailing
-                    .frame(minWidth: 28, alignment: .trailing)
+                    .foregroundColor(isMuted ? DesignTokens.red : .white)
+                    .frame(minWidth: 22, alignment: .trailing)
             }
+            .frame(width: wingWidth)
+            .padding(.trailing, 14)
         }
-        .padding(.horizontal, 14)
-        .frame(width: 320, height: 36)
-        .background(Color.black)
-        .clipShape(Capsule())
-        .overlay(
-            Capsule()
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.0),
-                            Color.white.opacity(0.12)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: Color.black.opacity(0.40), radius: 14, x: 0, y: 6)
+        .frame(width: geometry.width + (wingWidth * 2), height: geometry.height)
     }
 }

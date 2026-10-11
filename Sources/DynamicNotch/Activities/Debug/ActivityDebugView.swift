@@ -139,16 +139,27 @@ public struct ActivityDebugView: View {
                             .foregroundColor(.secondary)
                         
                         Button(action: {
-                            SampleActivities.triggerSampleCard()
+                            AirDropActivityProvider.shared.startSimulatedTransfer()
                         }) {
                             HStack {
                                 Image(systemName: "airdrop")
-                                Text("Disparar Tarjeta Card (4s)")
+                                Text("Simular AirDrop (Alas en Progreso → Expansión)")
                             }
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(DesignTokens.purple)
+                        .tint(DesignTokens.blue)
+                        
+                        Button(action: {
+                            SampleActivities.triggerSampleCard()
+                        }) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                Text("Disparar Tarjeta Card Directa (4s)")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .padding(6)
                 }

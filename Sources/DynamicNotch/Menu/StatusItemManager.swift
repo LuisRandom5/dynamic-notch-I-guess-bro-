@@ -112,6 +112,10 @@ public final class StatusItemManager: NSObject {
         musicDemoTest.target = self
         testMenu.addItem(musicDemoTest)
         
+        let airDropTest = NSMenuItem(title: "Simular AirDrop (Progreso → Éxito)", action: #selector(testAirDropTransfer), keyEquivalent: "")
+        airDropTest.target = self
+        testMenu.addItem(airDropTest)
+        
         let shelfTest = NSMenuItem(title: "Abrir Bandeja de Archivos", action: #selector(testShelf), keyEquivalent: "")
         shelfTest.target = self
         testMenu.addItem(shelfTest)
@@ -167,6 +171,10 @@ public final class StatusItemManager: NSObject {
     
     @objc private func testBatteryLow() {
         AppState.shared.triggerAlert(.batteryLow(percent: 12), duration: 4.0)
+    }
+    
+    @objc private func testAirDropTransfer() {
+        AirDropActivityProvider.shared.startSimulatedTransfer()
     }
     
     @objc private func testMusicDemo() {

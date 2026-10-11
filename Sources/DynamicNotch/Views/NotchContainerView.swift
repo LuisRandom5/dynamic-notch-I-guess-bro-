@@ -82,9 +82,9 @@ public struct NotchContainerView: View {
         } else if let activity = activityCenter.currentActivity {
             switch activity.style {
             case .pill:
-                return max(250, geometry.width + 60)
+                return geometry.width + 120
             case .sliderPill:
-                return 320
+                return geometry.width + 220
             case .card:
                 return 390
             }
@@ -107,9 +107,9 @@ public struct NotchContainerView: View {
         } else if let activity = activityCenter.currentActivity {
             switch activity.style {
             case .pill:
-                return max(38, geometry.height)
+                return geometry.height
             case .sliderPill:
-                return 36
+                return geometry.height
             case .card:
                 return 112
             }
@@ -123,16 +123,19 @@ public struct NotchContainerView: View {
         }
     }
     
-    // Curvatura de esquinas: arriba plano en reposo, 18pt en SliderPill, 40pt en Card, radio en expandido
+    // Curvatura de esquinas: se redondea dinámicamente al arrastrar para convertirse en PÍLDORA completa
     private var topRadius: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedTopRadius
+        } else if dragOffsetY > 0 {
+            // ¡Al arrastrar hacia abajo se redondea progresivamente a PÍLDORA flotante continua!
+            return min(dragOffsetY * 0.9, 18.0)
         } else if let activity = activityCenter.currentActivity {
             switch activity.style {
             case .pill:
-                return 19
+                return 0
             case .sliderPill:
-                return 18
+                return 0
             case .card:
                 return 40
             }
@@ -149,12 +152,14 @@ public struct NotchContainerView: View {
     private var bottomRadius: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedBottomRadius
+        } else if dragOffsetY > 0 {
+            return 17.0 + min(dragOffsetY * 0.15, 3.0)
         } else if let activity = activityCenter.currentActivity {
             switch activity.style {
             case .pill:
-                return 19
+                return 17
             case .sliderPill:
-                return 18
+                return 17
             case .card:
                 return 40
             }
@@ -278,14 +283,18 @@ public struct NotchContainerView: View {
             }
             .clipShape(NotchShape(topRadius: topRadius, bottomRadius: bottomRadius))
             .shadow(
-                color: Color.black.opacity(shadowOpacity),
-                radius: shadowRadius,
+                color: Color.black.opacity(shadowOpacity + (dragOffsetY > 0 ? 0.18 : 0.0)),
+                radius: shadowRadius + (dragOffsetY > 0 ? 8 : 0),
                 x: 0,
                 y: shadowY + dragOffsetY * 0.4
             )
             .offset(y: dragOffsetY)
             .scaleEffect(x: scaleX, y: scaleY * dragScaleY, anchor: .top)
-            .frame(width: currentWidth, height: currentHeight + dragOffsetY, alignment: .top)
+            .frame(
+                width: currentWidth + (dragOffsetY > 0 ? min(dragOffsetY * 1.15, 38) : 0),
+                height: currentHeight + (dragOffsetY > 0 ? min(dragOffsetY * 0.70, 22) : 0),
+                alignment: .top
+            )
             // Gesto de presión con anticipación en 3 fases cuando está colapsado y no hay actividad activa
             .modifier(PillGestureModifier(
                 isEnabled: appState.mode != .expanded && activityCenter.currentActivity == nil,
@@ -390,11 +399,11 @@ public struct NotchContainerView: View {
                         }
                     }
                 } else if value.translation.height > 0 {
-                    // ARRASTRE HACIA ABAJO CON BLUR TIPO IPHONE
+                    // ARRASTRE HACIA ABAJO CON BLUR TIPO IPHONE Y CRECIMIENTO EN FORMA DE PÍLDORA
                     let rawY = value.translation.height
-                    let offset = min(rawY * 0.38, 28.0)
-                    let blur = min(6.0, (rawY / 30.0) * 4.5)
-                    let stretch = 1.0 + min(rawY * 0.0016, 0.06)
+                    let offset = min(rawY * 0.40, 30.0)
+                    let blur = min(6.0, (rawY / 26.0) * 4.5)
+                    let stretch = 1.0 + min(rawY * 0.002, 0.07)
                     
                     withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.82)) {
                         dragOffsetY = offset
@@ -420,7 +429,7 @@ public struct NotchContainerView: View {
                 
                 let cancelX = abs(value.translation.width) > NotchTuning.dragCancelThresholdX
                 let cancelUp = value.translation.height < -25
-                let pulledDown = value.translation.height >= 20 || value.predictedEndTranslation.height >= 32
+                let pulledDown = value.translation.height >= 18 || value.predictedEndTranslation.height >= 30
                 let isTap = abs(value.translation.width) < 12 && abs(value.translation.height) < 12
                 
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {

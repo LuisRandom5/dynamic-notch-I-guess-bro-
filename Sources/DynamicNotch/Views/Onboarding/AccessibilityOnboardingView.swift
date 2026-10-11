@@ -163,11 +163,11 @@ public struct AccessibilityOnboardingView: View {
     }
     
     private func checkPermissionLoop() {
-        self.isTrusted = interceptor.checkPermission()
+        self.isTrusted = interceptor.checkPermission() || interceptor.isIntercepting
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { _ in
             DispatchQueue.main.async {
-                let trusted = interceptor.checkPermission()
+                let trusted = interceptor.checkPermission() || interceptor.isIntercepting
                 self.isTrusted = trusted
                 if trusted {
                     interceptor.startInterception()
