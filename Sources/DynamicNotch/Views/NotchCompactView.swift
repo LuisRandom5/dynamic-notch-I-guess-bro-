@@ -69,19 +69,38 @@ public struct NotchCompactView: View {
                     height: screenService.currentGeometry.height
                 )
             
-            // Ala derecha compacta (Trailing): Visualizador
-            ZStack {
+            // Ala derecha compacta (Trailing): Visualizador + Badge de archivos en bandeja si existen
+            HStack(spacing: 5) {
+                if !appState.shelfItems.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: "tray.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(DesignTokens.blue)
+                        Text("\(appState.shelfItems.count)")
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 4.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                            appState.mode = .shelf
+                        }
+                    }
+                }
+                
                 AudioVisualizer(
                     isPlaying: musicService.currentTrack.isPlaying,
                     colorMode: .fromArtwork(musicService.currentTrack.artwork)
                 )
             }
             .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
-            .frame(width: wingWidth, height: screenService.currentGeometry.height)
+            .frame(width: wingWidth + (!appState.shelfItems.isEmpty ? 18 : 0), height: screenService.currentGeometry.height)
             .contentShape(Rectangle())
         }
         .frame(
-            width: screenService.currentGeometry.width + (wingWidth * 2),
+            width: screenService.currentGeometry.width + (wingWidth * 2) + (!appState.shelfItems.isEmpty ? 18 : 0),
             height: screenService.currentGeometry.height
         )
     }

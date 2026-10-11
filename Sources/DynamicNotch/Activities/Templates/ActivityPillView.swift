@@ -28,8 +28,8 @@ public struct ActivityPillView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .frame(width: wingWidth)
-            .padding(.leading, 20)
+            .padding(.leading, 18)
+            .frame(width: wingWidth, height: geometry.height, alignment: .center)
             
             // Centro: Espacio libre bajo la cámara física del notch
             Spacer(minLength: 0)
@@ -42,9 +42,9 @@ public struct ActivityPillView: View {
                     trailing
                 }
             }
-            .frame(width: wingWidth)
-            .padding(.trailing, 20)
+            .padding(.trailing, 18)
+            .frame(width: wingWidth, height: geometry.height, alignment: .center)
         }
-        .frame(width: geometry.width + (wingWidth * 2), height: geometry.height)
+        .frame(width: geometry.width + (wingWidth * 2), height: geometry.height, alignment: .center)
     }
 }

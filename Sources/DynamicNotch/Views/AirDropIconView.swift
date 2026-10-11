@@ -1,11 +1,22 @@
 import SwiftUI
+import AppKit
 
-// MARK: - AirDropIconView (Icono de AirDrop en SwiftUI Puro para macOS)
-/// Renderiza las ondas concéntricas oficiales de AirDrop en color azul de Apple.
-/// Resuelve la limitación de macOS donde la SF Symbol "airdrop" no existe en el sistema.
+// MARK: - AirDropIconView (Icono Oficial de AirDrop para macOS)
+/// Carga directamente el recurso gráfico oficial de AirDrop del sistema macOS (/System/Library/PrivateFrameworks/SharingUI.framework)
+/// configurado en modo plantilla para renderizado nativo idéntico al de Apple en cualquier color y tamaño.
 public struct AirDropIconView: View {
     public var size: CGFloat
     public var color: Color
+    
+    // Caché estática del gráfico oficial de AirDrop de Apple
+    private static let systemAirDropImage: NSImage? = {
+        let path = "/System/Library/PrivateFrameworks/SharingUI.framework/Resources/AirDrop-large.png"
+        if let img = NSImage(contentsOfFile: path) {
+            img.isTemplate = true
+            return img
+        }
+        return nil
+    }()
     
     public init(
         size: CGFloat = 18,
@@ -16,25 +27,48 @@ public struct AirDropIconView: View {
     }
     
     public var body: some View {
+        Group {
+            if let nsImg = Self.systemAirDropImage {
+                Image(nsImage: nsImg)
+                    .resizable()
+                    .renderingMode(.template)
+                    .foregroundColor(color)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size, height: size)
+            } else {
+                // Renderizado vectorial fiel con anillos concéntricos abiertos en la base
+                AirDropVectorFallback(size: size, color: color)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+// MARK: - Vector Fallback de Alta Precisión
+private struct AirDropVectorFallback: View {
+    let size: CGFloat
+    let color: Color
+    
+    var body: some View {
         ZStack {
-            // Arcos concéntricos superiores que se expanden hacia arriba
+            // Anillos concéntricos de AirDrop con apertura inferior de ~100°
             ForEach(0..<3) { i in
-                let scale: CGFloat = 0.44 + CGFloat(i) * 0.28
+                let factor: CGFloat = 0.42 + (CGFloat(i) * 0.28)
                 Circle()
-                    .trim(from: 0.15, to: 0.85)
+                    .trim(from: 0.14, to: 0.86)
                     .stroke(
                         color,
-                        style: StrokeStyle(lineWidth: max(1.5, size * 0.11), lineCap: .round)
+                        style: StrokeStyle(lineWidth: max(1.6, size * 0.105), lineCap: .round)
                     )
                     .rotationEffect(.degrees(90))
-                    .frame(width: size * scale, height: size * scale)
+                    .frame(width: size * factor, height: size * factor)
             }
             
-            // Punto central emisor en la base
+            // Cuña / punto emisor central inferior
             Circle()
                 .fill(color)
-                .frame(width: max(2.5, size * 0.20), height: max(2.5, size * 0.20))
-                .offset(y: size * 0.14)
+                .frame(width: max(2.5, size * 0.18), height: max(2.5, size * 0.18))
+                .offset(y: size * 0.12)
         }
         .frame(width: size, height: size)
     }

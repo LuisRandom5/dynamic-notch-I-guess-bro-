@@ -277,7 +277,7 @@ public struct NotchPlayerView: View {
                     
                     // Tres controles centrales centrados horizontalmente
                     HStack(spacing: PlayerMetrics.controlsCenterSpacing - PlayerMetrics.playPauseWidth) {
-                        // Retroceso (~28 x 18 pt, blanco)
+                        // Retroceso (~28 x 18 pt, blanco con micro-animación hacia la izquierda tipo Dynamic Island)
                         Button(action: {
                             appState.hapticService.triggerSnap()
                             musicService.previousTrack()
@@ -287,7 +287,7 @@ public struct NotchPlayerView: View {
                                 .foregroundColor(.white)
                                 .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: PlayerMetrics.buttonPressScale))
+                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.84, xOffset: -4.0))
                         
                         // Play / Pausa en el centro
                         Button(action: {
@@ -320,7 +320,7 @@ public struct NotchPlayerView: View {
                         .buttonStyle(BouncyButtonStyle(scaleAmount: 0.85))
                         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: track.isPlaying)
                         
-                        // Avance (~28 x 18 pt, blanco)
+                        // Avance (~28 x 18 pt, blanco con micro-animación hacia la derecha tipo Dynamic Island)
                         Button(action: {
                             appState.hapticService.triggerSnap()
                             musicService.nextTrack()
@@ -330,7 +330,7 @@ public struct NotchPlayerView: View {
                                 .foregroundColor(.white)
                                 .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                         }
-                        .buttonStyle(BouncyButtonStyle(scaleAmount: PlayerMetrics.buttonPressScale))
+                        .buttonStyle(BouncyButtonStyle(scaleAmount: 0.84, xOffset: 4.0))
                     }
                 }
                 .notchContentExit(isExiting: controlsExiting)

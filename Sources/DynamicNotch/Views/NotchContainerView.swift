@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Notch Physics & Animation Tuning
 public struct NotchTuning {
@@ -56,8 +57,7 @@ public struct NotchContainerView: View {
     @State private var animStage1: Bool = false
     @State private var animStage2: Bool = false
     @State private var animStage3: Bool = false
-    @State private var pillsRevealed: Bool = false
-    @State private var selectedBottomTab: BottomTab = .music
+    @State private var isFileDragTargeted: Bool = false
     
     // Estados de salida escalonada (Exit Animation con Springs)
     @State private var isCollapsing: Bool = false
@@ -84,16 +84,16 @@ public struct NotchContainerView: View {
             case .pill:
                 return geometry.width + 170
             case .sliderPill:
-                return geometry.width + 276
+                return geometry.width + 292
             case .card:
                 return 390
             }
         } else {
             switch appState.mode {
             case .idle:
-                return geometry.width
+                return !appState.shelfItems.isEmpty ? geometry.width + 44 : geometry.width
             case .compact:
-                return geometry.width + 104
+                return geometry.width + 104 + (!appState.shelfItems.isEmpty ? 18 : 0)
             case .expanded, .shelf:
                 return NotchTuning.expandedWidth
             }
@@ -236,7 +236,11 @@ public struct NotchContainerView: View {
                 
                 // Contenido según el modo, Live Activity o HUD de volumen
                 Group {
-                    if appState.mode == .expanded || appState.mode == .shelf {
+                    if appState.mode == .shelf {
+                        // Bandeja interactiva minimalista para guardar y sacar archivos
+                        NotchShelfView()
+                            .frame(width: currentWidth, height: currentHeight, alignment: .top)
+                    } else if appState.mode == .expanded {
                         // Reproductor minimalista estilo iPhone
                         NotchPlayerView(
                             namespace: notchNamespace,
@@ -259,8 +263,33 @@ public struct NotchContainerView: View {
                     } else {
                         switch appState.mode {
                         case .idle:
-                            Color.clear
+                            if !appState.shelfItems.isEmpty {
+                                HStack(spacing: 0) {
+                                    Spacer()
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "tray.fill")
+                                            .font(.system(size: 8.5, weight: .bold))
+                                            .foregroundColor(DesignTokens.blue)
+                                        Text("\(appState.shelfItems.count)")
+                                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                            .foregroundColor(.white)
+                                    }
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2.5)
+                                    .background(Capsule().fill(Color.white.opacity(0.14)))
+                                    .padding(.trailing, 8)
+                                }
                                 .frame(width: currentWidth, height: currentHeight)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(currentShapeSpring) {
+                                        appState.mode = .shelf
+                                    }
+                                }
+                            } else {
+                                Color.clear
+                                    .frame(width: currentWidth, height: currentHeight)
+                            }
                             
                         case .compact:
                             NotchCompactView(namespace: notchNamespace)
@@ -278,7 +307,7 @@ public struct NotchContainerView: View {
                 }
                 
                 // Zona táctil superior en el notch para cerrar al hacer click en el notch
-                if appState.mode == .expanded {
+                if appState.mode == .expanded || appState.mode == .shelf {
                     Color.clear
                         .frame(width: geometry.width, height: geometry.height)
                         .contentShape(Rectangle())
@@ -303,7 +332,7 @@ public struct NotchContainerView: View {
             )
             // Gesto de presión con anticipación en 3 fases cuando está colapsado y no hay actividad activa
             .modifier(PillGestureModifier(
-                isEnabled: appState.mode != .expanded && activityCenter.currentActivity == nil,
+                isEnabled: appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil,
                 gesture: pillPressGesture
             ))
             .onHover { isHovering in
@@ -324,7 +353,7 @@ public struct NotchContainerView: View {
                         hoverExitTimer?.invalidate()
                         hoverExitTimer = nil
                     }
-                } else if isHovering && appState.mode != .expanded && activityCenter.currentActivity == nil {
+                } else if isHovering && appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
                     appState.triggerHeartbeat()
                 }
             }
@@ -336,27 +365,40 @@ public struct NotchContainerView: View {
             .animation(morphSpring, value: topRadius)
             .animation(morphSpring, value: bottomRadius)
             
-            // Cápsulas de pestañas flotantes inferiores (separadas con 8pt)
-            if appState.mode == .expanded || pillsRevealed {
-                NotchBottomPillsView(selectedTab: $selectedBottomTab)
-                    .offset(y: pillsRevealed ? 0 : -14)
-                    .opacity(pillsRevealed ? 1.0 : 0.0)
-                    .animation(currentShapeSpring, value: pillsRevealed)
-            }
-            
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(
-            // Click fuera del widget para cerrar cuando está expandido
+            // Click fuera del widget para cerrar cuando está expandido o en la bandeja
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    if appState.mode == .expanded {
+                    if appState.mode == .expanded || appState.mode == .shelf {
                         performCollapse()
                     }
                 }
         )
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isFileDragTargeted) { providers in
+            handleFileDrop(providers)
+        }
+        .onChange(of: isFileDragTargeted) { _, isTargeted in
+            if isTargeted {
+                withAnimation(currentShapeSpring) {
+                    appState.mode = .shelf
+                }
+                appState.hapticService.triggerSnap()
+            } else {
+                if appState.shelfItems.isEmpty && appState.mode == .shelf {
+                    withAnimation(currentShapeSpring) {
+                        if musicService.hasActiveMusic && appState.showCompactWhenPlaying {
+                            appState.mode = .compact
+                        } else {
+                            appState.mode = .idle
+                        }
+                    }
+                }
+            }
+        }
         .onChange(of: appState.mode) { _, newMode in
             handleModeChange(newMode)
         }
@@ -376,7 +418,7 @@ public struct NotchContainerView: View {
     }
     
     private var currentShapeSpring: Animation {
-        if appState.mode == .expanded {
+        if appState.mode == .expanded || appState.mode == .shelf {
             return speedManager.spring(
                 response: ExitAnimationMetrics.shapeOpenResponse,
                 dampingFraction: ExitAnimationMetrics.shapeOpenDamping
@@ -393,7 +435,7 @@ public struct NotchContainerView: View {
     private var pillPressGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                guard appState.mode != .expanded else { return }
+                guard appState.mode != .expanded && appState.mode != .shelf else { return }
                 
                 let cancelX = abs(value.translation.width) > NotchTuning.dragCancelThresholdX
                 let cancelUp = value.translation.height < -25
@@ -435,7 +477,7 @@ public struct NotchContainerView: View {
                 }
             }
             .onEnded { value in
-                guard appState.mode != .expanded else { return }
+                guard appState.mode != .expanded && appState.mode != .shelf else { return }
                 
                 let cancelX = abs(value.translation.width) > NotchTuning.dragCancelThresholdX
                 let cancelUp = value.translation.height < -25
@@ -450,7 +492,22 @@ public struct NotchContainerView: View {
                 
                 if !cancelX && !cancelUp && (pulledDown || isTap) && interactionState == .pressed {
                     // FASE 2: SOLTAR / ARRASTRE COMPLETADO -> Expansión suave y orgánica
-                    performExpand()
+                    if !appState.shelfItems.isEmpty {
+                        // Si hay archivos en la bandeja temporal, abrir la bandeja viva
+                        hoverExitTimer?.invalidate()
+                        hoverExitTimer = nil
+                        let shapeSpring = speedManager.spring(
+                            response: ExitAnimationMetrics.shapeOpenResponse,
+                            dampingFraction: ExitAnimationMetrics.shapeOpenDamping
+                        )
+                        withAnimation(shapeSpring) {
+                            interactionState = .expanded
+                            appState.mode = .shelf
+                        }
+                        appState.hapticService.triggerExpand()
+                    } else {
+                        performExpand()
+                    }
                 } else {
                     withAnimation(NotchTuning.cancelSpring) {
                         interactionState = .collapsed
@@ -459,10 +516,23 @@ public struct NotchContainerView: View {
             }
     }
     
+    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let fileUrl = url {
+                    DispatchQueue.main.async {
+                        self.appState.addShelfFile(url: fileUrl)
+                    }
+                }
+            }
+        }
+        return true
+    }
+    
     private func handleModeChange(_ mode: NotchMode) {
         if mode == .expanded {
             performExpand()
-        } else {
+        } else if mode != .shelf {
             performCollapse()
         }
     }
@@ -511,17 +581,11 @@ public struct NotchContainerView: View {
                 self.animStage3 = true
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + speedManager.adjustedDuration(NotchTuning.stage4Delay)) {
-            guard self.appState.mode == .expanded else { return }
-            withAnimation(self.currentShapeSpring) {
-                self.pillsRevealed = true
-            }
-        }
     }
     
     // ANIMACIÓN DE SALIDA (CIERRE) DEL NOTCH BASADA EN ESTADO Y RESORTES INTERRUMPIBLES
     private func performCollapse() {
-        guard appState.mode == .expanded && !isCollapsing else { return }
+        guard (appState.mode == .expanded || appState.mode == .shelf) && !isCollapsing else { return }
         
         hoverExitTimer?.invalidate()
         hoverExitTimer = nil
@@ -536,7 +600,6 @@ public struct NotchContainerView: View {
         // t = 0 ms: la fila de controles sale primero de abajo hacia arriba
         withAnimation(exitAnim) {
             controlsExiting = true
-            pillsRevealed = false
         }
         
         // t = 20 ms: la barra de progreso sale

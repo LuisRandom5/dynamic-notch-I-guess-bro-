@@ -16,29 +16,10 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
     
     public func start() {
         guard hasBattery else { return }
-        
-        // Initial state query
         updateBatteryState(isInitial: true)
-        
-        // Setup IOKit runloop observer
-        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        let callback: IOPowerSourceCallbackType = { ctx in
-            guard let ctx = ctx else { return }
-            let provider = Unmanaged<ChargingActivityProvider>.fromOpaque(ctx).takeUnretainedValue()
-            provider.updateBatteryState(isInitial: false)
-        }
-        
-        if let source = IOPSNotificationCreateRunLoopSource(callback, context)?.takeRetainedValue() {
-            CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
-            self.runLoopSource = source
-        }
     }
     
     public func stop() {
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
-            runLoopSource = nil
-        }
     }
     
     private func checkBatteryAvailability() {
@@ -146,12 +127,11 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
     }
 }
 
-// MARK: - Charging Trailing View (Glyph + Count Up Animation)
+// MARK: - Charging Trailing View (Glyph + Smooth Spring Battery Fill)
 public struct ChargingTrailingView: View {
     public let percentage: Int
     public let tintColor: Color
     
-    @State private var animatedPercentage: Int = 0
     @State private var animatedFill: CGFloat = 0.0
     
     public init(percentage: Int, tintColor: Color) {
@@ -161,12 +141,11 @@ public struct ChargingTrailingView: View {
     
     public var body: some View {
         HStack(spacing: 7) {
-            // Número en semibold con conteo hacia arriba
-            Text("\(animatedPercentage)%")
+            // Número en semibold con diseño redondeado nativo
+            Text("\(percentage)%")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundColor(tintColor)
-                .contentTransition(.numericText())
             
             // Glifo de batería horizontal con rayo
             HStack(spacing: 1.5) {
@@ -176,7 +155,7 @@ public struct ChargingTrailingView: View {
                         .stroke(tintColor.opacity(0.85), lineWidth: 1.2)
                         .frame(width: 25, height: 13)
                     
-                    // Relleno animado proporcional de 0 a 100%
+                    // Relleno animado proporcional con spring elástico
                     RoundedRectangle(cornerRadius: 2.2, style: .continuous)
                         .fill(tintColor)
                         .frame(width: max(2, 21.0 * animatedFill), height: 9.5)
@@ -205,20 +184,9 @@ public struct ChargingTrailingView: View {
     
     private func startAnimation() {
         animatedFill = 0.0
-        animatedPercentage = 0
-        
-        // Animación suave de relleno en 0.6s
-        withAnimation(.easeOut(duration: 0.6)) {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
             animatedFill = CGFloat(min(100, max(0, percentage))) / 100.0
         }
-        
-        // Conteo del número hacia arriba
-        let steps = 15
-        let stepDuration = 0.6 / Double(steps)
-        for i in 1...steps {
-            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(i) * stepDuration)) {
-                self.animatedPercentage = Int((Double(self.percentage) / Double(steps)) * Double(i))
-            }
-        }
+        AppState.shared.hapticService.triggerSnap()
     }
 }

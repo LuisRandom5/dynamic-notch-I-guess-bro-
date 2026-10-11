@@ -111,13 +111,13 @@ public struct ActivitySliderPillView: View {
     }
     
     public var body: some View {
-        let wingWidth: CGFloat = 138.0
+        let wingWidth: CGFloat = 146.0
         let clampedLevel = min(1.0, max(0.0, level))
-        let barWidth: CGFloat = 48.0
+        let barWidth: CGFloat = 46.0
         let fillWidth = max(4.0, barWidth * CGFloat(clampedLevel))
         
         HStack(spacing: 0) {
-            // MARK: - ALA IZQUIERDA: Icono + "Volume" / "Brightness" con margen holgado
+            // MARK: - ALA IZQUIERDA: Icono + "Volume" / "Brightness" con margen holgado y centrado
             HStack(spacing: 8) {
                 leadingIconView
                     .frame(width: 18, height: 18)
@@ -128,15 +128,15 @@ public struct ActivitySliderPillView: View {
                 
                 Spacer(minLength: 0)
             }
-            .frame(width: wingWidth)
-            .padding(.leading, 20)
+            .padding(.leading, 18)
+            .frame(width: wingWidth, height: geometry.height, alignment: .center)
             
             // MARK: - CENTRO: Espacio bajo la cámara física del notch
             Spacer(minLength: 0)
                 .frame(width: geometry.width)
             
-            // MARK: - ALA DERECHA: Barra cápsula verde + Nivel numérico con margen holgado
-            HStack(spacing: 10) {
+            // MARK: - ALA DERECHA: Barra cápsula verde + Nivel numérico con margen holgado y centrado
+            HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 
                 // Cápsula horizontal de progreso
@@ -157,11 +157,11 @@ public struct ActivitySliderPillView: View {
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundColor(isMuted ? DesignTokens.red : .white)
-                    .frame(minWidth: 24, alignment: .trailing)
+                    .frame(width: 26, alignment: .trailing)
             }
-            .frame(width: wingWidth)
-            .padding(.trailing, 20)
+            .padding(.trailing, 18)
+            .frame(width: wingWidth, height: geometry.height, alignment: .center)
         }
-        .frame(width: geometry.width + (wingWidth * 2), height: geometry.height)
+        .frame(width: geometry.width + (wingWidth * 2), height: geometry.height, alignment: .center)
     }
 }

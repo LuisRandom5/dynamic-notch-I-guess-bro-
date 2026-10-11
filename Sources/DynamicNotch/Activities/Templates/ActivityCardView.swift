@@ -32,9 +32,6 @@ public struct ActivityCardView: View {
         .padding(.horizontal, 24)
         .padding(.top, 36) // Despeja completamente el notch físico de la MacBook
         .padding(.bottom, 16)
-        .frame(minWidth: 380, maxWidth: 410, minHeight: 112, maxHeight: 112)
-        .background(DesignTokens.background)
-        .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
-        .shadow(color: Color.black.opacity(0.40), radius: 20, x: 0, y: 8)
+        .frame(width: 390, height: 112)
     }
 }

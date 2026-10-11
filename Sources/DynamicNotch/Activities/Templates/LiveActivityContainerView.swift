@@ -4,8 +4,6 @@ public struct LiveActivityContainerView: View {
     @ObservedObject var center = ActivityCenter.shared
     @EnvironmentObject var appState: AppState
     
-    @State private var contentVisible: Bool = false
-    
     public init() {}
     
     public var body: some View {
@@ -20,23 +18,14 @@ public struct LiveActivityContainerView: View {
                     ActivityCardView(activity: activity)
                 }
             }
-            .scaleEffect(contentVisible ? 1.0 : 0.85)
-            .opacity(contentVisible ? 1.0 : 0.0)
             .contentShape(Rectangle())
             .onTapGesture {
                 center.handleTap()
             }
-            .onAppear {
-                contentVisible = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + DesignTokens.activityContentDelay) {
-                    withAnimation(DesignTokens.activityEntrySpring) {
-                        contentVisible = true
-                    }
-                }
-            }
-            .onDisappear {
-                contentVisible = false
-            }
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                removal: .opacity.combined(with: .scale(scale: 0.96))
+            ))
             .id(activity.id)
         }
     }
