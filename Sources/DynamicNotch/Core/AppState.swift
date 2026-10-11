@@ -46,9 +46,13 @@ public final class AppState: ObservableObject {
     }
     
     private func setupSubscriptions() {
-        // Battery MagSafe connection listener
-        batteryService.onPowerConnected = { [weak self] percentage in
-            self?.triggerAlert(.magsafe(percent: percentage), duration: 4.0)
+        // Battery MagSafe connection listener -> Publicar actividad de carga dedicada (sin forzar reproductor de música)
+        batteryService.onPowerConnected = { percentage in
+            ChargingActivityProvider.shared.publishChargingActivity(
+                percentage: percentage,
+                isLowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
+                isPluggedIn: true
+            )
         }
         
         // Volume change listener

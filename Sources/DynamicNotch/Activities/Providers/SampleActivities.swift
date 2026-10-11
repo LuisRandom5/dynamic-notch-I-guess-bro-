@@ -54,9 +54,7 @@ public enum SampleActivities {
                     .fill(DesignTokens.blue.opacity(0.20))
                     .frame(width: 46, height: 46)
                 
-                Image(systemName: "airdrop")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(DesignTokens.blue)
+                AirDropIconView(size: 24, color: DesignTokens.blue)
             }
         )
         

@@ -45,11 +45,9 @@ public final class AirDropActivityProvider: ObservableObject {
     public func publishTransferActivity(progress: Double) {
         let blue = Color(red: 0x0A / 255.0, green: 0x84 / 255.0, blue: 0xFF / 255.0)
         
-        // Icono de AirDrop en azul a la izquierda
+        // Icono de AirDrop con ondas concéntricas en azul a la izquierda (Imagen 2)
         let leading = AnyView(
-            Image(systemName: "airdrop")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(blue)
+            AirDropIconView(size: 18, color: blue)
         )
         
         // Anillo circular con arco azul de progreso a la derecha (Imagen 2)
@@ -97,9 +95,7 @@ public final class AirDropActivityProvider: ObservableObject {
                     .fill(blue.opacity(0.20))
                     .frame(width: 46, height: 46)
                 
-                Image(systemName: "airdrop")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(blue)
+                AirDropIconView(size: 24, color: blue)
             }
         )
         

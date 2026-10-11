@@ -52,7 +52,7 @@ public final class ActivityCenter: ObservableObject {
         let highest = sorted.first
         
         if currentActivity?.id != highest?.id {
-            withAnimation(DesignTokens.activityEntrySpring) {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.88)) {
                 self.currentActivity = highest
             }
         }

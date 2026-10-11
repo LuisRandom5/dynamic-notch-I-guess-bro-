@@ -82,9 +82,9 @@ public struct NotchContainerView: View {
         } else if let activity = activityCenter.currentActivity {
             switch activity.style {
             case .pill:
-                return geometry.width + 120
+                return geometry.width + 170
             case .sliderPill:
-                return geometry.width + 220
+                return geometry.width + 276
             case .card:
                 return 390
             }
@@ -252,7 +252,10 @@ public struct NotchContainerView: View {
                         // Live Activity activa (Pill / SliderPill / Card)
                         LiveActivityContainerView()
                             .frame(width: currentWidth, height: currentHeight, alignment: .top)
-                            .transition(.opacity)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                removal: .opacity.combined(with: .scale(scale: 0.96))
+                            ))
                     } else {
                         switch appState.mode {
                         case .idle:
@@ -263,7 +266,10 @@ public struct NotchContainerView: View {
                             NotchCompactView(namespace: notchNamespace)
                                 .frame(width: currentWidth, height: currentHeight)
                                 .blur(radius: dragBlur)
-                                .transition(.opacity)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.96))
+                                ))
                             
                         default:
                             EmptyView()
@@ -324,11 +330,11 @@ public struct NotchContainerView: View {
             }
             .animation(NotchTuning.pressSpring, value: interactionState)
             .animation(currentShapeSpring, value: appState.mode)
-            .animation(DesignTokens.activityEntrySpring, value: activityCenter.currentActivity?.id)
-            .animation(currentShapeSpring, value: currentWidth)
-            .animation(currentShapeSpring, value: currentHeight)
-            .animation(currentShapeSpring, value: topRadius)
-            .animation(currentShapeSpring, value: bottomRadius)
+            .animation(morphSpring, value: activityCenter.currentActivity?.id)
+            .animation(morphSpring, value: currentWidth)
+            .animation(morphSpring, value: currentHeight)
+            .animation(morphSpring, value: topRadius)
+            .animation(morphSpring, value: bottomRadius)
             
             // Cápsulas de pestañas flotantes inferiores (separadas con 8pt)
             if appState.mode == .expanded || pillsRevealed {
@@ -363,6 +369,10 @@ public struct NotchContainerView: View {
                 triggerStaggeredIn()
             }
         }
+    }
+    
+    private var morphSpring: Animation {
+        speedManager.spring(response: 0.48, dampingFraction: 0.88)
     }
     
     private var currentShapeSpring: Animation {
