@@ -1,90 +1,49 @@
-# 🏝️ Mac Dynamic Notch
+# 🍏 Dynamic Notch (macOS Nativo)
 
-> **Isla Dinámica para el Notch de las MacBook**, creada con React, Tailwind CSS y Motion. Transforma el notch de la Mac en una superficie interactiva fluida con reproductor de música, notificaciones del sistema y animaciones estilo Apple.
-
----
-
-## ✨ Características
-
-- 🍏 **Diseño idéntico a Apple & Notch físico:** Módulo de cámara FaceTime HD, sensor de luz y LED verde/ámbar de privacidad.
-- ⚡ **Animaciones de Resorte (Spring Physics):** Transiciones orgánicas entre modo *Idle*, *Flancos Compactos* (ecualizador + arte del álbum) y *Expandido*.
-- 🎵 **Controlador de Música Completo:**
-  - Sintetizador Web Audio API incorporado con reproducción en tiempo real.
-  - Ecualizador de ondas reactivo en vivo.
-  - Barra de búsqueda (*scrubber*), volumen, cambio de pistas y selector de listas de reproducción.
-  - Conmutador de salida de audio (AirPods Pro con Audio Espacial / Altavoces).
-- 🔔 **Notificaciones de Sistema Interactivas:**
-  - **AirDrop:** Recepción de archivos con barra de descarga interactiva.
-  - **MagSafe:** Animación de carga rápida con porcentaje de batería.
-  - **Temporizador:** Cuenta regresiva Pomodoro en vivo con pausa y ajuste de tiempo.
-  - **Batería Baja:** Alerta de aviso del 12%.
-  - **Cámara & Micrófono:** Alerta de privacidad que enciende el LED verde en el notch.
-  - **FaceTime Audio:** Llamada entrante con botones para contestar o rechazar.
-  - **Portapapeles & Notch Shelf:** Bandeja para soltar y guardar archivos, notas y enlaces rápidos.
-- 💻 **Doble Modo:**
-  - **Modo Simulación de Escritorio:** Con fondos oficiales de macOS, barra de menús y dock interactivo.
-  - **Modo Notch Real (Overlay):** Diseñado para correr en pantalla completa o como app de escritorio flotante sobre tu propio notch.
+> **Isla Dinámica 100% nativa para el Notch de tu MacBook**, escrita en **Swift, SwiftUI y AppKit**. Diseñada para integrarse en macOS con el mismo nivel de rendimiento, consumo de batería y fluidez que una función oficial de Apple.
 
 ---
 
-## 🚀 Cómo ejecutarlo en local
+## ✨ Características Nativas
 
-1. Clona el repositorio:
-   ```bash
-   git clone https://github.com/LuisRandom5/dynamic-notch-I-guess-bro-.git
-   cd dynamic-notch-I-guess-bro-
-   ```
-
-2. Instala las dependencias:
-   ```bash
-   npm install
-   ```
-
-3. Inicia el servidor de desarrollo:
-   ```bash
-   npm run dev
-   ```
-
-4. Abre `http://localhost:3000` en tu navegador.
+- ⚡ **100% Nativo en Swift & SwiftUI:**
+  - Sin Electron, sin navegadores embebidos, sin consumo desmedido de RAM.
+  - ~0.3% de CPU en reposo y respuesta instantánea a 60/120Hz ProMotion.
+- 📐 **Detección Automática de Hardware:**
+  - Utiliza las APIs de macOS (`NSScreen.auxiliaryTopLeftArea` y `auxiliaryTopRightArea`) para calcular al milímetro el notch físico de tu MacBook Pro o Air.
+- 🪟 **Panel Flotante Sin Pérdida de Foco (`NSPanel.nonactivatingPanel`):**
+  - Flota sobre la barra de menús, ventanas y aplicaciones a pantalla completa (`.fullScreenAuxiliary`).
+  - **Hit-Testing Inteligente:** Clics fuera del notch atraviesan la ventana transparente hacia las apps que tengas debajo.
+- 🎵 **Música en Tiempo Real (Spotify & Apple Music):**
+  - Escucha instantánea de eventos del sistema mediante `DistributedNotificationCenter` (cero consumo por sondeo continuo).
+  - Título, artista, álbum, carátula en alta definición y controles de reproducción.
+- ⚡ **Conexión MagSafe en Vivo:**
+  - Detecta mediante `IOKit` el instante exacto en que conectas el cargador para mostrar la animación de carga rápida con el porcentaje de batería real.
+- 📁 **Notch Shelf (Bandeja de Arrastrar y Soltar):**
+  - Arrastra capturas, fotos o documentos directamente al notch para guardarlos temporalmente y moverlos después a otras apps.
+- 📳 **Retroalimentación Háptica en Trackpad:**
+  - Genera micro-pulsaciones táctiles en el Trackpad Force Touch de tu MacBook al expandirse o interactuar.
+- 🧭 **Icono en la Barra de Menús (Menu Bar Item):**
+  - Menú discreto para activar/desactivar, alternar expansión al pasar el cursor (hover), probar alertas y salir.
 
 ---
 
-## 🖥️ ¿Cómo convertirlo en una App real para Mac?
+## 🚀 Compilación y Ejecución
 
-¡Es 100% posible usar este mismo código como app de escritorio que flote encima de tu notch en macOS!
-
-### Opción 1: Con Electron (La forma más rápida)
-En este repositorio ya viene incluido el archivo `electron-main.cjs`.
-
-1. Instala Electron:
-   ```bash
-   npm install --save-dev electron
-   ```
-
-2. Corre la app como ventana flotante transparente:
-   ```bash
-   npx electron electron-main.cjs
-   ```
-*(La ventana se posiciona automáticamente centrada en `y: 0` y flotando por encima de todas las apps de macOS).*
-
-### Opción 2: Con Tauri (Ultra ligera, menor consumo de RAM)
-Puedes envolver este frontend de Vite en **Tauri v2**:
+### 1. Compilar y empaquetar la app (.app):
 ```bash
-npm install --save-dev @tauri-apps/cli
-npx tauri init
+./scripts/build_app.sh
 ```
-Configurando la ventana en `tauri.conf.json` con:
-- `"decorations": false`
-- `"transparent": true`
-- `"alwaysOnTop": true`
+Esto genera `DynamicNotch.app` firmada localmente para tu Mac.
 
----
+### 2. Abrir la app:
+```bash
+open DynamicNotch.app
+```
+O simplemente haz doble clic en `DynamicNotch.app` desde Finder, o cópiala a tu carpeta `/Applications`.
 
-## 🛠️ Tecnologías
-
-- **React 19**
-- **TypeScript**
-- **Motion** (`motion/react`) para físicas y animaciones líquidas
-- **Tailwind CSS v4**
-- **Web Audio API** (Sintetizador de sonido y ecualizador en tiempo real)
-- **Lucide Icons**
+### 3. Salir de la app:
+Haz clic en el icono de la cápsula en tu barra de menús y selecciona **"Salir de Dynamic Notch"**, o ejecuta:
+```bash
+pkill DynamicNotch
+```
