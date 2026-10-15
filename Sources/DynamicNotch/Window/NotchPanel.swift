@@ -39,6 +39,64 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
         return false
     }
     
+    // MARK: - Captura Universal de Gestos de Notificación (Swipe Down & Drag Down)
+    private var notifGestureStartY: CGFloat = 0
+    private var isTrackingNotifDrag: Bool = false
+    
+    public override func sendEvent(_ event: NSEvent) {
+        if NotificationActivityProvider.shared.isNotificationActive {
+            switch event.type {
+            case .scrollWheel:
+                let rawDy = event.scrollingDeltaY
+                let isInverted = event.isDirectionInvertedFromDevice
+                let fingerDy = isInverted ? rawDy : -rawDy
+                
+                // Si desliza hacia abajo (dedos hacia el usuario / hacia la pantalla)
+                if (fingerDy > 1.2 || rawDy > 1.2) && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                    DNDLogger.log("NotchPanel.sendEvent -> swipe down detectado en scrollWheel! rawDy=\(rawDy), fingerDy=\(fingerDy)")
+                    NotificationActivityProvider.shared.expandQuickReply()
+                    return
+                } else if (fingerDy < -1.5 || rawDy < -1.5) && NotificationActivityProvider.shared.isQuickReplyExpanded {
+                    DNDLogger.log("NotchPanel.sendEvent -> swipe up detectado en scrollWheel! rawDy=\(rawDy), fingerDy=\(fingerDy)")
+                    NotificationActivityProvider.shared.collapseQuickReply()
+                    return
+                }
+                
+            case .leftMouseDown:
+                notifGestureStartY = event.locationInWindow.y
+                isTrackingNotifDrag = true
+                
+            case .leftMouseDragged:
+                if isTrackingNotifDrag {
+                    // En coordenadas de ventana de macOS, y=0 está en el borde inferior.
+                    // Si el usuario arrastra el cursor hacia abajo: currentY < startY (deltaY < 0)
+                    let currentY = event.locationInWindow.y
+                    let deltaY = currentY - notifGestureStartY
+                    
+                    if deltaY < -8 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                        isTrackingNotifDrag = false
+                        DNDLogger.log("NotchPanel.sendEvent -> drag down detectado (deltaY=\(deltaY))! Expandiendo QuickReply")
+                        NotificationActivityProvider.shared.expandQuickReply()
+                        return
+                    } else if deltaY > 15 && NotificationActivityProvider.shared.isQuickReplyExpanded {
+                        isTrackingNotifDrag = false
+                        DNDLogger.log("NotchPanel.sendEvent -> drag up detectado (deltaY=\(deltaY))! Colapsando QuickReply")
+                        NotificationActivityProvider.shared.collapseQuickReply()
+                        return
+                    }
+                }
+                
+            case .leftMouseUp:
+                isTrackingNotifDrag = false
+                
+            default:
+                break
+            }
+        }
+        
+        super.sendEvent(event)
+    }
+    
     // MARK: - NSDraggingDestination en NotchPanel
     public func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         DNDLogger.log("NotchPanel.draggingEntered")
