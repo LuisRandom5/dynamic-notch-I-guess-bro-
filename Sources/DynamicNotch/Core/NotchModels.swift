@@ -84,10 +84,57 @@ public struct NotchAlert: Identifiable, Equatable {
 public struct ShelfItem: Identifiable, Equatable {
     public let id = UUID()
     public var url: URL
+    public var originalURL: URL?
     public var name: String
     public var icon: NSImage
+    public var sizeString: String
+    public var isStashed: Bool
+    public var isReadOnlySource: Bool
+    
+    public var isImage: Bool {
+        let ext = url.pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "webp", "heic", "gif", "tiff", "bmp", "icns"].contains(ext)
+    }
+    
+    public init(
+        url: URL,
+        originalURL: URL? = nil,
+        isStashed: Bool = false,
+        isReadOnlySource: Bool = false,
+        name: String? = nil,
+        icon: NSImage? = nil
+    ) {
+        self.url = url
+        self.originalURL = originalURL
+        self.isStashed = isStashed
+        self.isReadOnlySource = isReadOnlySource
+        self.name = name ?? url.lastPathComponent
+        if let icon = icon {
+            self.icon = icon
+        } else {
+            let ext = url.pathExtension.lowercased()
+            let imageExtensions = ["png", "jpg", "jpeg", "webp", "heic", "gif", "tiff", "bmp", "icns"]
+            if imageExtensions.contains(ext), let img = NSImage(contentsOf: url) {
+                self.icon = img
+            } else {
+                let img = NSWorkspace.shared.icon(forFile: url.path)
+                img.size = NSSize(width: 128, height: 128)
+                self.icon = img
+            }
+        }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? Int64 {
+            let bcf = ByteCountFormatter()
+            bcf.allowedUnits = [.useAll]
+            bcf.countStyle = .file
+            self.sizeString = bcf.string(fromByteCount: size)
+        } else {
+            self.sizeString = ""
+        }
+    }
     
     public static func == (lhs: ShelfItem, rhs: ShelfItem) -> Bool {
         lhs.id == rhs.id
     }
 }
+

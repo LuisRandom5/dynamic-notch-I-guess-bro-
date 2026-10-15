@@ -20,6 +20,11 @@ mkdir -p "${RESOURCES_DIR}"
 cp -f "${PROJECT_DIR}/.build/release/DynamicNotch" "${MACOS_DIR}/DynamicNotch"
 chmod +x "${MACOS_DIR}/DynamicNotch"
 
+# Copy resources
+if [ -d "${PROJECT_DIR}/Resources" ]; then
+    cp -rf "${PROJECT_DIR}/Resources/"* "${RESOURCES_DIR}/"
+fi
+
 # Create Info.plist
 cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -50,6 +55,12 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>Dynamic Notch necesita controlar la música para mostrar canciones y controles.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Para que el visualizador reaccione a la música que suena.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Dynamic Notch analiza el espectro del audio del sistema para que las barras reaccionen a la música en tiempo real.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Dynamic Notch necesita acceder a tus contactos para mostrar la foto y el nombre de quien te llama.</string>
 </dict>
 </plist>
 EOF
@@ -57,6 +68,6 @@ EOF
 echo "✍️ Firmando app localmente con Designated Requirement estable..."
 dot_clean "${APP_BUNDLE}" 2>/dev/null || true
 xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
-codesign --force --deep -s - -r='designated => identifier "com.luisrandom.DynamicNotch"' "${APP_BUNDLE}"
+codesign --force --deep -s - --entitlements "${PROJECT_DIR}/entitlements.plist" -r='designated => identifier "com.luisrandom.DynamicNotch"' "${APP_BUNDLE}"
 
 echo "✅ DynamicNotch.app creada y firmada exitosamente en: ${APP_BUNDLE}"

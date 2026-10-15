@@ -3,36 +3,53 @@ import AppKit
 
 public struct MarqueeText: View {
     public var text: String
-    public var font: Font
     public var fontSize: CGFloat
     public var fontWeight: Font.Weight
     public var color: Color
     
-    @State private var textWidth: CGFloat = 0
-    @State private var containerWidth: CGFloat = 0
     @State private var offset: CGFloat = 0
-    @State private var isAnimating: Bool = false
     
     public init(
         _ text: String,
-        fontSize: CGFloat = 17,
-        fontWeight: Font.Weight = .regular,
+        fontSize: CGFloat = 14.5,
+        fontWeight: Font.Weight = .bold,
         color: Color = .white
     ) {
         self.text = text
         self.fontSize = fontSize
         self.fontWeight = fontWeight
-        self.font = .system(size: fontSize, weight: fontWeight)
         self.color = color
     }
     
-    private var isOverflowing: Bool {
-        textWidth > containerWidth && containerWidth > 0
+    private var font: Font {
+        .system(size: fontSize, weight: fontWeight)
+    }
+    
+    // Medición síncrona y exacta de ancho de texto en AppKit
+    private var measuredTextWidth: CGFloat {
+        let nsWeight: NSFont.Weight
+        switch fontWeight {
+        case .ultraLight: nsWeight = .ultraLight
+        case .thin: nsWeight = .thin
+        case .light: nsWeight = .light
+        case .regular: nsWeight = .regular
+        case .medium: nsWeight = .medium
+        case .semibold: nsWeight = .semibold
+        case .bold: nsWeight = .bold
+        case .heavy: nsWeight = .heavy
+        case .black: nsWeight = .black
+        default: nsWeight = .regular
+        }
+        let font = NSFont.systemFont(ofSize: fontSize, weight: nsWeight)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
     
     public var body: some View {
         GeometryReader { geo in
             let availableWidth = geo.size.width
+            let textWidth = measuredTextWidth
+            let isOverflowing = availableWidth > 0 && textWidth > availableWidth
+            let overflow = isOverflowing ? (textWidth - availableWidth + 14) : 0
             
             ZStack(alignment: .leading) {
                 Text(text)
@@ -40,12 +57,6 @@ public struct MarqueeText: View {
                     .foregroundColor(color)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                    .background(
-                        GeometryReader { textGeo in
-                            Color.clear
-                                .preference(key: TextWidthPreferenceKey.self, value: textGeo.size.width)
-                        }
-                    )
                     .offset(x: offset)
             }
             .frame(width: availableWidth, alignment: .leading)
@@ -53,57 +64,55 @@ public struct MarqueeText: View {
             .mask(
                 LinearGradient(
                     stops: [
-                        .init(color: isOverflowing ? .clear : .white, location: 0.0),
-                        .init(color: .white, location: isOverflowing ? 0.05 : 0.0),
-                        .init(color: .white, location: isOverflowing ? 0.95 : 1.0),
-                        .init(color: isOverflowing ? .clear : .white, location: 1.0)
+                        .init(color: (isOverflowing && offset < -2) ? .clear : .white, location: 0.0),
+                        .init(color: .white, location: (isOverflowing && offset < -2) ? 0.03 : 0.0),
+                        .init(color: .white, location: (isOverflowing && offset > -(overflow - 2)) ? 0.97 : 1.0),
+                        .init(color: (isOverflowing && offset > -(overflow - 2)) ? .clear : .white, location: 1.0)
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
             )
-            .onPreferenceChange(TextWidthPreferenceKey.self) { width in
-                self.textWidth = width
-                self.containerWidth = availableWidth
-                restartAnimation(availableWidth: availableWidth, textWidth: width)
-            }
-            .onChange(of: text) { _, newText in
-                restartAnimation(availableWidth: availableWidth, textWidth: textWidth)
+            // Tarea vinculada EXCLUSIVAMENTE al texto: NUNCA se cancela por actualizaciones de tiempo o visualizador
+            .task(id: text) {
+                self.offset = 0
+                
+                var currentWidth = availableWidth
+                if currentWidth <= 0 {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    currentWidth = geo.size.width
+                }
+                
+                guard currentWidth > 0 && textWidth > currentWidth else { return }
+                
+                let actualOverflow = textWidth - currentWidth + 14
+                let scrollDuration = max(2.6, Double(actualOverflow) / 28.0)
+                
+                while !Task.isCancelled {
+                    // 1. Pausa al inicio (1.8 seg)
+                    try? await Task.sleep(nanoseconds: 1_800_000_000)
+                    guard !Task.isCancelled else { break }
+                    
+                    // 2. Recorrido hacia la izquierda hasta revelar el final
+                    withAnimation(.easeInOut(duration: scrollDuration)) {
+                        self.offset = -actualOverflow
+                    }
+                    
+                    // Esperar el recorrido + pausa de lectura al final
+                    let waitTime = UInt64((scrollDuration + 1.8) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: waitTime)
+                    guard !Task.isCancelled else { break }
+                    
+                    // 3. Regreso suave al inicio (1.2 seg)
+                    withAnimation(.easeInOut(duration: 1.2)) {
+                        self.offset = 0
+                    }
+                    
+                    // Pausa antes del siguiente ciclo
+                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                }
             }
         }
-        .frame(height: fontSize + 5)
-    }
-    
-    private func restartAnimation(availableWidth: CGFloat, textWidth: CGFloat) {
-        offset = 0
-        isAnimating = false
-        
-        guard textWidth > availableWidth && availableWidth > 0 else { return }
-        
-        let overflow = textWidth - availableWidth + 18
-        let duration = Double(overflow) / 22.0 // Velocidad suave tipo marquesina
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            guard self.textWidth > availableWidth else { return }
-            withAnimation(Animation.easeInOut(duration: duration)) {
-                self.offset = -overflow
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + duration + 1.5) {
-                withAnimation(Animation.easeInOut(duration: 0.8)) {
-                    self.offset = 0
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    self.restartAnimation(availableWidth: availableWidth, textWidth: textWidth)
-                }
-            }
-        }
-    }
-}
-
-private struct TextWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+        .frame(height: fontSize + 6)
     }
 }

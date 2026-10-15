@@ -8,6 +8,7 @@ import SwiftUI
 public struct ActivityPillView: View {
     public let activity: LiveActivity
     @EnvironmentObject var screenService: ScreenService
+    @ObservedObject var center = ActivityCenter.shared
     
     public init(activity: LiveActivity) {
         self.activity = activity
@@ -15,6 +16,10 @@ public struct ActivityPillView: View {
     
     private var geometry: NotchGeometry {
         screenService.currentGeometry
+    }
+    
+    private var isDismissing: Bool {
+        center.dismissingActivityId == activity.id
     }
     
     public var body: some View {
@@ -30,6 +35,10 @@ public struct ActivityPillView: View {
             }
             .padding(.leading, 18)
             .frame(width: wingWidth, height: geometry.height, alignment: .center)
+            .opacity(isDismissing ? 0.0 : 1.0)
+            .scaleEffect(isDismissing ? 0.90 : 1.0)
+            .offset(x: isDismissing ? 14 : 0)
+            .animation(.spring(response: ExitAnimationMetrics.sliderDismissResponse, dampingFraction: ExitAnimationMetrics.sliderDismissDamping), value: isDismissing)
             
             // Centro: Espacio libre bajo la cámara física del notch
             Spacer(minLength: 0)
@@ -44,6 +53,10 @@ public struct ActivityPillView: View {
             }
             .padding(.trailing, 18)
             .frame(width: wingWidth, height: geometry.height, alignment: .center)
+            .opacity(isDismissing ? 0.0 : 1.0)
+            .scaleEffect(isDismissing ? 0.90 : 1.0)
+            .offset(x: isDismissing ? -14 : 0)
+            .animation(.spring(response: ExitAnimationMetrics.sliderDismissResponse, dampingFraction: ExitAnimationMetrics.sliderDismissDamping), value: isDismissing)
         }
         .frame(width: geometry.width + (wingWidth * 2), height: geometry.height, alignment: .center)
     }

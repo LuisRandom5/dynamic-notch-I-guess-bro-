@@ -31,4 +31,12 @@ public final class HapticService {
             performanceTime: .now
         )
     }
+    
+    public func triggerAlert() {
+        guard isEnabled else { return }
+        NSHapticFeedbackManager.defaultPerformer.perform(
+            .generic,
+            performanceTime: .now
+        )
+    }
 }

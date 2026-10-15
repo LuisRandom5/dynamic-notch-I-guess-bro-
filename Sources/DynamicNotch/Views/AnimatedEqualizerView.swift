@@ -46,13 +46,13 @@ public struct AnimatedEqualizerView: View {
         timer = nil
         
         if isPlaying {
-            timer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.68)) {
+            timer = Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { _ in
+                withAnimation(.spring(response: 0.12, dampingFraction: 0.60)) {
                     barHeights = [
-                        CGFloat.random(in: 0.25...1.0),
-                        CGFloat.random(in: 0.40...1.0),
-                        CGFloat.random(in: 0.20...0.95),
-                        CGFloat.random(in: 0.35...1.0)
+                        CGFloat.random(in: 0.20...1.0),
+                        CGFloat.random(in: 0.35...1.0),
+                        CGFloat.random(in: 0.15...0.95),
+                        CGFloat.random(in: 0.30...1.0)
                     ]
                 }
             }

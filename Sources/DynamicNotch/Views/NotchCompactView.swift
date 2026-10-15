@@ -7,14 +7,25 @@ public struct NotchCompactView: View {
     
     public var namespace: Namespace.ID?
     private let wingWidth: CGFloat = 52
+    private var wingExtra: CGFloat {
+        (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
+    }
+    @State private var compactTilt: Double = 0.0
     
     public init(namespace: Namespace.ID? = nil) {
         self.namespace = namespace
     }
     
     private var trackColor: Color {
-        if musicService.currentTrack.appSource == "Spotify" {
+        let src = musicService.currentTrack.appSource.lowercased()
+        if src.contains("spotify") {
             return Color(red: 0.11, green: 0.84, blue: 0.38)
+        } else if src.contains("youtube") {
+            return Color(red: 1.00, green: 0.15, blue: 0.15)
+        } else if src.contains("safari") {
+            return Color(red: 0.00, green: 0.50, blue: 1.00)
+        } else if src.contains("chrome") {
+            return Color(red: 0.98, green: 0.73, blue: 0.01)
         } else {
             return Color(red: 0.99, green: 0.18, blue: 0.42)
         }
@@ -22,9 +33,19 @@ public struct NotchCompactView: View {
     
     public var body: some View {
         HStack(spacing: 0) {
+            
             // Ala izquierda compacta (Leading): Carátula
             ZStack {
-                if let art = musicService.currentTrack.artwork {
+                if !musicService.hasActiveMusic && !appState.shelfItems.isEmpty {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(DesignTokens.blue.opacity(0.22))
+                            .frame(width: 19, height: 19)
+                        Image(systemName: "tray.fill")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(DesignTokens.blue)
+                    }
+                } else if let art = musicService.currentTrack.artwork {
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -48,7 +69,7 @@ public struct NotchCompactView: View {
                         )
                         .frame(width: 19, height: 19)
                         .overlay(
-                            Image(systemName: "music.note")
+                            Image(systemName: musicService.currentTrack.appSource.lowercased().contains("youtube") ? "play.rectangle.fill" : "music.note")
                                 .font(.system(size: 9.5, weight: .bold))
                                 .foregroundColor(.white)
                         )
@@ -58,8 +79,21 @@ public struct NotchCompactView: View {
                         )
                 }
             }
+            .frame(width: 19, height: 19)
             .modifier(OptionalMatchedGeometry(id: "albumArtwork", namespace: namespace))
-            .frame(width: wingWidth, height: screenService.currentGeometry.height)
+            .rotation3DEffect(.degrees(compactTilt), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+            .onChange(of: musicService.currentTrack.title) { oldTitle, newTitle in
+                guard !newTitle.isEmpty, newTitle != oldTitle else { return }
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.65)) {
+                    compactTilt = 18.0
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.spring(response: 0.44, dampingFraction: 0.70)) {
+                        compactTilt = 0.0
+                    }
+                }
+            }
+            .frame(width: wingWidth + wingExtra, height: screenService.currentGeometry.height)
             .contentShape(Rectangle())
             
             // Área central que coincide con el sensor de la cámara
@@ -69,40 +103,29 @@ public struct NotchCompactView: View {
                     height: screenService.currentGeometry.height
                 )
             
-            // Ala derecha compacta (Trailing): Visualizador + Badge de archivos en bandeja si existen
+            // Ala derecha compacta (Trailing): Visualizador + Badge activo con pulso de radar si hay archivos
             HStack(spacing: 5) {
-                if !appState.shelfItems.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "tray.fill")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(DesignTokens.blue)
-                        Text("\(appState.shelfItems.count)")
-                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 4.5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white.opacity(0.14)))
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                            appState.mode = .shelf
-                        }
-                    }
+                if !appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch {
+                    ActiveFileBadgeView()
                 }
                 
                 AudioVisualizer(
-                    isPlaying: musicService.currentTrack.isPlaying,
+                    isPlaying: musicService.currentTrack.isPlaying || !AudioSpectrumEngine.shared.isSilent,
                     colorMode: .fromArtwork(musicService.currentTrack.artwork)
                 )
+                .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
             }
-            .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
-            .frame(width: wingWidth + (!appState.shelfItems.isEmpty ? 18 : 0), height: screenService.currentGeometry.height)
+            .frame(width: wingWidth + wingExtra, height: screenService.currentGeometry.height)
             .contentShape(Rectangle())
         }
         .frame(
-            width: screenService.currentGeometry.width + (wingWidth * 2) + (!appState.shelfItems.isEmpty ? 18 : 0),
+            width: screenService.currentGeometry.width + ((wingWidth + wingExtra) * 2),
             height: screenService.currentGeometry.height
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.toggleExpand()
+        }
     }
 }
 

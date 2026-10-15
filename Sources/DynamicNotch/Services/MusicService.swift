@@ -11,7 +11,39 @@ public final class MusicService: ObservableObject {
     
     private init() {
         setupDistributedNotifications()
+        setupNowPlayingService()
         checkActivePlayers()
+    }
+    
+    private func setupNowPlayingService() {
+        NowPlayingService.shared.onTrackChanged = { [weak self] track, isPlaying in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                print("[MusicService] Received track: '\(track.title)', isPlaying: \(isPlaying), source: \(track.appSource)")
+                var resolvedTrack = track
+                if resolvedTrack.artwork == nil && !resolvedTrack.title.isEmpty && resolvedTrack.title == self.currentTrack.title {
+                    resolvedTrack.artwork = self.currentTrack.artwork
+                }
+                
+                if isPlaying && !resolvedTrack.title.isEmpty {
+                    self.currentTrack = resolvedTrack
+                    self.hasActiveMusic = true
+                    self.updateProgressTimer(isPlaying: true)
+                } else if !isPlaying {
+                    if !resolvedTrack.title.isEmpty {
+                        var updated = resolvedTrack
+                        updated.isPlaying = false
+                        self.currentTrack = updated
+                    } else {
+                        self.currentTrack.isPlaying = false
+                    }
+                    self.hasActiveMusic = false
+                    self.updateProgressTimer(isPlaying: false)
+                }
+            }
+        }
+        NowPlayingService.shared.refreshNowPlaying()
     }
     
     private func setupDistributedNotifications() {
@@ -95,16 +127,28 @@ public final class MusicService: ObservableObject {
             if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") {
                 NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration())
             }
-        } else {
+        } else if currentTrack.appSource == "Apple Music" {
             if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
                 NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration())
             } else if let url = URL(string: "music://") {
                 NSWorkspace.shared.open(url)
             }
+        } else {
+            NowPlayingService.shared.openActiveApp()
         }
     }
     
     public func togglePlayPause() {
+        // Para YouTube, navegadores y reproductores externos, usamos MediaRemote universal
+        if currentTrack.appSource != "Apple Music" && currentTrack.appSource != "Spotify" {
+            if NowPlayingService.shared.togglePlayPause() {
+                currentTrack.isPlaying.toggle()
+                hasActiveMusic = currentTrack.isPlaying
+                updateProgressTimer(isPlaying: currentTrack.isPlaying)
+                return
+            }
+        }
+        
         if currentTrack.appSource == "Spotify" {
             runAppleScript("tell application \"Spotify\" to playpause")
         } else if currentTrack.appSource == "Apple Music" {
@@ -154,6 +198,8 @@ public final class MusicService: ObservableObject {
             runAppleScript("tell application \"Spotify\" to next track")
         } else if currentTrack.appSource == "Apple Music" {
             runAppleScript("tell application \"Music\" to next track")
+        } else {
+            _ = NowPlayingService.shared.nextTrack()
         }
     }
     
@@ -162,6 +208,8 @@ public final class MusicService: ObservableObject {
             runAppleScript("tell application \"Spotify\" to previous track")
         } else if currentTrack.appSource == "Apple Music" {
             runAppleScript("tell application \"Music\" to previous track")
+        } else {
+            _ = NowPlayingService.shared.previousTrack()
         }
     }
     
@@ -250,6 +298,7 @@ public final class MusicService: ObservableObject {
     private func checkActivePlayers() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
+            if self.hasActiveMusic { return }
             
             // Check Apple Music first
             if NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").first != nil {

@@ -115,9 +115,10 @@ public final class VolumeInterceptorService: ObservableObject {
             // MARK: 2) TECLAS DE BRILLO (2/145 = Brightness Up, 3/144 = Brightness Down)
             if keyCode == 2 || keyCode == 3 || keyCode == 145 || keyCode == 144 {
                 if !isKeyUp {
+                    let isShiftOption = (keyFlags & 0x0008) != 0 || (nsEvent.modifierFlags.contains(.shift) && nsEvent.modifierFlags.contains(.option))
                     DispatchQueue.main.async {
                         let isUp = (keyCode == 2 || keyCode == 145)
-                        BrightnessService.shared.stepBrightness(up: isUp)
+                        BrightnessService.shared.stepBrightness(up: isUp, fine: isShiftOption)
                     }
                 }
                 

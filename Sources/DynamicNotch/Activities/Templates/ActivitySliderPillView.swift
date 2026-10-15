@@ -8,9 +8,16 @@ import SwiftUI
 public struct ActivitySliderPillView: View {
     public let activity: LiveActivity
     @EnvironmentObject var screenService: ScreenService
+    @ObservedObject var center = ActivityCenter.shared
+    
+    @State private var isContentRevealed: Bool = false
     
     public init(activity: LiveActivity) {
         self.activity = activity
+    }
+    
+    private var isContentVisible: Bool {
+        isContentRevealed && center.dismissingActivityId != activity.id
     }
     
     private var geometry: NotchGeometry {
@@ -117,7 +124,7 @@ public struct ActivitySliderPillView: View {
         let fillWidth = max(4.0, barWidth * CGFloat(clampedLevel))
         
         HStack(spacing: 0) {
-            // MARK: - ALA IZQUIERDA: Icono + "Volume" / "Brightness" con margen holgado y centrado
+            // MARK: - ALA IZQUIERDA: Icono + "Volume" / "Brightness" con repliegue estético hacia el notch
             HStack(spacing: 8) {
                 leadingIconView
                     .frame(width: 18, height: 18)
@@ -130,12 +137,14 @@ public struct ActivitySliderPillView: View {
             }
             .padding(.leading, 18)
             .frame(width: wingWidth, height: geometry.height, alignment: .center)
+            .opacity(isContentVisible ? 1.0 : 0.0)
+            .animation(.easeOut(duration: 0.18), value: isContentVisible)
             
             // MARK: - CENTRO: Espacio bajo la cámara física del notch
             Spacer(minLength: 0)
                 .frame(width: geometry.width)
             
-            // MARK: - ALA DERECHA: Barra cápsula verde + Nivel numérico con margen holgado y centrado
+            // MARK: - ALA DERECHA: Barra cápsula verde + Nivel numérico con repliegue estético hacia el notch
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 
@@ -152,16 +161,28 @@ public struct ActivitySliderPillView: View {
                 }
                 .frame(height: 14)
                 
-                // Nivel numérico 0-100
+                // Nivel numérico 0-100 (con margen holgado para no cortarse jamás)
                 Text("\(Int(round(level * 100)))")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .foregroundColor(isMuted ? DesignTokens.red : .white)
-                    .frame(width: 26, alignment: .trailing)
+                    .frame(width: 32, alignment: .trailing)
             }
             .padding(.trailing, 18)
             .frame(width: wingWidth, height: geometry.height, alignment: .center)
+            .opacity(isContentVisible ? 1.0 : 0.0)
+            .animation(.easeOut(duration: 0.18), value: isContentVisible)
         }
         .frame(width: geometry.width + (wingWidth * 2), height: geometry.height, alignment: .center)
+        .onAppear {
+            // Revelado suave sincronizado con el estiramiento del ancho del notch
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                    isContentRevealed = true
+                }
+            }
+        }
     }
 }

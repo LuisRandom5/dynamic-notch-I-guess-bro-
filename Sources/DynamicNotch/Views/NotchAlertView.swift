@@ -50,60 +50,12 @@ public struct NotchAlertView: View {
                 }
                 
             case .airpods(let name, let leftPercent, let rightPercent, let casePercent):
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.12))
-                        .frame(width: 52, height: 52)
-                    
-                    Image(systemName: "airpodspro")
-                        .font(.system(size: 24))
-                        .foregroundColor(.white)
-                }
-                
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Text(name)
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                        
-                        Text("CONECTADO")
-                            .font(.system(size: 9, weight: .heavy))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.2))
-                            .foregroundColor(.blue)
-                            .clipShape(Capsule())
-                    }
-                    
-                    HStack(spacing: 12) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "airpodpro.left")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.7))
-                            Text("\(leftPercent)%")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
-                        }
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "airpodpro.right")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.7))
-                            Text("\(rightPercent)%")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
-                        }
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "airpodspro.chargingcase.wireless")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.7))
-                            Text("\(casePercent)%")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
-                        }
-                    }
-                }
+                AirPods3DView(
+                    name: name,
+                    leftPercent: leftPercent,
+                    rightPercent: rightPercent,
+                    casePercent: casePercent
+                )
                 
             case .batteryLow(let percent):
                 ZStack {

@@ -12,21 +12,51 @@ public struct LiveActivityContainerView: View {
                 switch activity.style {
                 case .pill:
                     ActivityPillView(activity: activity)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if center.dismissingActivityId == nil {
+                                center.handleTap()
+                            }
+                        }
+                        .transition(.asymmetric(
+                            insertion: .opacity.animation(.easeInOut(duration: 0.16)),
+                            removal: .opacity.animation(.easeOut(duration: 0.10))
+                        ))
                 case .sliderPill:
                     ActivitySliderPillView(activity: activity)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if center.dismissingActivityId == nil {
+                                center.handleTap()
+                            }
+                        }
+                        .transition(.asymmetric(
+                            insertion: .opacity.animation(.easeInOut(duration: 0.16)),
+                            removal: .opacity.animation(.easeOut(duration: 0.10))
+                        ))
+                case .airpodsPill:
+                    ActivityAirPodsPillView(activity: activity)
+                        .transition(.asymmetric(
+                            insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                            removal: .opacity.animation(.easeOut(duration: 0.10))
+                        ))
                 case .card:
-                    ActivityCardView(activity: activity)
+                    if activity.id == "live_timer" {
+                        TimerCardView()
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                                removal: .opacity.animation(.easeOut(duration: 0.10))
+                            ))
+                    } else {
+                        ActivityCardView(activity: activity)
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                                removal: .opacity.animation(.easeOut(duration: 0.10))
+                            ))
+                    }
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                center.handleTap()
-            }
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                removal: .opacity
-            ))
-            .id(activity.id)
+            .id("\(activity.id)_\(activity.style.rawValue)")
         }
     }
 }

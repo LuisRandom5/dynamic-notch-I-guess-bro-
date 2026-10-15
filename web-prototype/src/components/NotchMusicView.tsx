@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   Play, 
-  Pause, 
   SkipBack, 
   SkipForward, 
   Volume2, 
@@ -9,9 +8,9 @@ import {
   Shuffle, 
   Repeat, 
   Headphones, 
-  Music2, 
   ListMusic 
 } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Track } from '../types/notch';
 import { AnimatedWaveform } from './AnimatedWaveform';
 import { audioEngine } from '../utils/audioEngine';
@@ -45,6 +44,12 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
   const [isRepeat, setIsRepeat] = useState(false);
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [outputDevice, setOutputDevice] = useState<'airpods' | 'macbook'>('airpods');
+  
+  // Seguimiento de dirección para la animación coordinada de Apple Music (1 = siguiente, -1 = anterior)
+  const [direction, setDirection] = useState<1 | -1>(1);
+
+  // Detección de accesibilidad: Reducir movimiento del sistema
+  const prefersReducedMotion = useReducedMotion();
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -75,13 +80,101 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
     onSeek(val);
   };
 
+  // Handlers con ejecución inmediata y dirección de transición
+  const handleNext = () => {
+    setDirection(1);
+    audioEngine.playHaptic('click');
+    onNextTrack();
+  };
+
+  const handlePrev = () => {
+    setDirection(-1);
+    audioEngine.playHaptic('click');
+    onPrevTrack();
+  };
+
+  const handleSelect = (track: Track) => {
+    const currentIndex = playlist.findIndex((t) => t.id === currentTrack.id);
+    const targetIndex = playlist.findIndex((t) => t.id === track.id);
+    setDirection(targetIndex >= currentIndex ? 1 : -1);
+    onSelectTrack(track);
+    setShowPlaylist(false);
+  };
+
+  const handleToggle = () => {
+    audioEngine.playHaptic('snap');
+    onTogglePlay();
+  };
+
+  // Variantes de animación de carátula 3D tipo tarjeta física (Apple Music)
+  const artworkVariants = {
+    enter: (dir: number) => ({
+      x: prefersReducedMotion ? 0 : dir > 0 ? 54 : -54,
+      rotateY: prefersReducedMotion ? 0 : dir > 0 ? 38 : -38,
+      scale: prefersReducedMotion ? 1 : 0.88,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      rotateY: 0,
+      scale: 1,
+      opacity: 1,
+      transition: prefersReducedMotion
+        ? { duration: 0.12, ease: 'easeOut' as const }
+        : {
+            x: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.65 },
+            rotateY: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.65 },
+            scale: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.65 },
+            opacity: { duration: 0.18, ease: 'easeOut' as const },
+          },
+    },
+    exit: (dir: number) => ({
+      x: prefersReducedMotion ? 0 : dir > 0 ? -54 : 54,
+      rotateY: prefersReducedMotion ? 0 : dir > 0 ? -38 : 38,
+      scale: prefersReducedMotion ? 1 : 0.88,
+      opacity: 0,
+      transition: prefersReducedMotion
+        ? { duration: 0.12, ease: 'easeIn' as const }
+        : {
+            x: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.65 },
+            rotateY: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.65 },
+            scale: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.65 },
+            opacity: { duration: 0.16, ease: 'easeIn' as const },
+          },
+    }),
+  };
+
+  // Variantes para la información de texto (título y artista)
+  const textVariants = {
+    enter: (dir: number) => ({
+      x: prefersReducedMotion ? 0 : dir > 0 ? 14 : -14,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      transition: {
+        duration: 0.22,
+        ease: [0.16, 1, 0.3, 1] as const,
+      },
+    },
+    exit: (dir: number) => ({
+      x: prefersReducedMotion ? 0 : dir > 0 ? -14 : 14,
+      opacity: 0,
+      transition: {
+        duration: 0.16,
+        ease: [0.16, 1, 0.3, 1] as const,
+      },
+    }),
+  };
+
   return (
     <div className="w-full text-white select-none">
       {/* Top bar with output device and equalizer */}
       <div className="flex items-center justify-between text-xs text-white/50 mb-3 px-1">
         <button
           onClick={() => {
-            setOutputDevice(d => (d === 'airpods' ? 'macbook' : 'airpods'));
+            setOutputDevice((d) => (d === 'airpods' ? 'macbook' : 'airpods'));
             audioEngine.playHaptic('click');
           }}
           className="flex items-center space-x-1.5 hover:text-white transition px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10"
@@ -96,7 +189,7 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
           <AnimatedWaveform isPlaying={isPlaying} color={currentTrack.color} barCount={5} height={12} size="mini" />
           <button
             onClick={() => {
-              setShowPlaylist(p => !p);
+              setShowPlaylist((p) => !p);
               audioEngine.playHaptic('snap');
             }}
             className={`p-1 rounded-full transition ${showPlaylist ? 'bg-white/20 text-white' : 'hover:bg-white/10 text-white/60'}`}
@@ -115,10 +208,7 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
             return (
               <button
                 key={track.id}
-                onClick={() => {
-                  onSelectTrack(track);
-                  setShowPlaylist(false);
-                }}
+                onClick={() => handleSelect(track)}
                 className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition ${
                   isCurrent ? 'bg-white/15 text-white' : 'hover:bg-white/5 text-white/70'
                 }`}
@@ -144,34 +234,49 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
       ) : (
         /* Main Music Player View */
         <div className="flex items-center space-x-4 mb-3">
-          {/* Album Artwork */}
-          <div className="relative group flex-shrink-0">
+          {/* Album Artwork con perspectiva 3D realista y rotación sobre eje Y */}
+          <div className="relative flex-shrink-0">
             <div
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden shadow-2xl relative transition-transform duration-300 group-hover:scale-105 border border-white/10"
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden relative border border-white/10 transition-shadow duration-300"
               style={{
+                perspective: 800,
+                transformStyle: 'preserve-3d',
                 boxShadow: `0 10px 30px -5px ${currentTrack.color}50`,
               }}
             >
-              <img
-                src={currentTrack.coverUrl}
-                alt={currentTrack.title}
-                className={`w-full h-full object-cover transition-all ${
-                  isPlaying ? 'brightness-105' : 'brightness-90'
-                }`}
-              />
-              {/* Subtle vinyl groove overlay */}
+              <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+                <motion.div
+                  key={currentTrack.id}
+                  custom={direction}
+                  variants={artworkVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  className="absolute inset-0 w-full h-full"
+                >
+                  <img
+                    src={currentTrack.coverUrl}
+                    alt={currentTrack.title}
+                    className={`w-full h-full object-cover transition-[filter] duration-300 ${
+                      isPlaying ? 'brightness-105' : 'brightness-90'
+                    }`}
+                  />
+                </motion.div>
+              </AnimatePresence>
+
+              {/* Reflejo vinilo sutil fijo sin recalcular filtros */}
               <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10 pointer-events-none" />
             </div>
 
             {isPlaying && (
               <span 
-                className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-black flex items-center justify-center animate-pulse"
+                className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-black flex items-center justify-center animate-pulse z-10"
                 style={{ backgroundColor: currentTrack.color }}
               />
             )}
           </div>
 
-          {/* Track Info */}
+          {/* Track Info con transición coordinada suave */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-2">
               <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-white/10 text-white/70">
@@ -179,15 +284,28 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
               </span>
             </div>
 
-            <h4 className="text-base font-semibold tracking-tight text-white truncate mt-1">
-              {currentTrack.title}
-            </h4>
-            <p className="text-xs text-white/60 truncate font-normal">
-              {currentTrack.artist} · <span className="text-white/40">{currentTrack.album}</span>
-            </p>
+            <div className="overflow-hidden min-h-[44px]">
+              <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+                <motion.div
+                  key={currentTrack.id}
+                  custom={direction}
+                  variants={textVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                >
+                  <h4 className="text-base font-semibold tracking-tight text-white truncate mt-0.5">
+                    {currentTrack.title}
+                  </h4>
+                  <p className="text-xs text-white/60 truncate font-normal">
+                    {currentTrack.artist} · <span className="text-white/40">{currentTrack.album}</span>
+                  </p>
+                </motion.div>
+              </AnimatePresence>
+            </div>
 
             {/* Interactive Timeline Scrubber */}
-            <div className="mt-2.5">
+            <div className="mt-2">
               <div className="relative flex items-center group">
                 <input
                   type="range"
@@ -237,35 +355,107 @@ export const NotchMusicView: React.FC<NotchMusicViewProps> = ({
           </button>
         </div>
 
-        {/* Center Primary Controls */}
+        {/* Center Primary Controls con microanimaciones nativas de Apple Music */}
         <div className="flex items-center space-x-3">
-          <button
-            onClick={onPrevTrack}
-            className="p-1.5 text-white/70 hover:text-white hover:scale-110 active:scale-95 transition"
+          {/* Botón Pista Anterior */}
+          <motion.button
+            whileTap={{ scale: prefersReducedMotion ? 1 : 0.88 }}
+            whileHover={{ scale: prefersReducedMotion ? 1 : 1.05 }}
+            transition={{
+              type: 'spring',
+              stiffness: 550,
+              damping: 24,
+              mass: 0.5,
+            }}
+            onClick={handlePrev}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 active:bg-white/15 transition-colors focus:outline-none"
             title="Anterior"
           >
             <SkipBack className="w-4 h-4 fill-current" />
-          </button>
+          </motion.button>
 
-          <button
-            onClick={onTogglePlay}
-            className="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg shadow-white/20"
+          {/* Botón Play/Pause con microanimación vectorial coordinada (SF Symbols style) */}
+          <motion.button
+            whileTap={{ scale: prefersReducedMotion ? 1 : 0.88 }}
+            whileHover={{ scale: prefersReducedMotion ? 1 : 1.05 }}
+            transition={{
+              type: 'spring',
+              stiffness: 520,
+              damping: 24,
+              mass: 0.5,
+            }}
+            onClick={handleToggle}
+            className="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center shadow-lg shadow-white/20 select-none focus:outline-none"
             title={isPlaying ? 'Pausar' : 'Reproducir'}
           >
-            {isPlaying ? (
-              <Pause className="w-4 h-4 fill-current" />
-            ) : (
-              <Play className="w-4 h-4 fill-current ml-0.5" />
-            )}
-          </button>
+            <div className="relative w-4 h-4 flex items-center justify-center overflow-hidden">
+              <AnimatePresence mode="wait" initial={false}>
+                {isPlaying ? (
+                  <motion.div
+                    key="pause-icon"
+                    initial={{
+                      scale: prefersReducedMotion ? 1 : 0.70,
+                      opacity: 0,
+                      rotate: prefersReducedMotion ? 0 : -25,
+                    }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                    exit={{
+                      scale: prefersReducedMotion ? 1 : 0.70,
+                      opacity: 0,
+                      rotate: prefersReducedMotion ? 0 : 25,
+                    }}
+                    transition={{
+                      duration: 0.18,
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                    className="flex items-center space-x-1"
+                  >
+                    <span className="w-1.5 h-3.5 bg-black rounded-full" />
+                    <span className="w-1.5 h-3.5 bg-black rounded-full" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="play-icon"
+                    initial={{
+                      scale: prefersReducedMotion ? 1 : 0.70,
+                      opacity: 0,
+                      rotate: prefersReducedMotion ? 0 : 25,
+                    }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                    exit={{
+                      scale: prefersReducedMotion ? 1 : 0.70,
+                      opacity: 0,
+                      rotate: prefersReducedMotion ? 0 : -25,
+                    }}
+                    transition={{
+                      duration: 0.18,
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                    className="flex items-center justify-center ml-0.5"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.button>
 
-          <button
-            onClick={onNextTrack}
-            className="p-1.5 text-white/70 hover:text-white hover:scale-110 active:scale-95 transition"
+          {/* Botón Pista Siguiente */}
+          <motion.button
+            whileTap={{ scale: prefersReducedMotion ? 1 : 0.88 }}
+            whileHover={{ scale: prefersReducedMotion ? 1 : 1.05 }}
+            transition={{
+              type: 'spring',
+              stiffness: 550,
+              damping: 24,
+              mass: 0.5,
+            }}
+            onClick={handleNext}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 active:bg-white/15 transition-colors focus:outline-none"
             title="Siguiente"
           >
             <SkipForward className="w-4 h-4 fill-current" />
-          </button>
+          </motion.button>
         </div>
 
         {/* Volume Controls */}

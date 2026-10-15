@@ -17,9 +17,11 @@ public final class BatteryService: ObservableObject {
     
     public var onPowerConnected: ((Int) -> Void)?
     public var onPowerDisconnected: (() -> Void)?
+    public var onLowBattery: ((Int) -> Void)?
     
     private var runLoopSource: CFRunLoopSource?
     private var previousPluggedIn: Bool?
+    private var alertedThresholds: Set<Int> = []
     
     private init() {
         refreshBatteryStatus(notifyOnChange: false)
@@ -51,6 +53,22 @@ public final class BatteryService: ObservableObject {
             let wasPluggedIn = self.previousPluggedIn
             self.previousPluggedIn = isPluggedIn
             self.status = newStatus
+            
+            if isPluggedIn || isCharging {
+                alertedThresholds.removeAll()
+            } else if notifyOnChange {
+                // Notificación automática al cruzar umbrales críticos de batería baja (20%, 10%, 5%)
+                let thresholds = [20, 10, 5]
+                for threshold in thresholds {
+                    if percentage <= threshold && !alertedThresholds.contains(threshold) {
+                        alertedThresholds.insert(threshold)
+                        DispatchQueue.main.async { [weak self] in
+                            self?.onLowBattery?(percentage)
+                        }
+                        break
+                    }
+                }
+            }
             
             if notifyOnChange, let wasPluggedIn = wasPluggedIn {
                 if !wasPluggedIn && isPluggedIn {

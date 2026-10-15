@@ -7,12 +7,12 @@ public final class NotchWindowManager: ObservableObject {
     
     public private(set) var panel: NotchPanel?
     private var hitTestView: NotchHitTestView?
-    private var hostingView: NSHostingView<AnyView>?
+    private var hostingView: NotchHostingView<AnyView>?
     private var cancellables = Set<AnyCancellable>()
     private var globalClickMonitor: Any?
     
     private let maxWindowWidth: CGFloat = 680
-    private let maxWindowHeight: CGFloat = 320
+    private let maxWindowHeight: CGFloat = 440
     
     private init() {
         observeScreenChanges()
@@ -36,12 +36,18 @@ public final class NotchWindowManager: ObservableObject {
             .environmentObject(MusicService.shared)
             .environmentObject(BatteryService.shared)
         
-        let host = NSHostingView(rootView: AnyView(rootView))
+        hitView.wantsLayer = true
+        hitView.layer?.backgroundColor = NSColor.clear.cgColor
+        
+        let host = NotchHostingView(rootView: AnyView(rootView))
         host.frame = hitView.bounds
         host.autoresizingMask = [.width, .height]
+        host.wantsLayer = true
+        host.layer?.backgroundColor = NSColor.clear.cgColor
         
         hitView.addSubview(host)
         newPanel.contentView = hitView
+        newPanel.alphaValue = 1.0
         
         self.panel = newPanel
         self.hitTestView = hitView
@@ -71,17 +77,29 @@ public final class NotchWindowManager: ObservableObject {
         let geom = ScreenService.shared.currentGeometry
         let mode = AppState.shared.mode
         
+        if AppState.shared.isDropInvitationActive {
+            updateHitArea(width: 480, height: 160)
+            return
+        }
+        
         if mode == .expanded || mode == .shelf {
-            updateHitArea(width: max(PlayerMetrics.cardWidth + 24, 330), height: PlayerMetrics.cardHeight + 70)
+            let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
+            updateHitArea(width: max(PlayerMetrics.cardWidth + 140, 330), height: cardH + 70)
             return
         }
         
         if let activity = ActivityCenter.shared.currentActivity {
+            if ActivityCenter.shared.dismissingActivityId == activity.id {
+                updateHitArea(width: geom.width + 24, height: geom.height + 10)
+                return
+            }
             switch activity.style {
             case .pill:
                 updateHitArea(width: geom.width + 190, height: max(50, geom.height + 14))
             case .sliderPill:
                 updateHitArea(width: geom.width + 296, height: max(50, geom.height + 14))
+            case .airpodsPill:
+                updateHitArea(width: 410, height: 215)
             case .card:
                 updateHitArea(width: 410, height: 130)
             }
@@ -90,19 +108,58 @@ public final class NotchWindowManager: ObservableObject {
         
         switch mode {
         case .idle:
-            // Dar margen para la animación de squish & stretch (1.065x), latido y la sombra inferior
-            updateHitArea(width: geom.width + 24, height: geom.height + 10)
+            // Dar margen para la animación de squish & stretch (1.065x), latido, alas simétricas y la sombra inferior
+            let extraW: CGFloat = !AppState.shared.shelfItems.isEmpty ? 104 : 24
+            updateHitArea(width: geom.width + extraW, height: geom.height + 10)
         case .compact:
-            updateHitArea(width: geom.width + 120, height: geom.height + 10)
+            let extraW: CGFloat = !AppState.shared.shelfItems.isEmpty ? 156 : 120
+            updateHitArea(width: geom.width + extraW, height: geom.height + 10)
         case .expanded, .shelf:
-            updateHitArea(width: 430, height: 240)
+            updateHitArea(width: 430, height: 260)
         }
+    }
+    
+    /// Retorna el rectángulo del Notch visible en coordenadas absolutas de pantalla de macOS (origen abajo a la izquierda)
+    public var visibleNotchScreenFrame: CGRect {
+        guard let panel = panel else { return .zero }
+        let geom = ScreenService.shared.currentGeometry
+        let mode = AppState.shared.mode
+        
+        let width: CGFloat
+        let height: CGFloat
+        
+        if AppState.shared.isDropInvitationActive {
+            width = 460
+            height = 140
+        } else if mode == .expanded || mode == .shelf {
+            width = NotchTuning.expandedWidth
+            let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
+            height = cardH + 16
+        } else if mode == .compact {
+            width = geom.width + 104
+            height = geom.height + 4
+        } else {
+            width = !AppState.shared.shelfItems.isEmpty ? geom.width + 96 : geom.width
+            height = geom.height + 4
+        }
+        
+        let notchX = panel.frame.origin.x + (panel.frame.width - width) / 2
+        let notchY = panel.frame.maxY - height
+        return CGRect(x: notchX, y: notchY, width: width, height: height)
     }
     
     private func observeScreenChanges() {
         ScreenService.shared.$currentGeometry
             .sink { [weak self] _ in
                 self?.repositionWindow()
+            }
+            .store(in: &cancellables)
+            
+        AppState.shared.$isDropInvitationActive
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateHitAreaForCurrentState()
+                }
             }
             .store(in: &cancellables)
             
@@ -115,7 +172,23 @@ public final class NotchWindowManager: ObservableObject {
             }
             .store(in: &cancellables)
             
+        AppState.shared.$isPlayerDetailExpanded
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateHitAreaForCurrentState()
+                }
+            }
+            .store(in: &cancellables)
+            
         ActivityCenter.shared.$currentActivity
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateHitAreaForCurrentState()
+                }
+            }
+            .store(in: &cancellables)
+            
+        ActivityCenter.shared.$dismissingActivityId
             .sink { [weak self] _ in
                 DispatchQueue.main.async {
                     self?.updateHitAreaForCurrentState()
@@ -127,7 +200,7 @@ public final class NotchWindowManager: ObservableObject {
     private var escKeyMonitor: Any?
     
     private func handleModeForGlobalClickMonitor(_ mode: NotchMode) {
-        if mode == .expanded {
+        if mode == .expanded || mode == .shelf {
             if globalClickMonitor == nil {
                 globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
                     DispatchQueue.main.async {

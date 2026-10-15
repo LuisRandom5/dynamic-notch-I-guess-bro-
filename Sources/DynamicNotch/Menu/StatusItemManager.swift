@@ -57,6 +57,16 @@ public final class StatusItemManager: NSObject {
         hapticItem.state = AppState.shared.enableHaptics ? .on : .off
         menu.addItem(hapticItem)
         
+        // Sound feedback toggle
+        let soundItem = NSMenuItem(
+            title: "Sonido inmersivo al regular volumen",
+            action: #selector(toggleSoundFeedback),
+            keyEquivalent: ""
+        )
+        soundItem.target = self
+        soundItem.state = AppState.shared.enableSoundFeedback ? .on : .off
+        menu.addItem(soundItem)
+        
         // Volume suppression toggle
         let hasPermission = VolumeInterceptorService.shared.hasAccessibilityPermission
         
@@ -120,6 +130,30 @@ public final class StatusItemManager: NSObject {
         shelfTest.target = self
         testMenu.addItem(shelfTest)
         
+        testMenu.addItem(NSMenuItem.separator())
+        
+        let timerCompactTest = NSMenuItem(title: "Temporizador Compacto (Minutka - 30s)", action: #selector(testTimerActivity), keyEquivalent: "")
+        timerCompactTest.target = self
+        testMenu.addItem(timerCompactTest)
+        
+        let timerCardTest = NSMenuItem(title: "Temporizador Expandido (Minutka Card - 30s)", action: #selector(testTimerCardActivity), keyEquivalent: "")
+        timerCardTest.target = self
+        testMenu.addItem(timerCardTest)
+        
+        let notifTest = NSMenuItem(title: "Notificación Dinámica (WhatsApp)", action: #selector(testNotificationActivity), keyEquivalent: "")
+        notifTest.target = self
+        testMenu.addItem(notifTest)
+        
+        testMenu.addItem(NSMenuItem.separator())
+        
+        let fileDropTest = NSMenuItem(title: "Simular Soltar Archivo (Card Pop-Up)", action: #selector(testSimulatedFileDrop), keyEquivalent: "")
+        fileDropTest.target = self
+        testMenu.addItem(fileDropTest)
+        
+        let dragProbeTest = NSMenuItem(title: "🔍 Sonda Drag & Drop (Paso 0)", action: #selector(openDragProbeWindow), keyEquivalent: "")
+        dragProbeTest.target = self
+        testMenu.addItem(dragProbeTest)
+        
         let testSubmenuItem = NSMenuItem(title: "Demostraciones de prueba", action: nil, keyEquivalent: "")
         testSubmenuItem.submenu = testMenu
         menu.addItem(testSubmenuItem)
@@ -132,6 +166,22 @@ public final class StatusItemManager: NSObject {
         debugPanelItem.target = self
         menu.addItem(debugPanelItem)
         
+        let spectrumMonitorItem = NSMenuItem(
+            title: "Monitor de Audio Real y Overscroll...",
+            action: #selector(openAudioSpectrumMonitor),
+            keyEquivalent: "m"
+        )
+        spectrumMonitorItem.target = self
+        menu.addItem(spectrumMonitorItem)
+        
+        let settingsItem = NSMenuItem(
+            title: "Ajustes y Preferencias...",
+            action: #selector(openSettingsWindow),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Quit
@@ -140,6 +190,14 @@ public final class StatusItemManager: NSObject {
         menu.addItem(quitItem)
         
         statusItem?.menu = menu
+    }
+    
+    @objc private func openSettingsWindow() {
+        SettingsWindowController.shared.show()
+    }
+    
+    @objc private func openAudioSpectrumMonitor() {
+        AudioSpectrumTestWindowController.shared.show()
     }
     
     @objc private func toggleNotch() {
@@ -158,19 +216,32 @@ public final class StatusItemManager: NSObject {
         buildMenu()
     }
     
+    @objc private func toggleSoundFeedback() {
+        AppState.shared.enableSoundFeedback.toggle()
+        buildMenu()
+    }
+    
     @objc private func testMagSafe() {
         ChargingActivityProvider.shared.publishChargingActivity(percentage: 88, isLowPower: false, isPluggedIn: true)
     }
     
     @objc private func testAirPods() {
-        AppState.shared.triggerAlert(
-            .airpods(name: "AirPods Pro", leftPercent: 95, rightPercent: 90, casePercent: 100),
-            duration: 4.5
+        if AppState.shared.mode == .expanded || AppState.shared.mode == .shelf {
+            AppState.shared.collapse()
+        }
+        AppState.shared.enableAirPodsAnimation = true
+        AirPodsActivityProvider.shared.publishAirPodsActivity(
+            name: "AirPods Pro de Luis",
+            batteryLevel: 100,
+            leftPercent: 100,
+            rightPercent: 100,
+            casePercent: 100,
+            duration: 4.8
         )
     }
     
     @objc private func testBatteryLow() {
-        AppState.shared.triggerAlert(.batteryLow(percent: 12), duration: 4.0)
+        ChargingActivityProvider.shared.publishLowBatteryActivity(percentage: 12)
     }
     
     @objc private func testAirDropTransfer() {
@@ -203,12 +274,16 @@ public final class StatusItemManager: NSObject {
     @objc private func testShelf() {
         AppState.shared.activeTab = .shelf
         withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
-            AppState.shared.mode = .expanded
+            AppState.shared.mode = .shelf
         }
     }
     
     @objc private func openDebugPanel() {
         ActivityDebugWindow.shared.show()
+    }
+    
+    @objc private func openDragProbeWindow() {
+        DragProbeDebugWindowController.shared.toggleWindow()
     }
     
     @objc private func toggleSuppressNativeHUD() {
@@ -230,6 +305,35 @@ public final class StatusItemManager: NSObject {
     
     @objc private func testMuteSlider() {
         AudioDeviceService.shared.publishVolumeActivity(volume: 0.60, isMuted: true)
+    }
+    
+    @objc private func testTimerActivity() {
+        TimerActivityProvider.shared.startTimer(duration: 30, title: "Minutka", asCard: false)
+    }
+    
+    @objc private func testTimerCardActivity() {
+        TimerActivityProvider.shared.startTimer(duration: 30, title: "Minutka", asCard: true)
+    }
+    
+    @objc private func testNotificationActivity() {
+        NotificationActivityProvider.shared.showNotification(
+            title: "WhatsApp: Carlos",
+            message: "¡Hola! El nuevo Dynamic Notch quedó impresionante 🚀",
+            appIcon: "message.fill",
+            tint: DesignTokens.green
+        )
+    }
+    
+    @objc private func testSimulatedFileDrop() {
+        AppState.shared.isDropInvitationActive = true
+        let desktopUrl = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: "/tmp")
+        let sampleFile = desktopUrl.appendingPathComponent("Documento_Ejemplo.pdf")
+        if !FileManager.default.fileExists(atPath: sampleFile.path) {
+            try? "Contenido de prueba para el Notch".write(to: sampleFile, atomically: true, encoding: .utf8)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            AppState.shared.triggerDropSuccess(urls: [sampleFile])
+        }
     }
     
     @objc private func quitApp() {

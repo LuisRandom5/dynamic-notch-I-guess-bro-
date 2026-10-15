@@ -3,7 +3,30 @@ import SwiftUI
 public enum ActivityStyle: String, Equatable {
     case pill
     case sliderPill
+    case airpodsPill
     case card
+}
+
+public struct AirPodsActivityState: Equatable {
+    public let name: String
+    public let batteryLevel: Int
+    public let leftPercent: Int?
+    public let rightPercent: Int?
+    public let casePercent: Int?
+    
+    public init(
+        name: String,
+        batteryLevel: Int,
+        leftPercent: Int? = nil,
+        rightPercent: Int? = nil,
+        casePercent: Int? = nil
+    ) {
+        self.name = name
+        self.batteryLevel = batteryLevel
+        self.leftPercent = leftPercent
+        self.rightPercent = rightPercent
+        self.casePercent = casePercent
+    }
 }
 
 public enum SliderPillState: Equatable {
@@ -41,6 +64,7 @@ public struct LiveActivity: Identifiable {
     public var onTap: (() -> Void)?
     public let createdAt: Date
     public var sliderState: SliderPillState?
+    public var airpodsState: AirPodsActivityState?
     
     public init(
         id: String,
@@ -52,6 +76,7 @@ public struct LiveActivity: Identifiable {
         tint: Color = DesignTokens.green,
         duration: TimeInterval? = nil,
         sliderState: SliderPillState? = nil,
+        airpodsState: AirPodsActivityState? = nil,
         onTap: (() -> Void)? = nil,
         createdAt: Date = Date()
     ) {
@@ -64,7 +89,9 @@ public struct LiveActivity: Identifiable {
         self.tint = tint
         self.duration = duration
         self.sliderState = sliderState
+        self.airpodsState = airpodsState
         self.onTap = onTap
         self.createdAt = createdAt
     }
 }
+

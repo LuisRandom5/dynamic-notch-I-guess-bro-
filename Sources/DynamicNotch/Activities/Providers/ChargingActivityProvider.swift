@@ -108,10 +108,13 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
             )
         )
         
-        // Actividad con plantilla .card (390 x 105 pt, radio 40 pt)
+        // Proteger contra interferencia del brillo automático de macOS al conectar el cargador
+        BrightnessService.shared.suppressAutoBrightnessSlider(duration: 3.5)
+        
+        // Actividad con plantilla .card (390 x 105 pt, radio 40 pt) con prioridad 100 para no ser pisada
         let activity = LiveActivity(
             id: providerId,
-            priority: 80,
+            priority: 100,
             style: .card,
             leading: leadingView,
             center: centerView,
@@ -125,18 +128,70 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         
         ActivityCenter.shared.publish(activity)
     }
+    
+    public func publishLowBatteryActivity(percentage: Int) {
+        let tintColor = DesignTokens.red
+        
+        let leadingView = AnyView(
+            ZStack {
+                Circle()
+                    .fill(tintColor.opacity(0.18))
+                    .frame(width: 46, height: 46)
+                
+                Image(systemName: "battery.25")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(tintColor)
+            }
+        )
+        
+        let centerView = AnyView(
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Batería baja")
+                    .liveActivityTitle()
+                Text("\(percentage)% restante • Conecta el adaptador")
+                    .liveActivitySubtitle()
+            }
+        )
+        
+        let trailingView = AnyView(
+            ChargingTrailingView(
+                percentage: percentage,
+                tintColor: tintColor,
+                showBolt: false
+            )
+        )
+        
+        let activity = LiveActivity(
+            id: "low_battery",
+            priority: 95,
+            style: .card,
+            leading: leadingView,
+            center: centerView,
+            trailing: trailingView,
+            tint: tintColor,
+            duration: 4.5,
+            onTap: {
+                AppState.shared.expand()
+            }
+        )
+        
+        ActivityCenter.shared.publish(activity)
+        AppState.shared.hapticService.triggerAlert()
+    }
 }
 
 // MARK: - Charging Trailing View (Glyph + Smooth Spring Battery Fill)
 public struct ChargingTrailingView: View {
     public let percentage: Int
     public let tintColor: Color
+    public var showBolt: Bool = true
     
     @State private var animatedFill: CGFloat = 0.0
     
-    public init(percentage: Int, tintColor: Color) {
+    public init(percentage: Int, tintColor: Color, showBolt: Bool = true) {
         self.percentage = percentage
         self.tintColor = tintColor
+        self.showBolt = showBolt
     }
     
     public var body: some View {
@@ -161,11 +216,13 @@ public struct ChargingTrailingView: View {
                         .frame(width: max(2, 21.0 * animatedFill), height: 9.5)
                         .padding(.leading, 2)
                     
-                    // Pequeño rayo centrado
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 8, weight: .heavy))
-                        .foregroundColor(.black.opacity(0.85))
-                        .frame(width: 25, height: 13)
+                    if showBolt {
+                        // Pequeño rayo centrado
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 8, weight: .heavy))
+                            .foregroundColor(.black.opacity(0.85))
+                            .frame(width: 25, height: 13)
+                    }
                 }
                 
                 // Borne / pezón de la batería

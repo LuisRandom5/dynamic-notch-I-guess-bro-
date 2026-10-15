@@ -52,15 +52,15 @@ public struct NotchExpandedMusicView: View {
                         .foregroundColor(.white.opacity(0.7))
                         .lineLimit(1)
                     
-                    // Source badge (Spotify / Apple Music)
+                    // Source badge (Spotify / Apple Music / YouTube / Safari)
                     HStack(spacing: 4) {
-                        Image(systemName: track.appSource == "Spotify" ? "waveform" : "applelogo")
+                        Image(systemName: track.appSource.lowercased().contains("spotify") ? "waveform" : (track.appSource.lowercased().contains("youtube") ? "play.rectangle.fill" : (track.appSource.lowercased().contains("safari") ? "safari" : "applelogo")))
                             .font(.system(size: 9))
-                            .foregroundColor(track.appSource == "Spotify" ? .green : .white.opacity(0.8))
+                            .foregroundColor(track.appSource.lowercased().contains("spotify") ? .green : (track.appSource.lowercased().contains("youtube") ? Color(red: 1.0, green: 0.25, blue: 0.25) : .white.opacity(0.8)))
                         
                         Text(track.appSource)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(track.appSource == "Spotify" ? .green : .white.opacity(0.8))
+                            .foregroundColor(track.appSource.lowercased().contains("spotify") ? .green : (track.appSource.lowercased().contains("youtube") ? Color(red: 1.0, green: 0.25, blue: 0.25) : .white.opacity(0.8)))
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -73,7 +73,7 @@ public struct NotchExpandedMusicView: View {
                 // Waveform equalizer
                 AnimatedEqualizerView(
                     isPlaying: track.isPlaying,
-                    color: track.appSource == "Spotify" ? .green : .pink
+                    color: track.appSource.lowercased().contains("spotify") ? .green : (track.appSource.lowercased().contains("youtube") ? Color(red: 1.0, green: 0.25, blue: 0.25) : .pink)
                 )
                 .padding(.trailing, 4)
             }

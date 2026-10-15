@@ -52,10 +52,26 @@ public final class BrightnessService: ObservableObject {
         }
     }
     
+    private var suppressionTimer: Timer?
+    public private(set) var isSuppressed: Bool = false
+    
+    /// Suprime la publicación del slider de brillo durante una ventana de gracia
+    /// (por ejemplo, para evitar interrumpir la animación del cargador MagSafe cuando macOS sube el brillo automáticamente)
+    public func suppressAutoBrightnessSlider(duration: TimeInterval = 3.5) {
+        suppressionTimer?.invalidate()
+        isSuppressed = true
+        suppressionTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+            self?.isSuppressed = false
+        }
+    }
+    
     /// Monitoreo activo de brillo (polling ligero cada 150 ms)
-    /// En macOS y Apple Silicon, las teclas de brillo F1/F2 impactan directamente el hardware IOHIDFamily.
-    /// Este timer detecta inmediatamente cualquier cambio de brillo (por teclado, Centro de Control, etc.)
-    /// y dispara el SliderPill en la Isla Dinámica de forma instantánea y confiable.
+    /// NOTA DE COMPORTAMIENTO:
+    /// macOS ajusta el brillo automáticamente mediante el sensor de luz ambiental, ahorro de energía, etc.
+    /// Para evitar que el notch salte o interrumpa al usuario cuando el sistema hace estos ajustes automáticos,
+    /// este timer sincroniza `currentBrightness` y `lastPolledBrightness` de forma puramente silenciosa.
+    /// Únicamente las interacciones explícitas del usuario (teclas de brillo F1/F2 o controles manuales)
+    /// llamarán a `publishBrightnessActivity` para mostrar el HUD en la Isla Dinámica.
     private func startBrightnessMonitoring() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             self?.isInitialMonitoring = false
@@ -67,9 +83,8 @@ public final class BrightnessService: ObservableObject {
             if abs(current - self.lastPolledBrightness) > 0.005 {
                 self.lastPolledBrightness = current
                 self.currentBrightness = current
-                if !self.isInitialMonitoring {
-                    self.publishBrightnessActivity(current)
-                }
+                // Omitir en automático: NO publicar actividad en polling del sistema
+                // para que el notch no salte cuando macOS ajusta el brillo por sensor ambiental.
             }
         }
     }
@@ -98,26 +113,26 @@ public final class BrightnessService: ObservableObject {
             _ = setFn(CGMainDisplayID(), clamped)
         }
         
-        // Publica o actualiza la actividad SliderPill en la Isla Dinámica
+        // Publica o actualiza la actividad SliderPill en la Isla Dinámica (acción del usuario)
         publishBrightnessActivity(clamped)
     }
     
-    /// Incrementa o decrementa el brillo en 1 escalón estándar de macOS (1/16 = 0.0625)
-    public func stepBrightness(up: Bool) {
-        let step: Float = 1.0 / 16.0
+    /// Incrementa o decrementa el brillo en escalones estándar (1/16 = 0.0625) o finos (1/64 = 0.015625 con Shift+Option)
+    public func stepBrightness(up: Bool, fine: Bool = false) {
+        let step: Float = fine ? (1.0 / 64.0) : (1.0 / 16.0)
         let current = readCurrentBrightness()
         let newLevel = up ? min(1.0, current + step) : max(0.0, current - step)
         setBrightness(newLevel)
     }
     
-    /// Publica la Live Activity de brillo en ActivityCenter con duración de 1.5 s
+    /// Publica la Live Activity de brillo en ActivityCenter con duración natural de 2.5 s
     public func publishBrightnessActivity(_ level: Float) {
         let activity = LiveActivity(
             id: "system_slider",
-            priority: 95,
+            priority: 85,
             style: .sliderPill,
             tint: .white,
-            duration: 1.5,
+            duration: 2.5,
             sliderState: .brightness(level: level)
         )
         

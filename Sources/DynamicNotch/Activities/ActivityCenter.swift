@@ -6,6 +6,8 @@ public final class ActivityCenter: ObservableObject {
     
     @Published public private(set) var currentActivity: LiveActivity?
     @Published public private(set) var activeActivities: [LiveActivity] = []
+    @Published public private(set) var dismissingActivityId: String? = nil
+    @Published public private(set) var lastDismissedActivity: LiveActivity? = nil
     
     private var dismissTimers: [String: Timer] = [:]
     
@@ -13,6 +15,14 @@ public final class ActivityCenter: ObservableObject {
     
     /// Publica o actualiza una actividad según las reglas de prioridad y actualización en sitio
     public func publish(_ activity: LiveActivity) {
+        // Cancelar retención de notch puro si llega una nueva actividad
+        AppState.shared.isHoldingBareNotch = false
+        
+        // Si se estaba cerrando este mismo ID, cancelar su cierre
+        if dismissingActivityId == activity.id {
+            dismissingActivityId = nil
+        }
+        
         // Regla 1: Si ya existe con el mismo ID, actualizar en sitio sin reiniciar entrada
         if let index = activeActivities.firstIndex(where: { $0.id == activity.id }) {
             activeActivities[index] = activity
@@ -30,13 +40,70 @@ public final class ActivityCenter: ObservableObject {
         evaluateHighestPriority()
     }
     
-    /// Quita una actividad por su ID
+    /// Alias para compatibilidad
+    public func show(_ activity: LiveActivity) {
+        publish(activity)
+    }
+    
+    /// Quita una actividad por su ID de forma inmediata
     public func remove(id: String) {
         dismissTimers[id]?.invalidate()
         dismissTimers.removeValue(forKey: id)
+        if dismissingActivityId == id {
+            dismissingActivityId = nil
+        }
         
         activeActivities.removeAll(where: { $0.id == id })
         evaluateHighestPriority()
+    }
+    
+    /// Cierre sutil, orgánico y extremadamente fluido estilo Apple macOS:
+    /// Inicia la contracción inmediata y sincronizada de la anchura y altura hacia el notch (~300 ms)
+    /// mientras los elementos internos se desvanecen de manera progresiva y coordinada hacia el centro.
+    public func dismissWithAnimation(id: String) {
+        guard let current = currentActivity, current.id == id else {
+            remove(id: id)
+            return
+        }
+        
+        dismissTimers[id]?.invalidate()
+        dismissTimers.removeValue(forKey: id)
+        dismissingActivityId = id
+        lastDismissedActivity = current
+        
+        let isCard = current.style == .card
+        let duration = isCard ? ExitAnimationMetrics.cardDismissDuration : ExitAnimationMetrics.sliderDismissDuration
+        
+        // Si es una Card y estamos en modo compact con música activa, activamos isHoldingBareNotch
+        // desde el inicio. Así el notch no sufre ningún espasmo ni apertura a los lados en negro.
+        if isCard && AppState.shared.mode == .compact && MusicService.shared.hasActiveMusic {
+            AppState.shared.isHoldingBareNotch = true
+        }
+        
+        // El contenedor y el contenido inician su contracción simultánea hacia el notch.
+        // Al completarse la duración precisa (280–300 ms), el contenedor ya está exactamente
+        // integrado en la geometría del notch, garantizando continuidad visual perfecta.
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self = self else { return }
+            self.activeActivities.removeAll(where: { $0.id == id })
+            self.evaluateHighestPriority()
+            self.dismissingActivityId = nil
+            
+            if isCard && AppState.shared.mode == .compact && MusicService.shared.hasActiveMusic {
+                // Permanecer como notch puro durante 1.0 segundo exacto, luego expandir las alas del reproductor
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    guard self.currentActivity == nil else {
+                        AppState.shared.isHoldingBareNotch = false
+                        return
+                    }
+                    withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
+                        AppState.shared.isHoldingBareNotch = false
+                    }
+                }
+            } else {
+                AppState.shared.isHoldingBareNotch = false
+            }
+        }
     }
     
     /// Evalúa la actividad de mayor prioridad y aplica crossfade si cambia
@@ -52,7 +119,10 @@ public final class ActivityCenter: ObservableObject {
         let highest = sorted.first
         
         if currentActivity?.id != highest?.id {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.88)) {
+            withAnimation(.spring(
+                response: ExitAnimationMetrics.sliderDismissResponse,
+                dampingFraction: ExitAnimationMetrics.sliderDismissDamping
+            )) {
                 self.currentActivity = highest
             }
         }
@@ -65,7 +135,7 @@ public final class ActivityCenter: ObservableObject {
         if let duration = activity.duration, duration > 0 {
             let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
                 DispatchQueue.main.async {
-                    self?.remove(id: activity.id)
+                    self?.dismissWithAnimation(id: activity.id)
                 }
             }
             dismissTimers[activity.id] = timer

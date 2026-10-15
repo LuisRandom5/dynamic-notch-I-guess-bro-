@@ -123,14 +123,21 @@ public final class AudioDeviceService: NSObject, ObservableObject {
         self.currentDeviceName = getDeviceName(id: id)
     }
     
+    public var isAirPodsActive: Bool {
+        let name = currentDeviceName.lowercased()
+        return name.contains("airpods") || name.contains("beats")
+    }
+    
     public var currentDeviceIcon: String {
         let name = currentDeviceName.lowercased()
         if name.contains("airpods max") {
-            return "headphones"
+            return "airpodsmax"
         } else if name.contains("airpods pro") {
             return "airpodspro"
         } else if name.contains("airpods") {
             return "airpods"
+        } else if name.contains("beats") {
+            return "headphones"
         } else if name.contains("headphone") || name.contains("auricular") || name.contains("auriculares") {
             return "headphones"
         } else if name.contains("tv") || name.contains("apple tv") || name.contains("airplay") {
@@ -333,18 +340,92 @@ public final class AudioDeviceService: NSObject, ObservableObject {
         } else {
             publishVolumeActivity(volume: newVol, isMuted: isMuted)
         }
+        
+        // Sonidito inmersivo al regular volumen (pop/tick nativo de macOS)
+        if AppState.shared.enableSoundFeedback && !isMuted {
+            AudioServicesPlaySystemSound(1057)
+        }
     }
     
-    /// Publica la actividad SliderPill en la Isla Dinámica con duración de 1.5 s
+    /// Publica la actividad SliderPill en la Isla Dinámica con duración natural de 2.5 s
     public func publishVolumeActivity(volume: Float, isMuted: Bool) {
         let activity = LiveActivity(
             id: "system_slider",
-            priority: 95,
+            priority: 85,
             style: .sliderPill,
             tint: isMuted ? DesignTokens.red : DesignTokens.green,
-            duration: 1.5,
+            duration: 2.5,
             sliderState: .volume(level: volume, isMuted: isMuted)
         )
         ActivityCenter.shared.publish(activity)
+    }
+    
+    // MARK: - Control de Micrófono Físico de Entrada (Mute/Unmute Real)
+    public func getDefaultInputDeviceID() -> AudioDeviceID {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return deviceID
+    }
+    
+    public func isMicrophoneMuted() -> Bool {
+        let deviceID = getDefaultInputDeviceID()
+        guard deviceID != 0 else { return false }
+        var muteAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyMute,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &muteAddress) else { return false }
+        var isMutedVal: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        AudioObjectGetPropertyData(deviceID, &muteAddress, 0, nil, &size, &isMutedVal)
+        return isMutedVal == 1
+    }
+    
+    private var preMuteVolumeScalar: Float32 = 0.60
+    
+    public func setMicrophoneMuted(_ muted: Bool) {
+        let deviceID = getDefaultInputDeviceID()
+        guard deviceID != 0 else { return }
+        
+        // 1. Silenciado directo por hardware CoreAudio (kAudioDevicePropertyMute)
+        var muteAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyMute,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectHasProperty(deviceID, &muteAddress) {
+            var isMutedVal: UInt32 = muted ? 1 : 0
+            let size = UInt32(MemoryLayout<UInt32>.size)
+            AudioObjectSetPropertyData(deviceID, &muteAddress, 0, nil, size, &isMutedVal)
+        }
+        
+        // 2. Control nativo del volumen escalar CoreAudio (kAudioDevicePropertyVolumeScalar)
+        // 100% thread-safe, sin AppleScript, sincronizado instantáneamente con macOS
+        var volAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectHasProperty(deviceID, &volAddress) {
+            var size = UInt32(MemoryLayout<Float32>.size)
+            if muted {
+                var currentVol: Float32 = 0.0
+                if AudioObjectGetPropertyData(deviceID, &volAddress, 0, nil, &size, &currentVol) == noErr && currentVol > 0.05 {
+                    self.preMuteVolumeScalar = currentVol
+                }
+                var zeroVol: Float32 = 0.0
+                AudioObjectSetPropertyData(deviceID, &volAddress, 0, nil, size, &zeroVol)
+            } else {
+                var restoreVol: Float32 = max(0.25, self.preMuteVolumeScalar)
+                AudioObjectSetPropertyData(deviceID, &volAddress, 0, nil, size, &restoreVol)
+            }
+        }
     }
 }

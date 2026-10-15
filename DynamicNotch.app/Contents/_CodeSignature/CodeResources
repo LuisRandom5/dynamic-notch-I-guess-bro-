@@ -3,9 +3,22 @@
 <plist version="1.0">
 <dict>
 	<key>files</key>
-	<dict/>
+	<dict>
+		<key>Resources/MediaRemoteBridge.swift</key>
+		<data>
+		IL4azUm/YtTm141lihNQnsPnzfo=
+		</data>
+	</dict>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Resources/MediaRemoteBridge.swift</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			s+6CTlZwx4boQPv56eAnIwXriEwIaBykU+3znCk09No=
+			</data>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>
