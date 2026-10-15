@@ -355,7 +355,22 @@ public final class NotchHitTestView: NSView {
             
             if fingerDeltaY > 0 {
                 // Dedos hacia abajo:
-                if AppState.shared.mode == .expanded {
+                if NotificationActivityProvider.shared.isNotificationActive {
+                    guard !hasExpandedInCurrentGesture else { return }
+                    if !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                        // Dos dedos hacia abajo sobre la notificación -> expandir respuesta rápida
+                        if (accumulatedScrollDeltaY > 3 || fingerDeltaY > 0.8 || rawDeltaY > 0.8) && Date().timeIntervalSince(lastScrollSwipeTime) > 0.10 {
+                            lastScrollSwipeTime = Date()
+                            hasExpandedInCurrentGesture = true
+                            isIgnoringMomentumForOverscroll = true
+                            accumulatedScrollDeltaY = 0
+                            DispatchQueue.main.async {
+                                NotificationActivityProvider.shared.expandQuickReply()
+                            }
+                        }
+                    }
+                    return
+                } else if AppState.shared.mode == .expanded {
                     if !AppState.shared.isPlayerDetailExpanded {
                         // Bloquear expansión al detalle secundario si en este mismo swipe ya se expandió (evita saltarse el reproductor normal en swipes rápidos)
                         guard !hasExpandedInCurrentGesture else { return }
@@ -388,21 +403,6 @@ public final class NotchHitTestView: NSView {
                             AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
                         }
                     }
-                } else if NotificationActivityProvider.shared.isNotificationActive {
-                    guard !hasExpandedInCurrentGesture else { return }
-                    if !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                        // Dos dedos hacia abajo sobre la notificación -> expandir respuesta rápida
-                        if accumulatedScrollDeltaY > 8 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.15 {
-                            lastScrollSwipeTime = Date()
-                            hasExpandedInCurrentGesture = true
-                            isIgnoringMomentumForOverscroll = true
-                            accumulatedScrollDeltaY = 0
-                            DispatchQueue.main.async {
-                                NotificationActivityProvider.shared.expandQuickReply()
-                            }
-                        }
-                    }
-                    return
                 } else if CallActivityProvider.shared.isCallActive {
                     guard !hasExpandedInCurrentGesture else { return }
                     if CallActivityProvider.shared.isExpandedCard {
@@ -459,7 +459,7 @@ public final class NotchHitTestView: NSView {
             } else if fingerDeltaY < 0 {
                 // Dedos hacia arriba:
                 if NotificationActivityProvider.shared.isNotificationActive {
-                    if accumulatedScrollDeltaY < -10 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.22 {
+                    if (accumulatedScrollDeltaY < -4 || fingerDeltaY < -1.2 || rawDeltaY < -1.2) && Date().timeIntervalSince(lastScrollSwipeTime) > 0.12 {
                         lastScrollSwipeTime = Date()
                         accumulatedScrollDeltaY = 0
                         DispatchQueue.main.async {

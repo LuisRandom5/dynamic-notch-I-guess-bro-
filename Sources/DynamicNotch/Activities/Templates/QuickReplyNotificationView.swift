@@ -173,34 +173,37 @@ public struct QuickReplyNotificationView: View {
         .padding(.top, 32) // Despeja perfectamente el notch físico sin desperdiciar espacio
         .padding(.bottom, 12)
         .contentShape(Rectangle())
-        .onTapGesture {
-            expandToQuickReply()
-        }
-        // Gesto unificado bidireccional:
-        // Arrastre hacia abajo o tap -> expandir respuesta rápida
-        // Arrastre hacia arriba -> guardar/descartar la notificación hacia el notch
+        // Gesto unificado bidireccional sin zonas muertas:
+        // Arrastre hacia abajo (>= 6pt o continuo >= 24pt) o tap -> expandir respuesta rápida
+        // Arrastre hacia arriba (<= -8pt) -> guardar/descartar la notificación hacia el notch
         .gesture(
-            DragGesture(minimumDistance: 4)
+            DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     if value.translation.height > 0 {
                         self.dragOffsetY = min(value.translation.height, 35)
+                        if value.translation.height >= 14 && !self.isExpanded {
+                            expandToQuickReply()
+                        }
                     } else {
                         self.dragOffsetY = max(value.translation.height, -25)
                     }
                 }
                 .onEnded { value in
-                    let isSwipeUp = value.translation.height <= -10 || value.predictedEndTranslation.height <= -18
-                    let isDragDown = value.translation.height >= 12 || value.predictedEndTranslation.height >= 22
-                    let isTap = abs(value.translation.width) < 10 && abs(value.translation.height) < 10
+                    guard !self.isExpanded else { return }
+                    let dy = value.translation.height
+                    let pdy = value.predictedEndTranslation.height
                     
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         self.dragOffsetY = 0
                     }
                     
-                    if isSwipeUp {
+                    if dy <= -6 || pdy <= -10 {
                         AppState.shared.hapticService.triggerSnap()
                         dismissActivity()
-                    } else if isDragDown || isTap {
+                    } else if dy >= 4 || pdy >= 8 {
+                        expandToQuickReply()
+                    } else {
+                        // Click o tap en el lugar
                         expandToQuickReply()
                     }
                 }

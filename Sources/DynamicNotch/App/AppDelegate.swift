@@ -18,6 +18,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NowPlayingService.shared.refreshNowPlaying()
         CallDetectorService.shared.startMonitoring()
         _ = FullScreenDetectorService.shared
+        WhatsAppWebObserverService.shared.start()
         
         // Mostrar pantalla de onboarding si no se cuenta aún con permisos de accesibilidad
         AccessibilityOnboardingWindowController.showIfNeeded()

@@ -6,6 +6,7 @@ public struct ActivityDebugView: View {
     @ObservedObject var speedManager = AnimationSpeedManager.shared
     @ObservedObject var volumeInterceptor = VolumeInterceptorService.shared
     @ObservedObject var glassManager = GlassClearManager.shared
+    @ObservedObject var contactService = ContactLookupService.shared
     
     // Controles para Carga
     @State private var batteryPercentage: Double = 84.0
@@ -273,22 +274,34 @@ public struct ActivityDebugView: View {
                             }
                         }
                         
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             Button(action: {
-                                ContactLookupService.shared.requestAccess { granted in
-                                    print("[ActivityDebugView] Permiso de contactos: \(granted)")
+                                ContactLookupService.shared.requestAccess { _ in
+                                    ContactLookupService.shared.checkCurrentStatus()
                                 }
                             }) {
                                 HStack(spacing: 5) {
                                     Image(systemName: "person.crop.circle")
-                                    Text("Solicitar Permiso de Contactos")
+                                    Text("Solicitar Permiso")
                                 }
                             }
                             .buttonStyle(.bordered)
                             
-                            Text(ContactLookupService.shared.isAuthorized ? "✅ Contactos autorizados" : "⚠️ Contactos pendientes de permiso")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(ContactLookupService.shared.isAuthorized ? DesignTokens.green : DesignTokens.orange)
+                            Button(action: {
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "gearshape")
+                                    Text("Ajustes del Sistema")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Text(contactService.isAuthorized ? "✅ Contactos autorizados" : "⚠️ Contactos pendientes de permiso")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(contactService.isAuthorized ? DesignTokens.green : DesignTokens.orange)
                         }
                         
                         Text("Integración con TUCallCenter (FaceTime/Celular), Discord y Contactos del sistema con fotos reales y monogramas.")
@@ -654,5 +667,8 @@ public struct ActivityDebugView: View {
             .padding(20)
         }
         .frame(width: 460, height: 680)
+        .onAppear {
+            contactService.checkCurrentStatus()
+        }
     }
 }

@@ -342,8 +342,26 @@ public final class AudioDeviceService: NSObject, ObservableObject {
         }
         
         // Sonidito inmersivo al regular volumen (pop/tick nativo de macOS)
-        if AppState.shared.enableSoundFeedback && !isMuted {
-            AudioServicesPlaySystemSound(1057)
+        playVolumeFeedbackSound()
+    }
+    
+    private var volumeSoundID: SystemSoundID = 0
+    private var isVolumeSoundLoaded: Bool = false
+    
+    /// Reproduce el sonido nativo auténtico de volumen de macOS (volume.aiff)
+    public func playVolumeFeedbackSound() {
+        guard AppState.shared.enableSoundFeedback && !isMuted else { return }
+        if !isVolumeSoundLoaded {
+            let soundURL = URL(fileURLWithPath: "/System/Library/LoginPlugins/BezelServices.loginPlugin/Contents/Resources/volume.aiff")
+            if FileManager.default.fileExists(atPath: soundURL.path) {
+                AudioServicesCreateSystemSoundID(soundURL as CFURL, &volumeSoundID)
+                isVolumeSoundLoaded = true
+            }
+        }
+        if isVolumeSoundLoaded && volumeSoundID != 0 {
+            AudioServicesPlaySystemSound(volumeSoundID)
+        } else {
+            NSSound.beep()
         }
     }
     

@@ -33,11 +33,20 @@ public final class ContactLookupService: ObservableObject {
     
     private init() {
         checkCurrentStatus()
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.checkCurrentStatus()
+        }
     }
     
     public func checkCurrentStatus() {
         let status = CNContactStore.authorizationStatus(for: .contacts)
-        self.isAuthorized = (status == .authorized)
+        DispatchQueue.main.async {
+            self.isAuthorized = (status == .authorized)
+        }
     }
     
     /// Solicita explícitamente acceso a los contactos con el diálogo nativo de macOS
@@ -45,7 +54,9 @@ public final class ContactLookupService: ObservableObject {
         let status = CNContactStore.authorizationStatus(for: .contacts)
         switch status {
         case .authorized:
-            self.isAuthorized = true
+            DispatchQueue.main.async {
+                self.isAuthorized = true
+            }
             completion(true)
         case .notDetermined:
             contactStore.requestAccess(for: .contacts) { [weak self] granted, error in
@@ -55,7 +66,12 @@ public final class ContactLookupService: ObservableObject {
                 }
             }
         default:
-            self.isAuthorized = false
+            DispatchQueue.main.async {
+                self.isAuthorized = false
+            }
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts") {
+                NSWorkspace.shared.open(url)
+            }
             completion(false)
         }
     }
