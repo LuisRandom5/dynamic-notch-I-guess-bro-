@@ -408,25 +408,51 @@ public struct ActivityDebugView: View {
                 }
                 
                 // NOTIFICACIONES DINÁMICAS (WHATSAPP, MENSAJES Y ALERTAS)
-                GroupBox("Notificaciones Dinámicas (WhatsApp y Mensajes)") {
+                GroupBox("Notificaciones Dinámicas (WhatsApp y Quick Reply)") {
                     VStack(alignment: .leading, spacing: 10) {
                         Button(action: {
                             NotificationActivityProvider.shared.showNotification(
-                                title: "WhatsApp: Carlos",
-                                message: "¡Hola! El nuevo Dynamic Notch quedó impresionante 🚀",
+                                title: "Mamá",
+                                message: "¿A qué hora llegas a cenar? Te guardé comida caliente.",
                                 appIcon: "message.fill",
-                                tint: DesignTokens.green,
-                                duration: 4.5
+                                appName: "WhatsApp",
+                                tint: Color(red: 0.15, green: 0.78, blue: 0.45),
+                                enableQuickReply: true,
+                                duration: 12.0
                             )
                         }) {
                             HStack {
-                                Image(systemName: "message.fill")
-                                Text("Simular Notificación Dinámica de WhatsApp (4.5s)")
+                                Image(systemName: "arrow.down.message.fill")
+                                Text("WhatsApp con Swipe Down (Quick Reply)")
                             }
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(DesignTokens.green)
+                        .tint(Color(red: 0.15, green: 0.78, blue: 0.45))
+                        
+                        Button(action: {
+                            let contact = ContactLookupService.shared.fetchFirstContactWithPhoto()
+                            let contactName = contact?.name ?? "Carlos"
+                            let contactAvatar = contact?.avatar ?? ContactLookupService.shared.generateMonogramAvatar(for: "Carlos", initials: "CA")
+                            
+                            NotificationActivityProvider.shared.showNotification(
+                                title: contactName,
+                                message: "¡Bro! ¿Ya viste cómo quedó el reproductor y las llamadas? 🚀",
+                                avatar: contactAvatar,
+                                appIcon: "message.fill",
+                                appName: "WhatsApp",
+                                tint: Color(red: 0.15, green: 0.78, blue: 0.45),
+                                enableQuickReply: true,
+                                duration: 14.0
+                            )
+                        }) {
+                            HStack {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                Text("WhatsApp con Foto Real y Quick Reply")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                         
                         Button(action: {
                             ChargingActivityProvider.shared.publishLowBatteryActivity(percentage: 12)

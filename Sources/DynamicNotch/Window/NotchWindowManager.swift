@@ -56,7 +56,17 @@ public final class NotchWindowManager: ObservableObject {
         updateHitAreaForCurrentState()
         
         // Show window floating above everything
-        newPanel.orderFrontRegardless()
+        panel?.orderFrontRegardless()
+    }
+    
+    public func setAllowsKeyInput(_ allow: Bool) {
+        panel?.allowsKeyInput = allow
+        if allow {
+            panel?.makeKey()
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            panel?.resignKey()
+        }
     }
     
     public func updateHitArea(width: CGFloat, height: CGFloat) {
@@ -101,7 +111,7 @@ public final class NotchWindowManager: ObservableObject {
             case .airpodsPill:
                 updateHitArea(width: 410, height: 215)
             case .card:
-                updateHitArea(width: 410, height: 130)
+                updateHitArea(width: 430, height: 195)
             }
             return
         }

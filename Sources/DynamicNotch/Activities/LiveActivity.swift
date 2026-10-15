@@ -60,9 +60,10 @@ public struct LiveActivity: Identifiable {
     public var center: AnyView?
     public var trailing: AnyView?
     public var tint: Color
-    public var duration: TimeInterval? // nil = persistente mientras la condición sea verdadera
+    public var customView: AnyView?
+    public var duration: TimeInterval?
     public var onTap: (() -> Void)?
-    public let createdAt: Date
+    public var createdAt: Date
     public var sliderState: SliderPillState?
     public var airpodsState: AirPodsActivityState?
     
@@ -73,6 +74,7 @@ public struct LiveActivity: Identifiable {
         leading: AnyView? = nil,
         center: AnyView? = nil,
         trailing: AnyView? = nil,
+        customView: AnyView? = nil,
         tint: Color = DesignTokens.green,
         duration: TimeInterval? = nil,
         sliderState: SliderPillState? = nil,
@@ -86,6 +88,7 @@ public struct LiveActivity: Identifiable {
         self.leading = leading
         self.center = center
         self.trailing = trailing
+        self.customView = customView
         self.tint = tint
         self.duration = duration
         self.sliderState = sliderState

@@ -41,7 +41,13 @@ public struct LiveActivityContainerView: View {
                             removal: .opacity.animation(.easeOut(duration: 0.10))
                         ))
                 case .card:
-                    if activity.id == "live_timer" {
+                    if let custom = activity.customView {
+                        custom
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                                removal: .opacity.animation(.easeOut(duration: 0.10))
+                            ))
+                    } else if activity.id == "live_timer" {
                         TimerCardView()
                             .transition(.asymmetric(
                                 insertion: .opacity.animation(.easeInOut(duration: 0.18)),

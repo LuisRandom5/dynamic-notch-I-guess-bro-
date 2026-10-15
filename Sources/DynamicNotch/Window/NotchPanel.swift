@@ -29,8 +29,10 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
         ])
     }
     
+    public var allowsKeyInput: Bool = false
+    
     public override var canBecomeKey: Bool {
-        return false
+        return allowsKeyInput
     }
     
     public override var canBecomeMain: Bool {
