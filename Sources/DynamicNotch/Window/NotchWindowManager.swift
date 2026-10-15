@@ -109,8 +109,8 @@ public final class NotchWindowManager: ObservableObject {
                 let w = ActivityCenter.shared.customCardWidth ?? 430
                 let h = ActivityCenter.shared.customCardHeight ?? 130
                 // Margen inferior amplio para capturar gestos de arrastre y swipe hacia abajo sin cortes
-                let extraH: CGFloat = NotificationActivityProvider.shared.isNotificationActive ? 140 : 50
-                updateHitArea(width: max(w + 40, 430), height: max(h + extraH, 240))
+                let extraH: CGFloat = NotificationActivityProvider.shared.isNotificationActive ? 180 : 50
+                updateHitArea(width: max(w + 60, 440), height: max(h + extraH, 280))
             }
             return
         }

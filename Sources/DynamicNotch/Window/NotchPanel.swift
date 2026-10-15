@@ -119,6 +119,7 @@ public final class NotchHitTestView: NSView {
             .init("public.file-url"),
             .init("com.apple.finder.node")
         ])
+        setupPanGesture()
     }
     
     required init?(coder: NSCoder) {
@@ -129,6 +130,52 @@ public final class NotchHitTestView: NSView {
             .init("public.file-url"),
             .init("com.apple.finder.node")
         ])
+        setupPanGesture()
+    }
+    
+    private func setupPanGesture() {
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+        pan.delaysPrimaryMouseButtonEvents = false
+        addGestureRecognizer(pan)
+    }
+    
+    @objc private func handlePanGesture(_ gesture: NSPanGestureRecognizer) {
+        guard NotificationActivityProvider.shared.isNotificationActive else { return }
+        let translation = gesture.translation(in: self)
+        let velocity = gesture.velocity(in: self)
+        
+        // En coordenadas AppKit: Y=0 en la base. Hacia abajo es translation.y < 0
+        let deltaDown = -translation.y
+        let deltaUp = translation.y
+        
+        switch gesture.state {
+        case .changed:
+            if deltaDown >= 6 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                DispatchQueue.main.async {
+                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.changed deltaDown=\(deltaDown)) -> expandQuickReply()")
+                    NotificationActivityProvider.shared.expandQuickReply()
+                }
+            } else if deltaUp >= 10 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                DispatchQueue.main.async {
+                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.changed deltaUp=\(deltaUp)) -> dismissNotification()")
+                    NotificationActivityProvider.shared.dismissNotification()
+                }
+            }
+        case .ended:
+            if (deltaDown >= 4 || -velocity.y > 50) && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                DispatchQueue.main.async {
+                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.ended deltaDown=\(deltaDown)) -> expandQuickReply()")
+                    NotificationActivityProvider.shared.expandQuickReply()
+                }
+            } else if (deltaUp >= 6 || velocity.y > 80) && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                DispatchQueue.main.async {
+                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.ended deltaUp=\(deltaUp)) -> dismissNotification()")
+                    NotificationActivityProvider.shared.dismissNotification()
+                }
+            }
+        default:
+            break
+        }
     }
     
     private func isDraggingSessionActive() -> Bool {
@@ -385,27 +432,43 @@ public final class NotchHitTestView: NSView {
         }
         
         // 1. SCROLL VERTICAL CON 2 DEDOS (Pastilla extendida, estiramiento elástico y guardado de píldora)
-        if abs(fingerDeltaY) > abs(fingerDeltaX) && abs(fingerDeltaY) > 0.4 {
+        if abs(fingerDeltaY) > abs(fingerDeltaX) && abs(fingerDeltaY) > 0.3 {
             accumulatedScrollDeltaY += fingerDeltaY
+            
+            // PRIORIDAD 1: Si hay notificación activa en pantalla
+            if NotificationActivityProvider.shared.isNotificationActive {
+                DNDLogger.log("scrollWheel [Notif]: rawY=\(rawDeltaY), fingerY=\(fingerDeltaY), accumY=\(accumulatedScrollDeltaY)")
+                if !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                    // Deslizar hacia abajo (dedos hacia el usuario / hacia la pantalla) -> Expandir respuesta rápida
+                    if (fingerDeltaY > 0.3 || rawDeltaY > 0.3 || accumulatedScrollDeltaY > 0.8) {
+                        guard !hasExpandedInCurrentGesture else { return }
+                        lastScrollSwipeTime = Date()
+                        hasExpandedInCurrentGesture = true
+                        isIgnoringMomentumForOverscroll = true
+                        accumulatedScrollDeltaY = 0
+                        DispatchQueue.main.async {
+                            DNDLogger.log("scrollWheel -> expandQuickReply() disparado con éxito!")
+                            NotificationActivityProvider.shared.expandQuickReply()
+                        }
+                        return
+                    }
+                } else {
+                    // Si ya está expandida y desliza hacia arriba -> Guardar/colapsar
+                    if (fingerDeltaY < -0.6 || rawDeltaY < -0.6 || accumulatedScrollDeltaY < -1.5) {
+                        accumulatedScrollDeltaY = 0
+                        DispatchQueue.main.async {
+                            DNDLogger.log("scrollWheel -> collapseQuickReply() disparado!")
+                            NotificationActivityProvider.shared.collapseQuickReply()
+                        }
+                        return
+                    }
+                }
+                return
+            }
             
             if fingerDeltaY > 0 {
                 // Dedos hacia abajo:
-                if NotificationActivityProvider.shared.isNotificationActive {
-                    guard !hasExpandedInCurrentGesture else { return }
-                    if !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                        // Dos dedos hacia abajo sobre la notificación -> expandir respuesta rápida
-                        if (accumulatedScrollDeltaY > 1.5 || fingerDeltaY > 0.4 || rawDeltaY > 0.4) && Date().timeIntervalSince(lastScrollSwipeTime) > 0.08 {
-                            lastScrollSwipeTime = Date()
-                            hasExpandedInCurrentGesture = true
-                            isIgnoringMomentumForOverscroll = true
-                            accumulatedScrollDeltaY = 0
-                            DispatchQueue.main.async {
-                                NotificationActivityProvider.shared.expandQuickReply()
-                            }
-                        }
-                    }
-                    return
-                } else if AppState.shared.mode == .expanded {
+                if AppState.shared.mode == .expanded {
                     if !AppState.shared.isPlayerDetailExpanded {
                         // Bloquear expansión al detalle secundario si en este mismo swipe ya se expandió (evita saltarse el reproductor normal en swipes rápidos)
                         guard !hasExpandedInCurrentGesture else { return }

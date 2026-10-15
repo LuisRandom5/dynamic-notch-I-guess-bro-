@@ -570,7 +570,7 @@ public struct NotchContainerView: View {
             }
             // Gesto horizontal con rebote elástico (rubber-band bounce) entre los dos menús
             .modifier(PillGestureModifier(
-                isEnabled: appState.mode == .expanded || appState.mode == .shelf,
+                isEnabled: (appState.mode == .expanded || appState.mode == .shelf) && activityCenter.currentActivity == nil,
                 gesture: cardSwipeGesture
             ))
             .onHover { isHovering in
