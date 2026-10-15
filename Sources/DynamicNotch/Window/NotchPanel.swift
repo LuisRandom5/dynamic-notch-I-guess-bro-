@@ -392,7 +392,7 @@ public final class NotchHitTestView: NSView {
                     guard !hasExpandedInCurrentGesture else { return }
                     if !NotificationActivityProvider.shared.isQuickReplyExpanded {
                         // Dos dedos hacia abajo sobre la notificación -> expandir respuesta rápida
-                        if accumulatedScrollDeltaY > 12 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.22 {
+                        if accumulatedScrollDeltaY > 8 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.15 {
                             lastScrollSwipeTime = Date()
                             hasExpandedInCurrentGesture = true
                             isIgnoringMomentumForOverscroll = true
@@ -400,9 +400,9 @@ public final class NotchHitTestView: NSView {
                             DispatchQueue.main.async {
                                 NotificationActivityProvider.shared.expandQuickReply()
                             }
-                            return
                         }
                     }
+                    return
                 } else if CallActivityProvider.shared.isCallActive {
                     guard !hasExpandedInCurrentGesture else { return }
                     if CallActivityProvider.shared.isExpandedCard {
@@ -418,7 +418,6 @@ public final class NotchHitTestView: NSView {
                                 AppState.shared.isPlayerDetailExpanded = false
                                 AppState.shared.expand()
                             }
-                            return
                         }
                     } else {
                         // Llamada compacta en notch: expandir tarjeta de llamada
@@ -430,9 +429,12 @@ public final class NotchHitTestView: NSView {
                             DispatchQueue.main.async {
                                 CallActivityProvider.shared.expandToCard()
                             }
-                            return
                         }
                     }
+                    return
+                } else if ActivityCenter.shared.currentActivity != nil {
+                    // Si hay cualquier LiveActivity activa, NUNCA invadir con el reproductor
+                    return
                 } else if AppState.shared.mode == .shelf {
                     // Bandeja temporal (Drag and Drop): estiramiento elástico hacia abajo,
                     // vuelve a su forma original de forma natural (no hay menú extendido secundario)
@@ -442,6 +444,7 @@ public final class NotchHitTestView: NSView {
                         AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
                     }
                 } else if isCompactOrIdle {
+                    guard ActivityCenter.shared.currentActivity == nil else { return }
                     guard !hasExpandedInCurrentGesture else { return }
                     if accumulatedScrollDeltaY > 16 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.32 {
                         lastScrollSwipeTime = Date()

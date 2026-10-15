@@ -377,6 +377,9 @@ public struct QuickReplyNotificationView: View {
     }
     
     private func expandToQuickReply() {
+        if AppState.shared.mode == .expanded {
+            AppState.shared.mode = .idle
+        }
         AppState.shared.hapticService.triggerExpand()
         NotchWindowManager.shared.setAllowsKeyInput(true)
         ActivityCenter.shared.pauseDismissTimer(for: id)

@@ -83,7 +83,10 @@ public final class NotificationActivityProvider: ObservableObject {
                 style: .card,
                 customView: AnyView(replyView),
                 tint: tint,
-                duration: duration
+                duration: duration,
+                onTap: {
+                    NotificationActivityProvider.shared.expandQuickReply()
+                }
             )
             
             ActivityCenter.shared.publish(activity)

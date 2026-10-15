@@ -362,7 +362,19 @@ public struct NotchContainerView: View {
                 
                 // Contenido según el modo, Live Activity o HUD de volumen
                 Group {
-                    if appState.isDropInvitationActive {
+                    if activityCenter.currentActivity != nil {
+                        // Live Activity activa (Pill / SliderPill / Card): Máxima prioridad, nunca es desplazada por el reproductor
+                        LiveActivityContainerView()
+                            .frame(width: currentWidth, height: currentHeight, alignment: .top)
+                            .clipShape(ElasticPillShape(
+                                topRadius: topRadius,
+                                bottomRadius: bottomRadius,
+                                stretch: 0,
+                                verticalStretch: 0
+                            ))
+                            .clipped()
+                            .transition(.opacity)
+                    } else if appState.isDropInvitationActive {
                         NotchDropInvitationView()
                             .frame(width: currentWidth, height: currentHeight, alignment: .top)
                             .transition(.opacity)
@@ -386,18 +398,6 @@ public struct NotchContainerView: View {
                         )
                         .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                         .transition(.opacity)
-                    } else if activityCenter.currentActivity != nil {
-                        // Live Activity activa (Pill / SliderPill / Card)
-                        LiveActivityContainerView()
-                            .frame(width: currentWidth, height: currentHeight, alignment: .top)
-                            .clipShape(ElasticPillShape(
-                                topRadius: topRadius,
-                                bottomRadius: bottomRadius,
-                                stretch: 0,
-                                verticalStretch: 0
-                            ))
-                            .clipped()
-                            .transition(.opacity)
                     } else {
                         switch appState.mode {
                         case .idle:
