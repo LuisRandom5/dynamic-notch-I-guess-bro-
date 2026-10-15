@@ -388,6 +388,21 @@ public final class NotchHitTestView: NSView {
                             AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
                         }
                     }
+                } else if NotificationActivityProvider.shared.isNotificationActive {
+                    guard !hasExpandedInCurrentGesture else { return }
+                    if !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                        // Dos dedos hacia abajo sobre la notificación -> expandir respuesta rápida
+                        if accumulatedScrollDeltaY > 12 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.22 {
+                            lastScrollSwipeTime = Date()
+                            hasExpandedInCurrentGesture = true
+                            isIgnoringMomentumForOverscroll = true
+                            accumulatedScrollDeltaY = 0
+                            DispatchQueue.main.async {
+                                NotificationActivityProvider.shared.expandQuickReply()
+                            }
+                            return
+                        }
+                    }
                 } else if CallActivityProvider.shared.isCallActive {
                     guard !hasExpandedInCurrentGesture else { return }
                     if CallActivityProvider.shared.isExpandedCard {
@@ -440,6 +455,21 @@ public final class NotchHitTestView: NSView {
                 }
             } else if fingerDeltaY < 0 {
                 // Dedos hacia arriba:
+                if NotificationActivityProvider.shared.isNotificationActive {
+                    if accumulatedScrollDeltaY < -10 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.22 {
+                        lastScrollSwipeTime = Date()
+                        accumulatedScrollDeltaY = 0
+                        DispatchQueue.main.async {
+                            if NotificationActivityProvider.shared.isQuickReplyExpanded {
+                                NotificationActivityProvider.shared.collapseQuickReply()
+                            } else {
+                                NotificationActivityProvider.shared.dismissNotification()
+                            }
+                        }
+                        return
+                    }
+                }
+                
                 if CallActivityProvider.shared.isCallActive && CallActivityProvider.shared.isExpandedCard {
                     if accumulatedScrollDeltaY < -14 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.25 {
                         lastScrollSwipeTime = Date()
@@ -602,6 +632,7 @@ public final class NotchHitTestView: NSView {
         let sourceMask = sender.draggingSourceOperationMask
         DNDLogger.log("NotchHitTestView.draggingEntered called. hasFiles: \(hasFiles), sourceMask: \(sourceMask.rawValue)")
         guard hasFiles else { return [] }
+        guard ActivityCenter.shared.currentActivity == nil else { return [] }
         
         DispatchQueue.main.async {
             AppState.shared.isShelfDragTargeted = true
@@ -628,6 +659,7 @@ public final class NotchHitTestView: NSView {
         dragExitTimer = nil
         
         guard containsFiles(sender) else { return [] }
+        guard ActivityCenter.shared.currentActivity == nil else { return [] }
         
         DispatchQueue.main.async {
             if !AppState.shared.isShelfDragTargeted {

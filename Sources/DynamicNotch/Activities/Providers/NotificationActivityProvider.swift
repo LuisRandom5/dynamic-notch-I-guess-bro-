@@ -1,12 +1,47 @@
 import SwiftUI
 import AppKit
+import Combine
 
 /// Proveedor de Live Activities para Notificaciones Dinámicas estilo Dynamic Island (WhatsApp, Mensajes, Slack, Alertas)
 /// con soporte para Swipe Down y Respuesta Rápida interactiva (Quick Reply).
-public final class NotificationActivityProvider {
+public final class NotificationActivityProvider: ObservableObject {
     public static let shared = NotificationActivityProvider()
     
+    @Published public private(set) var isNotificationActive: Bool = false
+    @Published public private(set) var isQuickReplyExpanded: Bool = false
+    @Published public private(set) var currentNotificationId: String? = nil
+    
+    // Callbacks conectados a la vista activa QuickReplyNotificationView
+    public var onExpandRequested: (() -> Void)?
+    public var onCollapseRequested: (() -> Void)?
+    public var onDismissRequested: (() -> Void)?
+    
     private init() {}
+    
+    public func setNotificationState(active: Bool, expanded: Bool, id: String?) {
+        self.isNotificationActive = active
+        self.isQuickReplyExpanded = expanded
+        self.currentNotificationId = id
+    }
+    
+    public func expandQuickReply() {
+        guard isNotificationActive && !isQuickReplyExpanded else { return }
+        onExpandRequested?()
+    }
+    
+    public func collapseQuickReply() {
+        guard isNotificationActive && isQuickReplyExpanded else { return }
+        onCollapseRequested?()
+    }
+    
+    public func dismissNotification() {
+        guard isNotificationActive else { return }
+        if let onDismiss = onDismissRequested {
+            onDismiss()
+        } else if let id = currentNotificationId {
+            ActivityCenter.shared.dismissWithAnimation(id: id)
+        }
+    }
     
     /// Muestra una notificación interactiva en la isla con soporte de swipe down para responder
     public func showNotification(
@@ -21,6 +56,7 @@ public final class NotificationActivityProvider {
         duration: TimeInterval? = 7.0
     ) {
         let activityId = "notification_\(UUID().uuidString)"
+        setNotificationState(active: true, expanded: false, id: activityId)
         
         // Consultar avatar real de contactos si no se suministró uno
         var contactAvatar = avatar

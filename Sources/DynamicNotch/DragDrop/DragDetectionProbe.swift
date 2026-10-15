@@ -234,6 +234,7 @@ public final class DragDetectionProbe: ObservableObject {
         
         // Activación magnética por proximidad
         if self.isDragging && self.itemCount > 0 && AppState.shared.enableDropInvitation {
+            guard ActivityCenter.shared.currentActivity == nil else { return }
             let triggerDist = AppState.shared.dropInvitationDistance
             let exitDist = triggerDist + 35.0
             

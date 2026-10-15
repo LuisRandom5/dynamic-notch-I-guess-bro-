@@ -147,6 +147,18 @@ public final class NotchWindowManager: ObservableObject {
             width = NotchTuning.expandedWidth
             let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
             height = cardH + 16
+        } else if let activity = ActivityCenter.shared.currentActivity {
+            switch activity.style {
+            case .pill, .sliderPill:
+                width = geom.width + 200
+                height = geom.height + 8
+            case .airpodsPill:
+                width = 400
+                height = 196
+            case .card:
+                width = ActivityCenter.shared.customCardWidth ?? 410
+                height = (ActivityCenter.shared.customCardHeight ?? 112) + 8
+            }
         } else if mode == .compact {
             width = geom.width + 104
             height = geom.height + 4

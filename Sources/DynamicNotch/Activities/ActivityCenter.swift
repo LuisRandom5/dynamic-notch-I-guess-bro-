@@ -68,6 +68,12 @@ public final class ActivityCenter: ObservableObject {
         evaluateHighestPriority()
     }
     
+    /// Pausa o cancela el temporizador de cierre automático (por ejemplo al abrir Quick Reply para escribir)
+    public func pauseDismissTimer(for id: String) {
+        dismissTimers[id]?.invalidate()
+        dismissTimers.removeValue(forKey: id)
+    }
+    
     /// Cierre sutil, orgánico y extremadamente fluido estilo Apple macOS:
     /// Inicia la contracción inmediata y sincronizada de la anchura y altura hacia el notch (~300 ms)
     /// mientras los elementos internos se desvanecen de manera progresiva y coordinada hacia el centro.

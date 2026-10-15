@@ -20,11 +20,13 @@ public struct QuickReplyNotificationView: View {
     @State private var dragOffsetY: CGFloat = 0
     @FocusState private var isInputFocused: Bool
     
-    // Geometría calibrada para que NADA quede recortado ni aplastado
-    private let compactWidth: CGFloat = 390
-    private let compactHeight: CGFloat = 78
-    private let expandedWidth: CGFloat = 420
-    private let expandedHeight: CGFloat = 175
+    // Geometría calibrada para que NADA quede recortado ni aplastado:
+    // Altura compacta aumentada a 96pt para alojar holgadamente el despeje de 32pt de la cámara,
+    // el avatar, el texto de 2 líneas y el hint inferior sin tocar las esquinas redondeadas.
+    private let compactWidth: CGFloat = 396
+    private let compactHeight: CGFloat = 96
+    private let expandedWidth: CGFloat = 424
+    private let expandedHeight: CGFloat = 180
     
     public init(
         id: String,
@@ -57,9 +59,23 @@ public struct QuickReplyNotificationView: View {
         .frame(width: isExpanded ? expandedWidth : compactWidth)
         .offset(y: dragOffsetY * 0.40)
         .onAppear {
+            NotificationActivityProvider.shared.setNotificationState(active: true, expanded: false, id: id)
+            NotificationActivityProvider.shared.onExpandRequested = {
+                expandToQuickReply()
+            }
+            NotificationActivityProvider.shared.onCollapseRequested = {
+                collapseBack()
+            }
+            NotificationActivityProvider.shared.onDismissRequested = {
+                dismissActivity()
+            }
             syncContainerDimensions(expanded: false)
         }
         .onDisappear {
+            NotificationActivityProvider.shared.setNotificationState(active: false, expanded: false, id: nil)
+            NotificationActivityProvider.shared.onExpandRequested = nil
+            NotificationActivityProvider.shared.onCollapseRequested = nil
+            NotificationActivityProvider.shared.onDismissRequested = nil
             NotchWindowManager.shared.setAllowsKeyInput(false)
             ActivityCenter.shared.customCardWidth = nil
             ActivityCenter.shared.customCardHeight = nil
@@ -92,7 +108,7 @@ public struct QuickReplyNotificationView: View {
                         .foregroundColor(.white)
                 }
                 
-                // Insignia verde de WhatsApp
+                // Insignia verde de la app
                 Circle()
                     .fill(tintColor)
                     .frame(width: 15, height: 15)
@@ -105,11 +121,11 @@ public struct QuickReplyNotificationView: View {
             }
             .frame(width: 46, height: 46)
             
-            // Textos del mensaje
+            // Textos del mensaje con formato claro y sin cortes
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(title)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 13.5, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                         .lineLimit(1)
                     
@@ -128,8 +144,9 @@ public struct QuickReplyNotificationView: View {
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Color.white.opacity(0.90))
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 
-                // Micro-hint animado
+                // Micro-hint animado con holgura vertical
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.compact.down")
                         .font(.system(size: 10, weight: .bold))
@@ -152,27 +169,38 @@ public struct QuickReplyNotificationView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 34) // Despeja perfectamente el notch físico
+        .padding(.horizontal, 16)
+        .padding(.top, 32) // Despeja perfectamente el notch físico sin desperdiciar espacio
         .padding(.bottom, 12)
         .contentShape(Rectangle())
-        // Gesto unificado: detecta arrastre continuo hacia abajo O toque directo
+        .onTapGesture {
+            expandToQuickReply()
+        }
+        // Gesto unificado bidireccional:
+        // Arrastre hacia abajo o tap -> expandir respuesta rápida
+        // Arrastre hacia arriba -> guardar/descartar la notificación hacia el notch
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 4)
                 .onChanged { value in
                     if value.translation.height > 0 {
-                        self.dragOffsetY = min(value.translation.height, 40)
+                        self.dragOffsetY = min(value.translation.height, 35)
+                    } else {
+                        self.dragOffsetY = max(value.translation.height, -25)
                     }
                 }
                 .onEnded { value in
-                    let isDragDown = value.translation.height >= 12 || value.predictedEndTranslation.height >= 25
+                    let isSwipeUp = value.translation.height <= -10 || value.predictedEndTranslation.height <= -18
+                    let isDragDown = value.translation.height >= 12 || value.predictedEndTranslation.height >= 22
                     let isTap = abs(value.translation.width) < 10 && abs(value.translation.height) < 10
                     
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         self.dragOffsetY = 0
                     }
                     
-                    if isDragDown || isTap {
+                    if isSwipeUp {
+                        AppState.shared.hapticService.triggerSnap()
+                        dismissActivity()
+                    } else if isDragDown || isTap {
                         expandToQuickReply()
                     }
                 }
@@ -291,12 +319,12 @@ public struct QuickReplyNotificationView: View {
                     ZStack {
                         Circle()
                             .fill(
-                                canSend
-                                    ? LinearGradient(colors: [tintColor, tintColor.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    : LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom)
-                            )
-                            .frame(width: 36, height: 36)
-                            .shadow(color: canSend ? tintColor.opacity(0.45) : .clear, radius: 6, x: 0, y: 2)
+                            canSend
+                                ? LinearGradient(colors: [tintColor, tintColor.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom)
+                        )
+                        .frame(width: 36, height: 36)
+                        .shadow(color: canSend ? tintColor.opacity(0.45) : .clear, radius: 6, x: 0, y: 2)
                         
                         if isSentSuccess {
                             Image(systemName: "checkmark")
@@ -315,11 +343,20 @@ public struct QuickReplyNotificationView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 36) // Despeje para la cámara del notch
+        .padding(.top, 34) // Despeje para la cámara del notch
         .padding(.bottom, 16)
         .onAppear {
             isInputFocused = true
         }
+        // Gesto de swipe hacia arriba en la tarjeta expandida para retraerla suavemente
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onEnded { value in
+                    if value.translation.height <= -15 || value.predictedEndTranslation.height <= -25 {
+                        collapseBack()
+                    }
+                }
+        )
     }
     
     // MARK: - Control de Animaciones y Dimensiones
@@ -329,7 +366,7 @@ public struct QuickReplyNotificationView: View {
             ActivityCenter.shared.customCardWidth = expandedWidth
             ActivityCenter.shared.customCardHeight = expandedHeight
             ActivityCenter.shared.customTopRadius = 24
-            ActivityCenter.shared.customBottomRadius = 36
+            ActivityCenter.shared.customBottomRadius = 34
         } else {
             ActivityCenter.shared.customCardWidth = compactWidth
             ActivityCenter.shared.customCardHeight = compactHeight
@@ -342,6 +379,8 @@ public struct QuickReplyNotificationView: View {
     private func expandToQuickReply() {
         AppState.shared.hapticService.triggerExpand()
         NotchWindowManager.shared.setAllowsKeyInput(true)
+        ActivityCenter.shared.pauseDismissTimer(for: id)
+        NotificationActivityProvider.shared.setNotificationState(active: true, expanded: true, id: id)
         
         withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
             self.dragOffsetY = 0
@@ -358,6 +397,7 @@ public struct QuickReplyNotificationView: View {
         isInputFocused = false
         NotchWindowManager.shared.setAllowsKeyInput(false)
         AppState.shared.hapticService.triggerSnap()
+        NotificationActivityProvider.shared.setNotificationState(active: true, expanded: false, id: id)
         
         withAnimation(.spring(response: 0.35, dampingFraction: 0.84)) {
             self.isExpanded = false
