@@ -176,12 +176,12 @@ public struct QuickReplyNotificationView: View {
         // Gesto unificado bidireccional sin zonas muertas:
         // Arrastre hacia abajo (>= 6pt o continuo >= 24pt) o tap -> expandir respuesta rápida
         // Arrastre hacia arriba (<= -8pt) -> guardar/descartar la notificación hacia el notch
-        .gesture(
-            DragGesture(minimumDistance: 0)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 4)
                 .onChanged { value in
                     if value.translation.height > 0 {
                         self.dragOffsetY = min(value.translation.height, 35)
-                        if value.translation.height >= 14 && !self.isExpanded {
+                        if value.translation.height >= 10 && !self.isExpanded {
                             expandToQuickReply()
                         }
                     } else {
@@ -200,14 +200,16 @@ public struct QuickReplyNotificationView: View {
                     if dy <= -6 || pdy <= -10 {
                         AppState.shared.hapticService.triggerSnap()
                         dismissActivity()
-                    } else if dy >= 4 || pdy >= 8 {
-                        expandToQuickReply()
-                    } else {
-                        // Click o tap en el lugar
+                    } else if dy >= 4 || pdy >= 6 {
                         expandToQuickReply()
                     }
                 }
         )
+        .onTapGesture {
+            if !self.isExpanded {
+                expandToQuickReply()
+            }
+        }
     }
     
     // MARK: - Estado Expandido (Quick Reply con Espacio Amplio y Diseño Apple)

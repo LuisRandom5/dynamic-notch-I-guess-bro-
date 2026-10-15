@@ -431,7 +431,7 @@ public struct ActivityDebugView: View {
                                 appName: "WhatsApp Web",
                                 tint: Color(red: 0.15, green: 0.78, blue: 0.45),
                                 enableQuickReply: true,
-                                duration: 15.0
+                                duration: 5.5
                             )
                         }) {
                             HStack {
@@ -456,7 +456,7 @@ public struct ActivityDebugView: View {
                                 appName: "WhatsApp Web",
                                 tint: Color(red: 0.15, green: 0.78, blue: 0.45),
                                 enableQuickReply: true,
-                                duration: 15.0
+                                duration: 5.5
                             )
                         }) {
                             HStack {

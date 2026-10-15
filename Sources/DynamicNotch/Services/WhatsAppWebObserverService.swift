@@ -272,7 +272,7 @@ public final class WhatsAppWebObserverService {
                 appName: "WhatsApp Web",
                 tint: Color(red: 0.15, green: 0.78, blue: 0.45),
                 enableQuickReply: true,
-                duration: 10.0
+                duration: 5.0
             )
             AppState.shared.hapticService.triggerSnap()
         }

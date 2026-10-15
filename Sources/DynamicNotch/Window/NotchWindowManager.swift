@@ -92,12 +92,7 @@ public final class NotchWindowManager: ObservableObject {
             return
         }
         
-        if mode == .expanded || mode == .shelf {
-            let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
-            updateHitArea(width: max(PlayerMetrics.cardWidth + 140, 330), height: cardH + 70)
-            return
-        }
-        
+        // Modal Live Activities (como notificaciones, AirPods, llamadas) mandan sobre el reproductor
         if let activity = ActivityCenter.shared.currentActivity {
             if ActivityCenter.shared.dismissingActivityId == activity.id {
                 updateHitArea(width: geom.width + 24, height: geom.height + 10)
@@ -113,8 +108,16 @@ public final class NotchWindowManager: ObservableObject {
             case .card:
                 let w = ActivityCenter.shared.customCardWidth ?? 430
                 let h = ActivityCenter.shared.customCardHeight ?? 130
-                updateHitArea(width: max(w + 30, 430), height: max(h + 45, 195))
+                // Margen inferior amplio para capturar gestos de arrastre y swipe hacia abajo sin cortes
+                let extraH: CGFloat = NotificationActivityProvider.shared.isNotificationActive ? 140 : 50
+                updateHitArea(width: max(w + 40, 430), height: max(h + extraH, 240))
             }
+            return
+        }
+        
+        if mode == .expanded || mode == .shelf {
+            let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
+            updateHitArea(width: max(PlayerMetrics.cardWidth + 140, 330), height: cardH + 70)
             return
         }
         

@@ -53,7 +53,7 @@ public final class NotificationActivityProvider: ObservableObject {
         appName: String = "WhatsApp Web",
         tint: Color = Color(red: 0.15, green: 0.78, blue: 0.45),
         enableQuickReply: Bool = true,
-        duration: TimeInterval? = 7.0
+        duration: TimeInterval? = 5.0
     ) {
         let activityId = "notification_\(UUID().uuidString)"
         setNotificationState(active: true, expanded: false, id: activityId)

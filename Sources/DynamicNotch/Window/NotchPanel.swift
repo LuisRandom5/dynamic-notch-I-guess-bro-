@@ -200,8 +200,13 @@ public final class NotchHitTestView: NSView {
         }
     }
     
+    private var notificationMouseDownPoint: NSPoint? = nil
+    
     public override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if NotificationActivityProvider.shared.isNotificationActive {
+            notificationMouseDownPoint = point
+        }
         if hitAreaRect.contains(point) {
             // Si el Notch está colapsado (idle o compact) y no hay actividad modal activa, expandir al dar tap
             if AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {
@@ -213,6 +218,36 @@ public final class NotchHitTestView: NSView {
             }
         }
         super.mouseDown(with: event)
+    }
+    
+    public override func mouseDragged(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if NotificationActivityProvider.shared.isNotificationActive, let start = notificationMouseDownPoint {
+            // En macOS AppKit: (0,0) abajo a la izquierda.
+            // Arrastrar hacia abajo significa que point.y disminuye (start.y - point.y > 0).
+            let deltaDown = start.y - point.y
+            let deltaUp = point.y - start.y
+            
+            if deltaDown >= 10 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                notificationMouseDownPoint = nil
+                DispatchQueue.main.async {
+                    NotificationActivityProvider.shared.expandQuickReply()
+                }
+                return
+            } else if deltaUp >= 10 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                notificationMouseDownPoint = nil
+                DispatchQueue.main.async {
+                    NotificationActivityProvider.shared.dismissNotification()
+                }
+                return
+            }
+        }
+        super.mouseDragged(with: event)
+    }
+    
+    public override func mouseUp(with event: NSEvent) {
+        notificationMouseDownPoint = nil
+        super.mouseUp(with: event)
     }
     
     // MARK: - Gestos de Trackpad (Swipe con 2 dedos: deslizamiento horizontal con overscroll elástico + scroll vertical)
@@ -359,7 +394,7 @@ public final class NotchHitTestView: NSView {
                     guard !hasExpandedInCurrentGesture else { return }
                     if !NotificationActivityProvider.shared.isQuickReplyExpanded {
                         // Dos dedos hacia abajo sobre la notificación -> expandir respuesta rápida
-                        if (accumulatedScrollDeltaY > 3 || fingerDeltaY > 0.8 || rawDeltaY > 0.8) && Date().timeIntervalSince(lastScrollSwipeTime) > 0.10 {
+                        if (accumulatedScrollDeltaY > 1.5 || fingerDeltaY > 0.4 || rawDeltaY > 0.4) && Date().timeIntervalSince(lastScrollSwipeTime) > 0.08 {
                             lastScrollSwipeTime = Date()
                             hasExpandedInCurrentGesture = true
                             isIgnoringMomentumForOverscroll = true
