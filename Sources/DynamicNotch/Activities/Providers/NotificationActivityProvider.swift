@@ -15,7 +15,7 @@ public final class NotificationActivityProvider {
         handle: String = "",
         avatar: NSImage? = nil,
         appIcon: String = "message.fill",
-        appName: String = "WhatsApp",
+        appName: String = "WhatsApp Web",
         tint: Color = Color(red: 0.15, green: 0.78, blue: 0.45),
         enableQuickReply: Bool = true,
         duration: TimeInterval? = 7.0

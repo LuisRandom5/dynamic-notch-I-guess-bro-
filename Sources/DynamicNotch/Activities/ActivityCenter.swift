@@ -9,6 +9,11 @@ public final class ActivityCenter: ObservableObject {
     @Published public private(set) var dismissingActivityId: String? = nil
     @Published public private(set) var lastDismissedActivity: LiveActivity? = nil
     
+    @Published public var customCardWidth: CGFloat? = nil
+    @Published public var customCardHeight: CGFloat? = nil
+    @Published public var customTopRadius: CGFloat? = nil
+    @Published public var customBottomRadius: CGFloat? = nil
+    
     private var dismissTimers: [String: Timer] = [:]
     
     private init() {}
@@ -54,6 +59,12 @@ public final class ActivityCenter: ObservableObject {
         }
         
         activeActivities.removeAll(where: { $0.id == id })
+        if currentActivity?.id == id {
+            customCardWidth = nil
+            customCardHeight = nil
+            customTopRadius = nil
+            customBottomRadius = nil
+        }
         evaluateHighestPriority()
     }
     
@@ -86,6 +97,10 @@ public final class ActivityCenter: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             guard let self = self else { return }
             self.activeActivities.removeAll(where: { $0.id == id })
+            self.customCardWidth = nil
+            self.customCardHeight = nil
+            self.customTopRadius = nil
+            self.customBottomRadius = nil
             self.evaluateHighestPriority()
             self.dismissingActivityId = nil
             

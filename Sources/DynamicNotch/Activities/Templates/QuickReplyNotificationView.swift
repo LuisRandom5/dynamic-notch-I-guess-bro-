@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Vista interactiva para notificaciones con soporte de Swipe Down y Respuesta Rápida (Quick Reply)
+/// Diseñada con estética Liquid Glass, esquinas amplias y despeje total del notch físico.
 public struct QuickReplyNotificationView: View {
     public let id: String
     public let title: String
@@ -15,8 +16,15 @@ public struct QuickReplyNotificationView: View {
     @State private var isExpanded: Bool = false
     @State private var replyText: String = ""
     @State private var isSending: Bool = false
+    @State private var isSentSuccess: Bool = false
     @State private var dragOffsetY: CGFloat = 0
     @FocusState private var isInputFocused: Bool
+    
+    // Geometría calibrada para que NADA quede recortado ni aplastado
+    private let compactWidth: CGFloat = 390
+    private let compactHeight: CGFloat = 78
+    private let expandedWidth: CGFloat = 420
+    private let expandedHeight: CGFloat = 175
     
     public init(
         id: String,
@@ -46,36 +54,22 @@ public struct QuickReplyNotificationView: View {
                 expandedQuickReplyView
             }
         }
-        .frame(width: isExpanded ? 410 : 380)
-        .offset(y: dragOffsetY * 0.35)
-        .gesture(
-            DragGesture(minimumDistance: 5)
-                .onChanged { value in
-                    if !isExpanded && value.translation.height > 0 {
-                        self.dragOffsetY = value.translation.height
-                    }
-                }
-                .onEnded { value in
-                    if !isExpanded {
-                        if value.translation.height > 18 || value.predictedEndTranslation.height > 40 {
-                            expandToQuickReply()
-                        } else {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                                self.dragOffsetY = 0
-                            }
-                        }
-                    }
-                }
-        )
+        .frame(width: isExpanded ? expandedWidth : compactWidth)
+        .offset(y: dragOffsetY * 0.40)
+        .onAppear {
+            syncContainerDimensions(expanded: false)
+        }
         .onDisappear {
             NotchWindowManager.shared.setAllowsKeyInput(false)
+            ActivityCenter.shared.customCardWidth = nil
+            ActivityCenter.shared.customCardHeight = nil
         }
     }
     
-    // MARK: - Estado Compacto (Tarjeta de Notificación con Micro-Hint)
+    // MARK: - Estado Compacto (Tarjeta de Notificación con Despeje de Notch)
     private var compactNotificationView: some View {
-        HStack(spacing: 12) {
-            // Avatar con insignia de WhatsApp
+        HStack(alignment: .center, spacing: 14) {
+            // Avatar circular con halo y micro-insignia
             ZStack(alignment: .bottomTrailing) {
                 if let avatar = avatar {
                     Image(nsImage: avatar)
@@ -87,7 +81,7 @@ public struct QuickReplyNotificationView: View {
                 } else {
                     Circle()
                         .fill(LinearGradient(
-                            colors: [tintColor, tintColor.opacity(0.70)],
+                            colors: [tintColor, tintColor.opacity(0.65)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ))
@@ -98,7 +92,7 @@ public struct QuickReplyNotificationView: View {
                         .foregroundColor(.white)
                 }
                 
-                // Insignia de app pequeña
+                // Insignia verde de WhatsApp
                 Circle()
                     .fill(tintColor)
                     .frame(width: 15, height: 15)
@@ -111,7 +105,7 @@ public struct QuickReplyNotificationView: View {
             }
             .frame(width: 46, height: 46)
             
-            // Texto principal
+            // Textos del mensaje
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(title)
@@ -133,16 +127,16 @@ public struct QuickReplyNotificationView: View {
                 Text(message)
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Color.white.opacity(0.90))
-                    .lineLimit(2)
+                    .lineLimit(1)
                 
-                // Micro-hint para invitar al swipe down
+                // Micro-hint animado
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.compact.down")
                         .font(.system(size: 10, weight: .bold))
-                    Text("Desliza hacia abajo para responder")
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    Text("Desliza hacia abajo o toca para responder")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                 }
-                .foregroundColor(tintColor.opacity(0.90))
+                .foregroundColor(tintColor.opacity(0.95))
                 .padding(.top, 1)
             }
             
@@ -151,36 +145,56 @@ public struct QuickReplyNotificationView: View {
                 dismissActivity()
             }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.40))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.white.opacity(0.45))
                     .padding(6)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
+                    .background(Circle().fill(Color.white.opacity(0.10)))
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 18)
+        .padding(.top, 34) // Despeja perfectamente el notch físico
+        .padding(.bottom, 12)
         .contentShape(Rectangle())
-        .onTapGesture {
-            expandToQuickReply()
-        }
+        // Gesto unificado: detecta arrastre continuo hacia abajo O toque directo
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if value.translation.height > 0 {
+                        self.dragOffsetY = min(value.translation.height, 40)
+                    }
+                }
+                .onEnded { value in
+                    let isDragDown = value.translation.height >= 12 || value.predictedEndTranslation.height >= 25
+                    let isTap = abs(value.translation.width) < 10 && abs(value.translation.height) < 10
+                    
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        self.dragOffsetY = 0
+                    }
+                    
+                    if isDragDown || isTap {
+                        expandToQuickReply()
+                    }
+                }
+        )
     }
     
-    // MARK: - Estado Expandido (Cuadro de Texto Interactivo)
+    // MARK: - Estado Expandido (Quick Reply con Espacio Amplio y Diseño Apple)
     private var expandedQuickReplyView: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Cabecera de respuesta
-            HStack(spacing: 8) {
+            // Fila 1: Cabecera con avatar pequeño, nombre y botón de colapsar
+            HStack(spacing: 9) {
                 if let avatar = avatar {
                     Image(nsImage: avatar)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
                         .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 1))
                 } else {
                     Circle()
                         .fill(tintColor)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
                         .overlay(
                             Image(systemName: appIcon)
                                 .font(.system(size: 10, weight: .bold))
@@ -189,46 +203,58 @@ public struct QuickReplyNotificationView: View {
                 }
                 
                 Text("Respondiendo a \(title)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
+                
+                Text("• \(appName)")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(tintColor)
                 
                 Spacer()
                 
+                // Botón retraer
                 Button(action: {
                     collapseBack()
                 }) {
                     Image(systemName: "chevron.compact.up")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(Color.white.opacity(0.50))
-                        .padding(4)
+                        .padding(5)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
             }
             
-            // Cita del mensaje previo
-            HStack(spacing: 8) {
+            // Fila 2: Cita sutil del mensaje recibido con píldora verde
+            HStack(spacing: 9) {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(tintColor)
-                    .frame(width: 2.5, height: 26)
+                    .frame(width: 3, height: 28)
                 
                 Text(message)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.65))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(Color.white.opacity(0.70))
                     .lineLimit(1)
+                
+                Spacer()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
             )
             
-            // Campo de texto y botón Enviar
+            // Fila 3: Campo de texto con botón de enviar estilizado
             HStack(spacing: 8) {
                 HStack {
-                    TextField("Escribe una respuesta...", text: $replyText)
+                    TextField("Escribe una respuesta a \(title)...", text: $replyText)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 13.5, weight: .medium))
                         .foregroundColor(.white)
                         .focused($isInputFocused)
                         .onSubmit {
@@ -240,59 +266,87 @@ public struct QuickReplyNotificationView: View {
                             replyText = ""
                         }) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12))
+                                .font(.system(size: 13))
                                 .foregroundColor(Color.white.opacity(0.40))
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
                 .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.white.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.white.opacity(0.10))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18)
-                                .stroke(isInputFocused ? tintColor.opacity(0.70) : Color.white.opacity(0.15), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(isInputFocused ? tintColor.opacity(0.80) : Color.white.opacity(0.14), lineWidth: 1)
                         )
                 )
                 
-                // Botón enviar
+                // Botón Enviar con animación de confirmación
                 let canSend = !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 Button(action: {
                     sendReply()
                 }) {
                     ZStack {
                         Circle()
-                            .fill(canSend ? tintColor : Color.white.opacity(0.10))
-                            .frame(width: 32, height: 32)
-                            .shadow(color: canSend ? tintColor.opacity(0.40) : .clear, radius: 4, x: 0, y: 2)
+                            .fill(
+                                canSend
+                                    ? LinearGradient(colors: [tintColor, tintColor.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    : LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom)
+                            )
+                            .frame(width: 36, height: 36)
+                            .shadow(color: canSend ? tintColor.opacity(0.45) : .clear, radius: 6, x: 0, y: 2)
                         
-                        Image(systemName: isSending ? "checkmark" : "arrow.up")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(canSend ? .white : Color.white.opacity(0.30))
+                        if isSentSuccess {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(canSend ? .white : Color.white.opacity(0.28))
+                        }
                     }
+                    .scaleEffect(canSend ? 1.04 : 0.96)
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend || isSending)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .padding(.top, 36) // Despeje para la cámara del notch
+        .padding(.bottom, 16)
         .onAppear {
             isInputFocused = true
         }
     }
     
-    // MARK: - Lógica de Animaciones y Transición
+    // MARK: - Control de Animaciones y Dimensiones
+    
+    private func syncContainerDimensions(expanded: Bool) {
+        if expanded {
+            ActivityCenter.shared.customCardWidth = expandedWidth
+            ActivityCenter.shared.customCardHeight = expandedHeight
+            ActivityCenter.shared.customTopRadius = 24
+            ActivityCenter.shared.customBottomRadius = 36
+        } else {
+            ActivityCenter.shared.customCardWidth = compactWidth
+            ActivityCenter.shared.customCardHeight = compactHeight
+            ActivityCenter.shared.customTopRadius = 24
+            ActivityCenter.shared.customBottomRadius = 28
+        }
+        NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
     
     private func expandToQuickReply() {
         AppState.shared.hapticService.triggerExpand()
         NotchWindowManager.shared.setAllowsKeyInput(true)
         
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
             self.dragOffsetY = 0
             self.isExpanded = true
+            syncContainerDimensions(expanded: true)
         }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -305,9 +359,10 @@ public struct QuickReplyNotificationView: View {
         NotchWindowManager.shared.setAllowsKeyInput(false)
         AppState.shared.hapticService.triggerSnap()
         
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.84)) {
             self.isExpanded = false
             self.dragOffsetY = 0
+            syncContainerDimensions(expanded: false)
         }
     }
     
@@ -316,13 +371,14 @@ public struct QuickReplyNotificationView: View {
         guard !textToSend.isEmpty else { return }
         
         isSending = true
+        isSentSuccess = true
         AppState.shared.hapticService.triggerSnap()
         
-        // Enviar vía MessageReplyService
-        MessageReplyService.shared.sendReply(to: handle, message: textToSend, app: appName)
+        // Despachar respuesta sin abrir la app de escritorio desactualizada
+        MessageReplyService.shared.sendReply(to: handle, message: textToSend, app: appName, openBrowser: false)
         
         // Micro-animación de éxito antes de desvanecer hacia el notch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
             NotchWindowManager.shared.setAllowsKeyInput(false)
             dismissActivity()
         }

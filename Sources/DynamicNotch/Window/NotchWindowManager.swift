@@ -111,7 +111,9 @@ public final class NotchWindowManager: ObservableObject {
             case .airpodsPill:
                 updateHitArea(width: 410, height: 215)
             case .card:
-                updateHitArea(width: 430, height: 195)
+                let w = ActivityCenter.shared.customCardWidth ?? 430
+                let h = ActivityCenter.shared.customCardHeight ?? 130
+                updateHitArea(width: max(w + 30, 430), height: max(h + 45, 195))
             }
             return
         }

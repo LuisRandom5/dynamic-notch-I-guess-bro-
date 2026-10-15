@@ -124,7 +124,7 @@ public struct NotchContainerView: View {
             case .airpodsPill:
                 return 390
             case .card:
-                return 390
+                return activityCenter.customCardWidth ?? 390
             }
         } else {
             return baseRestingWidth
@@ -149,7 +149,7 @@ public struct NotchContainerView: View {
             case .airpodsPill:
                 return 192
             case .card:
-                return 112
+                return activityCenter.customCardHeight ?? 112
             }
         } else {
             switch appState.mode {
@@ -177,7 +177,7 @@ public struct NotchContainerView: View {
             case .pill, .sliderPill, .airpodsPill:
                 return 0
             case .card:
-                return 40
+                return activityCenter.customTopRadius ?? 28
             }
         } else {
             switch appState.mode {
@@ -206,7 +206,7 @@ public struct NotchContainerView: View {
             case .airpodsPill:
                 return 38
             case .card:
-                return 40
+                return activityCenter.customBottomRadius ?? 32
             }
         } else {
             switch appState.mode {

@@ -415,15 +415,15 @@ public struct ActivityDebugView: View {
                                 title: "Mamá",
                                 message: "¿A qué hora llegas a cenar? Te guardé comida caliente.",
                                 appIcon: "message.fill",
-                                appName: "WhatsApp",
+                                appName: "WhatsApp Web",
                                 tint: Color(red: 0.15, green: 0.78, blue: 0.45),
                                 enableQuickReply: true,
-                                duration: 12.0
+                                duration: 15.0
                             )
                         }) {
                             HStack {
                                 Image(systemName: "arrow.down.message.fill")
-                                Text("WhatsApp con Swipe Down (Quick Reply)")
+                                Text("WhatsApp Web con Swipe Down (Quick Reply)")
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -440,15 +440,15 @@ public struct ActivityDebugView: View {
                                 message: "¡Bro! ¿Ya viste cómo quedó el reproductor y las llamadas? 🚀",
                                 avatar: contactAvatar,
                                 appIcon: "message.fill",
-                                appName: "WhatsApp",
+                                appName: "WhatsApp Web",
                                 tint: Color(red: 0.15, green: 0.78, blue: 0.45),
                                 enableQuickReply: true,
-                                duration: 14.0
+                                duration: 15.0
                             )
                         }) {
                             HStack {
                                 Image(systemName: "person.crop.circle.badge.plus")
-                                Text("WhatsApp con Foto Real y Quick Reply")
+                                Text("WhatsApp Web con Foto Real y Quick Reply")
                             }
                             .frame(maxWidth: .infinity)
                         }
