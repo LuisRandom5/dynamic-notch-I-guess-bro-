@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftUI
 
 public final class MusicService: ObservableObject {
     public static let shared = MusicService()
@@ -8,11 +9,34 @@ public final class MusicService: ObservableObject {
     @Published public private(set) var hasActiveMusic: Bool = false
     
     private var progressTimer: Timer?
+    private var pauseDebounceTimer: Timer?
     
     private init() {
         setupDistributedNotifications()
         setupNowPlayingService()
         checkActivePlayers()
+    }
+    
+    public func isAppleMusicActuallyPlaying() -> Bool {
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").first != nil else {
+            return false
+        }
+        let script = "tell application \"Music\" to player state as string"
+        if let state = runAppleScript(script)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            return state == "playing"
+        }
+        return false
+    }
+    
+    public func isSpotifyActuallyPlaying() -> Bool {
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").first != nil else {
+            return false
+        }
+        let script = "tell application \"Spotify\" to player state as string"
+        if let state = runAppleScript(script)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            return state == "playing"
+        }
+        return false
     }
     
     private func setupNowPlayingService() {
@@ -27,19 +51,68 @@ public final class MusicService: ObservableObject {
                 }
                 
                 if isPlaying && !resolvedTrack.title.isEmpty {
+                    // Cancelar cualquier temporizador de pausa pendiente por micro-cortes
+                    self.pauseDebounceTimer?.invalidate()
+                    self.pauseDebounceTimer = nil
+                    
                     self.currentTrack = resolvedTrack
-                    self.hasActiveMusic = true
+                    if !self.hasActiveMusic {
+                        self.hasActiveMusic = true
+                    }
+                    if AppState.shared.mode == .idle && AppState.shared.showCompactWhenPlaying && ActivityCenter.shared.currentActivity == nil {
+                        withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
+                            AppState.shared.mode = .compact
+                        }
+                    }
                     self.updateProgressTimer(isPlaying: true)
                 } else if !isPlaying {
-                    if !resolvedTrack.title.isEmpty {
-                        var updated = resolvedTrack
-                        updated.isPlaying = false
-                        self.currentTrack = updated
+                    // Si ya teníamos música activa, evitar que un frame espurio o cambio de foco
+                    // apague inmediatamente el minirreproductor al lado del notch.
+                    if self.hasActiveMusic {
+                        // 1. Si la fuente es Apple Music o Spotify, verificar si la app sigue reproduciendo
+                        let src = self.currentTrack.appSource
+                        if (src == "Apple Music" || track.appSource == "Apple Music") && self.isAppleMusicActuallyPlaying() {
+                            return
+                        }
+                        if (src == "Spotify" || track.appSource == "Spotify") && self.isSpotifyActuallyPlaying() {
+                            return
+                        }
+                        
+                        // 2. Debounce de 2.5s antes de confirmar la pausa real (evita parpadeos de buffer en YouTube/Safari)
+                        if self.pauseDebounceTimer == nil {
+                            self.pauseDebounceTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+                                guard let self = self else { return }
+                                self.pauseDebounceTimer = nil
+                                
+                                // Re-verificar estado
+                                if (self.currentTrack.appSource == "Apple Music" || track.appSource == "Apple Music") && self.isAppleMusicActuallyPlaying() {
+                                    return
+                                }
+                                if (self.currentTrack.appSource == "Spotify" || track.appSource == "Spotify") && self.isSpotifyActuallyPlaying() {
+                                    return
+                                }
+                                
+                                print("[MusicService] Pausa confirmada tras debounce de 2.5s. Desactivando minirreproductor.")
+                                if !resolvedTrack.title.isEmpty {
+                                    var updated = resolvedTrack
+                                    updated.isPlaying = false
+                                    self.currentTrack = updated
+                                } else {
+                                    self.currentTrack.isPlaying = false
+                                }
+                                self.hasActiveMusic = false
+                                self.updateProgressTimer(isPlaying: false)
+                            }
+                        }
                     } else {
-                        self.currentTrack.isPlaying = false
+                        if !resolvedTrack.title.isEmpty {
+                            var updated = resolvedTrack
+                            updated.isPlaying = false
+                            self.currentTrack = updated
+                        } else {
+                            self.currentTrack.isPlaying = false
+                        }
                     }
-                    self.hasActiveMusic = false
-                    self.updateProgressTimer(isPlaying: false)
                 }
             }
         }
@@ -81,6 +154,9 @@ public final class MusicService: ObservableObject {
         // Sincronizar posición real
         let position = fetchCurrentPlaybackPosition(app: "Apple Music")
         
+        self.pauseDebounceTimer?.invalidate()
+        self.pauseDebounceTimer = nil
+        
         self.currentTrack = MusicTrack(
             title: title,
             artist: artist,
@@ -93,6 +169,14 @@ public final class MusicService: ObservableObject {
         )
         self.hasActiveMusic = isPlaying
         updateProgressTimer(isPlaying: isPlaying)
+        
+        if isPlaying && AppState.shared.mode == .idle && AppState.shared.showCompactWhenPlaying && ActivityCenter.shared.currentActivity == nil {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
+                    AppState.shared.mode = .compact
+                }
+            }
+        }
     }
     
     private func handleSpotifyNotification(_ notification: Notification) {
@@ -108,6 +192,9 @@ public final class MusicService: ObservableObject {
         let position = fetchCurrentPlaybackPosition(app: "Spotify")
         let artwork = fetchSpotifyArtwork()
         
+        self.pauseDebounceTimer?.invalidate()
+        self.pauseDebounceTimer = nil
+        
         self.currentTrack = MusicTrack(
             title: title,
             artist: artist,
@@ -120,6 +207,14 @@ public final class MusicService: ObservableObject {
         )
         self.hasActiveMusic = isPlaying
         updateProgressTimer(isPlaying: isPlaying)
+        
+        if isPlaying && AppState.shared.mode == .idle && AppState.shared.showCompactWhenPlaying && ActivityCenter.shared.currentActivity == nil {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
+                    AppState.shared.mode = .compact
+                }
+            }
+        }
     }
     
     public func openMusicApp() {

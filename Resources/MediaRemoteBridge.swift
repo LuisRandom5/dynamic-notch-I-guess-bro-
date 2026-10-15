@@ -33,6 +33,7 @@ register(DispatchQueue.main)
 var lastPayloadString = ""
 var artworkCache: [String: String] = [:]
 var durationCache: [String: Double] = [:]
+var nilDictCount = 0
 
 func emitNowPlaying() {
     getPlay(DispatchQueue.main) { isAppPlaying in
@@ -42,13 +43,16 @@ func emitNowPlaying() {
         let fetchInfo: () -> Void = {
             getInfo(DispatchQueue.main) { dict in
                 guard let dict = dict as? [String: Any] else {
-                    if !isAppPlaying && !lastPayloadString.isEmpty {
+                    nilDictCount += 1
+                    if !isAppPlaying && !lastPayloadString.isEmpty && nilDictCount >= 3 {
+                        nilDictCount = 0
                         lastPayloadString = ""
                         let emptyMsg = "{\"isPlaying\":false,\"title\":\"\",\"artist\":\"\",\"appSource\":\"\"}\n"
                         FileHandle.standardOutput.write(emptyMsg.data(using: .utf8)!)
                     }
                     return
                 }
+                nilDictCount = 0
                 
                 let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
                 let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
@@ -61,13 +65,16 @@ func emitNowPlaying() {
                 // Si título y artista están vacíos
                 if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                    artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    if !isPlaying && !lastPayloadString.isEmpty {
+                    nilDictCount += 1
+                    if !isPlaying && !lastPayloadString.isEmpty && nilDictCount >= 3 {
+                        nilDictCount = 0
                         lastPayloadString = ""
                         let emptyMsg = "{\"isPlaying\":false,\"title\":\"\",\"artist\":\"\",\"appSource\":\"\"}\n"
                         FileHandle.standardOutput.write(emptyMsg.data(using: .utf8)!)
                     }
                     return
                 }
+                nilDictCount = 0
                 
                 // Resolución y caché de duración real
                 var resolvedDuration = rawDuration

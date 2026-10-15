@@ -123,6 +123,13 @@ public final class ActivityCenter: ObservableObject {
                 }
             } else {
                 AppState.shared.isHoldingBareNotch = false
+                if self.currentActivity == nil {
+                    if AppState.shared.shouldShowCompact && AppState.shared.mode == .idle {
+                        withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
+                            AppState.shared.mode = .compact
+                        }
+                    }
+                }
             }
         }
     }

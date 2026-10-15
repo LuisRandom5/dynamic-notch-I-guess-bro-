@@ -74,6 +74,13 @@ public final class FullScreenDetectorService: ObservableObject {
                             appState.isPlayerDetailExpanded = false
                         }
                     }
+                } else {
+                    let appState = AppState.shared
+                    if appState.shouldShowCompact && appState.mode == .idle {
+                        withAnimation(.spring(response: 0.44, dampingFraction: 0.82)) {
+                            appState.mode = .compact
+                        }
+                    }
                 }
             }
         }

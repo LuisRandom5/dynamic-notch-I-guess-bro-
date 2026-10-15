@@ -802,7 +802,7 @@ public final class NotchHitTestView: NSView {
             DispatchQueue.main.async {
                 if AppState.shared.shelfItems.isEmpty && (AppState.shared.mode == .shelf || AppState.shared.activeTab == .shelf) && !AppState.shared.isHovered {
                     withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
-                        if AppState.shared.musicService.hasActiveMusic && AppState.shared.showCompactWhenPlaying {
+                        if AppState.shared.shouldShowCompact {
                             AppState.shared.mode = .compact
                             AppState.shared.activeTab = .music
                         } else {

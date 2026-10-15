@@ -982,6 +982,9 @@ public struct NotchContainerView: View {
             performExpand()
         } else if mode == .shelf {
             appState.activeTab = .shelf
+        } else if mode == .compact {
+            interactionState = .collapsed
+            isCollapsing = false
         } else {
             performCollapse()
         }
@@ -1092,7 +1095,7 @@ public struct NotchContainerView: View {
                 self.appState.contentVerticalOverscrollOffset = 0
                 self.appState.overscrollOffset = 0
                 self.appState.contentOverscrollOffset = 0
-                if self.musicService.hasActiveMusic && self.appState.showCompactWhenPlaying {
+                if self.appState.shouldShowCompact {
                     self.appState.mode = .compact
                 } else {
                     self.appState.mode = .idle

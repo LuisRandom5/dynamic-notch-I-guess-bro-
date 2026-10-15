@@ -153,6 +153,10 @@ public final class AppState: ObservableObject {
     private var alertDismissTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
+    public var shouldShowCompact: Bool {
+        return (musicService.hasActiveMusic || musicPauseDismissTimer != nil || !shelfItems.isEmpty) && showCompactWhenPlaying
+    }
+    
     private init() {
         setupSubscriptions()
         self.shelfItems = ShelfStorageService.shared.loadExistingStashedItems()
@@ -312,13 +316,7 @@ public final class AppState: ObservableObject {
                 dampingFraction: ExitAnimationMetrics.shapeCloseDamping
             )
             withAnimation(springAnim) {
-                if (musicService.hasActiveMusic || musicPauseDismissTimer != nil) && showCompactWhenPlaying {
-                    mode = .compact
-                } else if !shelfItems.isEmpty {
-                    mode = .compact
-                } else {
-                    mode = .idle
-                }
+                mode = shouldShowCompact ? .compact : .idle
                 hapticService.triggerSnap()
             }
         }
