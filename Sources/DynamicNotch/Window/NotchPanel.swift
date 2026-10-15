@@ -42,25 +42,20 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
     // MARK: - Captura Universal de Gestos de Notificación (Swipe Down & Drag Down)
     private var notifGestureStartY: CGFloat = 0
     private var isTrackingNotifDrag: Bool = false
+    // Bloqueo por gesto: un swipe físico genera decenas de eventos (dedos + inercia + rebote final).
+    // Solo se permite UNA acción por gesto; si no, la inercia/rebote colapsaba la respuesta al instante.
+    private var notifScrollAccum: CGFloat = 0
+    private var notifScrollConsumed: Bool = false
+    private var notifLastActionTime: Date = .distantPast
     
     public override func sendEvent(_ event: NSEvent) {
         if NotificationActivityProvider.shared.isNotificationActive {
             switch event.type {
             case .scrollWheel:
-                let rawDy = event.scrollingDeltaY
-                let isInverted = event.isDirectionInvertedFromDevice
-                let fingerDy = isInverted ? rawDy : -rawDy
-                
-                // Si desliza hacia abajo (dedos hacia el usuario / hacia la pantalla)
-                if (fingerDy > 1.2 || rawDy > 1.2) && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                    DNDLogger.log("NotchPanel.sendEvent -> swipe down detectado en scrollWheel! rawDy=\(rawDy), fingerDy=\(fingerDy)")
-                    NotificationActivityProvider.shared.expandQuickReply()
-                    return
-                } else if (fingerDy < -1.5 || rawDy < -1.5) && NotificationActivityProvider.shared.isQuickReplyExpanded {
-                    DNDLogger.log("NotchPanel.sendEvent -> swipe up detectado en scrollWheel! rawDy=\(rawDy), fingerDy=\(fingerDy)")
-                    NotificationActivityProvider.shared.collapseQuickReply()
-                    return
-                }
+                handleNotificationScroll(event)
+                // Tragar SIEMPRE el scroll mientras hay notificación: evita que el handler duplicado
+                // de NotchHitTestView.scrollWheel reinterprete la inercia como "swipe hacia arriba".
+                return
                 
             case .leftMouseDown:
                 notifGestureStartY = event.locationInWindow.y
@@ -95,6 +90,60 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
         }
         
         super.sendEvent(event)
+    }
+    
+    private func handleNotificationScroll(_ event: NSEvent) {
+        let provider = NotificationActivityProvider.shared
+        
+        // Inicio de un nuevo gesto físico: reiniciar bloqueo
+        if event.phase == .began || event.phase == .mayBegin {
+            notifScrollAccum = 0
+            notifScrollConsumed = false
+        }
+        // Fin del gesto: liberar bloqueo para el siguiente swipe
+        if event.phase == .ended || event.phase == .cancelled {
+            notifScrollAccum = 0
+            notifScrollConsumed = false
+            return
+        }
+        // La inercia (momentum) nunca dispara acciones: es la causa del "abre y se cierra solo"
+        if event.momentumPhase != [] { return }
+        // Ya se ejecutó una acción en este gesto
+        if notifScrollConsumed { return }
+        // Cooldown tras la última acción (cubre ratones con rueda que no tienen fases)
+        if Date().timeIntervalSince(notifLastActionTime) < 0.6 { return }
+        
+        let rawDy = event.scrollingDeltaY
+        let fingerDy = event.isDirectionInvertedFromDevice ? rawDy : -rawDy
+        // Rueda de ratón clásica (sin fases): cada "clic" de rueda cuenta como gesto
+        let isDiscreteWheel = event.phase == [] && event.momentumPhase == []
+        notifScrollAccum += fingerDy
+        
+        let downThreshold: CGFloat = isDiscreteWheel ? 1 : 6
+        let upThreshold: CGFloat = isDiscreteWheel ? -1 : -10
+        
+        if notifScrollAccum >= downThreshold {
+            if !provider.isQuickReplyExpanded {
+                DNDLogger.log("NotchPanel: swipe DOWN -> expandQuickReply (accum=\(notifScrollAccum))")
+                markNotifActionDone()
+                DispatchQueue.main.async { provider.expandQuickReply() }
+            }
+        } else if notifScrollAccum <= upThreshold {
+            markNotifActionDone()
+            if provider.isQuickReplyExpanded {
+                DNDLogger.log("NotchPanel: swipe UP -> collapseQuickReply (accum=\(notifScrollAccum))")
+                DispatchQueue.main.async { provider.collapseQuickReply() }
+            } else {
+                DNDLogger.log("NotchPanel: swipe UP -> dismissNotification (accum=\(notifScrollAccum))")
+                DispatchQueue.main.async { provider.dismissNotification() }
+            }
+        }
+    }
+    
+    private func markNotifActionDone() {
+        notifScrollConsumed = true
+        notifScrollAccum = 0
+        notifLastActionTime = Date()
     }
     
     // MARK: - NSDraggingDestination en NotchPanel
