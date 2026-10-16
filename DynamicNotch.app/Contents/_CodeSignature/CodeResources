@@ -4,6 +4,14 @@
 <dict>
 	<key>files</key>
 	<dict>
+		<key>Resources/Assets/airpods_3_4_5.gif</key>
+		<data>
+		4qHobam03+IJXBZTNGUOJ6xtRnM=
+		</data>
+		<key>Resources/Assets/airpods_3_4_5.mp4</key>
+		<data>
+		D+qSmnYM5CkVZ3tKZVqdERAi3C4=
+		</data>
 		<key>Resources/MediaRemoteBridge.swift</key>
 		<data>
 		TjkNi5GRBnkpL5XApF9rf/sIhkE=
@@ -11,6 +19,20 @@
 	</dict>
 	<key>files2</key>
 	<dict>
+		<key>Resources/Assets/airpods_3_4_5.gif</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			nGkbovswcRRW2tek7gN3ivzNJQX0l2CuR48hRV6/ZOQ=
+			</data>
+		</dict>
+		<key>Resources/Assets/airpods_3_4_5.mp4</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			eD4RABDLdoVCiB6Re/AmXA+3Lg7+3Jpdj2y1Jxf6fgY=
+			</data>
+		</dict>
 		<key>Resources/MediaRemoteBridge.swift</key>
 		<dict>
 			<key>hash2</key>
