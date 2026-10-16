@@ -24,14 +24,19 @@ public final class NotificationActivityProvider: ObservableObject {
         self.currentNotificationId = id
     }
     
+    // El estado publicado ES la fuente de verdad: QuickReplyNotificationView lo observa y reacciona.
     public func expandQuickReply() {
         guard isNotificationActive && !isQuickReplyExpanded else { return }
-        onExpandRequested?()
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
+            isQuickReplyExpanded = true
+        }
     }
     
     public func collapseQuickReply() {
         guard isNotificationActive && isQuickReplyExpanded else { return }
-        onCollapseRequested?()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.84)) {
+            isQuickReplyExpanded = false
+        }
     }
     
     public func dismissNotification() {

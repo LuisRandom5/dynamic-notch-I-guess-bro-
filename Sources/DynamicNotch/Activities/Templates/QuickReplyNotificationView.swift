@@ -13,7 +13,12 @@ public struct QuickReplyNotificationView: View {
     public let appIcon: String
     public let tintColor: Color
     
-    @State private var isExpanded: Bool = false
+    // Fuente de verdad única: el proveedor. Antes había un @State local + closures capturados en onAppear
+    // que apuntaban a una copia vieja de la vista, por eso el swipe cambiaba el proveedor pero no la UI.
+    @ObservedObject private var provider = NotificationActivityProvider.shared
+    private var isExpanded: Bool {
+        provider.isQuickReplyExpanded && provider.currentNotificationId == id
+    }
     @State private var replyText: String = ""
     @State private var isSending: Bool = false
     @State private var isSentSuccess: Bool = false
@@ -60,16 +65,14 @@ public struct QuickReplyNotificationView: View {
         .offset(y: dragOffsetY * 0.40)
         .onAppear {
             NotificationActivityProvider.shared.setNotificationState(active: true, expanded: false, id: id)
-            NotificationActivityProvider.shared.onExpandRequested = {
-                expandToQuickReply()
-            }
-            NotificationActivityProvider.shared.onCollapseRequested = {
-                collapseBack()
-            }
             NotificationActivityProvider.shared.onDismissRequested = {
-                dismissActivity()
+                NotchWindowManager.shared.setAllowsKeyInput(false)
+                ActivityCenter.shared.dismissWithAnimation(id: id)
             }
             syncContainerDimensions(expanded: false)
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            applyExpansion(expanded)
         }
         .onDisappear {
             NotificationActivityProvider.shared.setNotificationState(active: false, expanded: false, id: nil)
@@ -381,36 +384,39 @@ public struct QuickReplyNotificationView: View {
         NotchWindowManager.shared.updateHitAreaForCurrentState()
     }
     
+    // Tap, drag y swipe del trackpad pasan TODOS por el proveedor; la vista reacciona en applyExpansion.
     private func expandToQuickReply() {
-        if AppState.shared.mode == .expanded {
-            AppState.shared.mode = AppState.shared.shouldShowCompact ? .compact : .idle
-        }
-        AppState.shared.hapticService.triggerExpand()
-        NotchWindowManager.shared.setAllowsKeyInput(true)
-        ActivityCenter.shared.pauseDismissTimer(for: id)
-        NotificationActivityProvider.shared.setNotificationState(active: true, expanded: true, id: id)
-        
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
-            self.dragOffsetY = 0
-            self.isExpanded = true
-            syncContainerDimensions(expanded: true)
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.isInputFocused = true
-        }
+        NotificationActivityProvider.shared.expandQuickReply()
     }
     
     private func collapseBack() {
-        isInputFocused = false
-        NotchWindowManager.shared.setAllowsKeyInput(false)
-        AppState.shared.hapticService.triggerSnap()
-        NotificationActivityProvider.shared.setNotificationState(active: true, expanded: false, id: id)
-        
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.84)) {
-            self.isExpanded = false
-            self.dragOffsetY = 0
-            syncContainerDimensions(expanded: false)
+        NotificationActivityProvider.shared.collapseQuickReply()
+    }
+    
+    /// Efectos secundarios del cambio de estado (tamaño del contenedor, foco, teclado, timer)
+    private func applyExpansion(_ expanded: Bool) {
+        if expanded {
+            if AppState.shared.mode == .expanded {
+                AppState.shared.mode = AppState.shared.shouldShowCompact ? .compact : .idle
+            }
+            AppState.shared.hapticService.triggerExpand()
+            NotchWindowManager.shared.setAllowsKeyInput(true)
+            ActivityCenter.shared.pauseDismissTimer(for: id)
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
+                self.dragOffsetY = 0
+                syncContainerDimensions(expanded: true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.isInputFocused = true
+            }
+        } else {
+            isInputFocused = false
+            NotchWindowManager.shared.setAllowsKeyInput(false)
+            AppState.shared.hapticService.triggerSnap()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.84)) {
+                self.dragOffsetY = 0
+                syncContainerDimensions(expanded: false)
+            }
         }
     }
     
