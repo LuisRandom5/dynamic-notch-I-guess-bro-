@@ -117,6 +117,7 @@ public struct NotchContainerView: View {
                     return baseRestingWidth
                 }
             }
+            switch activity.style {
             case .pill:
                 return geometry.width + 170
             case .sliderPill:
