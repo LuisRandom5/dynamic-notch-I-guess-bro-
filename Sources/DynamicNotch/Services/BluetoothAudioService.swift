@@ -316,12 +316,12 @@ public final class BluetoothAudioService {
     private func fetchBatteryAndTriggerAlert(deviceName: String) {
         DNDLogger.log("BluetoothAudioService.fetchBatteryAndTriggerAlert for: \(deviceName)")
         
-        // 1. Mostrar de inmediato la animación 3D del Notch para 0 ms de retardo
+        // 1. Mostrar de inmediato la animación de las alas del Notch para 0 ms de retardo
         DispatchQueue.main.async {
             AirPodsActivityProvider.shared.publishAirPodsActivity(
                 name: deviceName,
                 batteryLevel: 95,
-                duration: 4.8
+                duration: 8.0
             )
         }
         
@@ -345,7 +345,7 @@ public final class BluetoothAudioService {
                     leftPercent: leftBat,
                     rightPercent: rightBat,
                     casePercent: caseBat,
-                    duration: 4.5
+                    duration: 8.0
                 )
             }
         }

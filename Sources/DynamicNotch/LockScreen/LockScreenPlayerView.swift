@@ -560,26 +560,13 @@ public struct LockScreenPlayerView: View {
         }
     }
     
-    // MARK: - Mini Ecualizador Reactivo
+    // MARK: - Mini Ecualizador Reactivo al Sonido Real
     
     private var heroEqualizerView: some View {
-        HStack(spacing: 1.8) {
-            ForEach(0..<4) { idx in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.white.opacity(0.85))
-                    .frame(
-                        width: 2.2,
-                        height: track.isPlaying ? (CGFloat(4 + ((idx * 3 + Int(eqPhase * 4)) % 8))) : 3
-                    )
-                    .animation(.easeInOut(duration: 0.22).repeatCount(1, autoreverses: true), value: eqPhase)
-            }
-        }
-        .frame(width: 16, height: 14)
-        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
-            if track.isPlaying {
-                eqPhase = (eqPhase + 1).truncatingRemainder(dividingBy: 10)
-            }
-        }
+        AudioVisualizer(
+            isPlaying: track.isPlaying,
+            colorMode: .fromArtwork(track.artwork)
+        )
     }
     
     // MARK: - Fila de Volumen
@@ -920,12 +907,12 @@ public struct LockScreenPlayerView: View {
     }
 }
 
-/// Estilo de botón que aplica la micro-escala 0.92 al presionar solicitada para los controles
+/// Estilo de botón que aplica la micro-escala elástica y resorte dinámico con snap tipo notch
 public struct PressedScaleButtonStyle: ButtonStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? LockScreenPlayerMetrics.buttonPressedScale : 1.0)
-            .animation(.spring(response: 0.20, dampingFraction: 0.70), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.18, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }

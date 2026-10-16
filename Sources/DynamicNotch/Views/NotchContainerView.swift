@@ -117,13 +117,12 @@ public struct NotchContainerView: View {
                     return baseRestingWidth
                 }
             }
-            switch activity.style {
             case .pill:
                 return geometry.width + 170
             case .sliderPill:
                 return geometry.width + 292
             case .airpodsPill:
-                return 390
+                return geometry.width + 132
             case .card:
                 if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
                     return notificationProvider.isQuickReplyExpanded
@@ -137,7 +136,7 @@ public struct NotchContainerView: View {
         }
     }
     
-    // Alto: altura del notch en reposo, 36pt en SliderPill, 192pt en AirPods 3D, 144pt en Drop Invitation, 204pt en repisa, 196pt en reproductor
+    // Alto: altura del notch en reposo, 36pt en SliderPill, altura del notch en alas de AirPods, 144pt en Drop Invitation, 204pt en repisa, 196pt en reproductor
     private var currentHeight: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return (appState.isPlayerDetailExpanded && appState.mode == .expanded)
@@ -150,10 +149,8 @@ public struct NotchContainerView: View {
                 return geometry.height
             }
             switch activity.style {
-            case .pill, .sliderPill:
+            case .pill, .sliderPill, .airpodsPill:
                 return geometry.height
-            case .airpodsPill:
-                return 192
             case .card:
                 if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
                     return notificationProvider.isQuickReplyExpanded
@@ -198,10 +195,8 @@ public struct NotchContainerView: View {
                 return 17
             }
             switch activity.style {
-            case .pill, .sliderPill:
+            case .pill, .sliderPill, .airpodsPill:
                 return 17
-            case .airpodsPill:
-                return 38
             case .card:
                 if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
                     return notificationProvider.isQuickReplyExpanded

@@ -2,35 +2,60 @@ import SwiftUI
 import AppKit
 import SceneKit
 
-// MARK: - ActivityAirPodsPillView (Tarjeta 3D Expandida de Conexión de AirPods)
-/// Tarjeta desplegada con animación nativa SceneKit de 360° en 3D para la conexión de AirPods:
-/// - Dimensiones de tarjeta: 370 x 175 pt, anclada orgánicamente al notch físico.
-/// - Canvas 3D SceneKit: Renderiza proceduralmente los AirPods con materiales PBR Apple (cerámica con clearCoat, punta de silicona, rejillas acústicas y anillo de carga cromado).
-/// - GPU 0% en reposo: `rendersContinuously` se desactiva automáticamente al concluir el giro.
+// MARK: - AnimatedGIFView (Reproductor nativo de GIFs en bucle para AppKit/SwiftUI)
+public struct AnimatedGIFView: NSViewRepresentable {
+    public let gifURL: URL
+    
+    public init(gifURL: URL) {
+        self.gifURL = gifURL
+    }
+    
+    public func makeNSView(context: Context) -> NSImageView {
+        let imageView = NSImageView()
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.animates = true
+        imageView.canDrawSubviewsIntoLayer = true
+        if let image = NSImage(contentsOf: gifURL) {
+            imageView.image = image
+        }
+        return imageView
+    }
+    
+    public func updateNSView(_ nsView: NSImageView, context: Context) {
+        if nsView.image == nil, let image = NSImage(contentsOf: gifURL) {
+            nsView.image = image
+            nsView.animates = true
+        }
+    }
+}
+
+// MARK: - ActivityAirPodsPillView (Alas Compactas de Conexión de AirPods en el Notch)
+/// Diseño compacto en alas simétricas a los lados del Notch:
+/// - Ala izquierda: Animación de los AirPods girando en bucle (AirPods 3/4/5 o Pro 2).
+/// - Espacio central: Sensor de cámara del MacBook.
+/// - Ala derecha: Círculo verde con la batería y porcentaje.
 public struct ActivityAirPodsPillView: View {
     public let activity: LiveActivity
     @EnvironmentObject var screenService: ScreenService
     @ObservedObject var center = ActivityCenter.shared
     
-    @State private var triggerSpin: Bool = false
-    @State private var isContentRevealed: Bool = true
     @State private var batteryRingProgress: CGFloat = 0.0
+    private let wingWidth: CGFloat = 66
+    
+    // Verde Apple (#30D158)
+    private let appleBatteryGreen = Color(red: 0x30 / 255.0, green: 0xD1 / 255.0, blue: 0x58 / 255.0)
     
     public init(activity: LiveActivity) {
         self.activity = activity
     }
     
-    private var isContentVisible: Bool {
-        isContentRevealed && center.dismissingActivityId != activity.id
-    }
-    
     private var airpodsState: AirPodsActivityState {
-        activity.airpodsState ?? AirPodsActivityState(name: "AirPods Pro", batteryLevel: 100)
+        activity.airpodsState ?? AirPodsActivityState(name: "AirPods", batteryLevel: 100)
     }
     
     private var modelName: String {
         let name = airpodsState.name
-        if name.isEmpty { return "AirPods Pro" }
+        if name.isEmpty { return "AirPods" }
         return name
     }
     
@@ -38,85 +63,96 @@ public struct ActivityAirPodsPillView: View {
         max(0, min(100, airpodsState.batteryLevel))
     }
     
-    // Verde Apple idéntico a iOS (#30D158)
-    private let appleBatteryGreen = Color(red: 0x30 / 255.0, green: 0xD1 / 255.0, blue: 0x58 / 255.0)
+    private var animationURL: URL? {
+        let lower = modelName.lowercased()
+        
+        // 1. AirPods Pro 2 / Pro (cuando esté disponible el asset de Pro 2)
+        if lower.contains("pro") {
+            if let bundlePro = Bundle.main.url(forResource: "airpods_pro_2", withExtension: "gif") {
+                return bundlePro
+            }
+            let docPro = "/Users/luisangelceroncastro/Documents/animaciones (creo que terminadas)/airpods pro 2.gif"
+            if FileManager.default.fileExists(atPath: docPro) {
+                return URL(fileURLWithPath: docPro)
+            }
+        }
+        
+        // 2. AirPods 3, 4, 5 (modelo estándar)
+        if let bundleURL = Bundle.main.url(forResource: "airpods_3_4_5", withExtension: "gif") {
+            return bundleURL
+        }
+        let localPath = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Assets/airpods_3_4_5.gif")
+        if FileManager.default.fileExists(atPath: localPath.path) {
+            return localPath
+        }
+        let userDocPath = "/Users/luisangelceroncastro/Documents/animaciones (creo que terminadas)/airpods 3-4-5gif.gif"
+        if FileManager.default.fileExists(atPath: userDocPath) {
+            return URL(fileURLWithPath: userDocPath)
+        }
+        
+        return nil
+    }
     
     public var body: some View {
-        VStack(spacing: 0) {
-            // MARK: - Canvas 3D Nativo con giro 360° espacioso y brillo de estudio
-            AirPodsSceneView(animate: $triggerSpin)
-                .frame(width: 360, height: 104)
-                .padding(.top, 36) // Despeja completamente el notch físico
-                .opacity(isContentVisible ? 1.0 : 0.0)
-                .scaleEffect(isContentVisible ? 1.0 : 0.88)
-                .animation(.spring(response: 0.44, dampingFraction: 0.80), value: isContentVisible)
-            
-            Spacer(minLength: 0)
-            
-            // MARK: - Estadísticas de Conexión / Batería (Fila Estilo iOS 18)
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(modelName)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    Text("Conectado • Audio espacial")
-                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.50))
-                }
-                
-                Spacer()
-                
-                HStack(spacing: 7) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.white.opacity(0.16), lineWidth: 2.4)
-                            .frame(width: 20, height: 20)
-                        
-                        Circle()
-                            .trim(from: 0, to: (CGFloat(batteryLevel) / 100.0) * batteryRingProgress)
-                            .stroke(
-                                batteryLevel > 20 ? appleBatteryGreen : DesignTokens.orange,
-                                style: StrokeStyle(lineWidth: 2.4, lineCap: .round)
-                            )
-                            .rotationEffect(.degrees(-90))
-                            .frame(width: 20, height: 20)
-                        
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(batteryLevel > 20 ? appleBatteryGreen : DesignTokens.orange)
-                    }
-                    
-                    Text("\(batteryLevel)%")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .monospacedDigit()
+        HStack(spacing: 0) {
+            // Ala Izquierda (Leading): Animación de los AirPods girando en bucle
+            ZStack {
+                if let url = animationURL {
+                    AnimatedGIFView(gifURL: url)
+                        .frame(width: 42, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else {
+                    Image(systemName: "airpodspro")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
+            }
+            .frame(width: wingWidth, height: screenService.currentGeometry.height)
+            .contentShape(Rectangle())
+            
+            // Espacio central (coincide con el sensor de la cámara del notch físico)
+            Color.clear
+                .frame(
+                    width: screenService.currentGeometry.width,
+                    height: screenService.currentGeometry.height
                 )
+            
+            // Ala Derecha (Trailing): Anillo de batería circular verde con porcentaje
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.18), lineWidth: 2.2)
+                        .frame(width: 17, height: 17)
+                    
+                    Circle()
+                        .trim(from: 0, to: (CGFloat(batteryLevel) / 100.0) * batteryRingProgress)
+                        .stroke(
+                            batteryLevel > 20 ? appleBatteryGreen : Color.orange,
+                            style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 17, height: 17)
+                    
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(batteryLevel > 20 ? appleBatteryGreen : Color.orange)
+                }
+                
+                Text("\(batteryLevel)%")
+                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(.white)
             }
-            .padding(.horizontal, 26)
-            .padding(.bottom, 18)
-            .opacity(isContentVisible ? 1.0 : 0.0)
-            .offset(y: isContentVisible ? 0 : 8)
-            .animation(.easeOut(duration: 0.25).delay(0.08), value: isContentVisible)
+            .frame(width: wingWidth, height: screenService.currentGeometry.height)
+            .contentShape(Rectangle())
         }
-        .frame(width: 370, height: 175, alignment: .top)
+        .frame(
+            width: screenService.currentGeometry.width + (wingWidth * 2),
+            height: screenService.currentGeometry.height
+        )
         .onAppear {
-            withAnimation(.easeOut(duration: 0.20)) {
-                isContentRevealed = true
-            }
-            withAnimation(.spring(response: 0.75, dampingFraction: 0.82).delay(0.15)) {
+            withAnimation(.spring(response: 0.65, dampingFraction: 0.78).delay(0.12)) {
                 batteryRingProgress = 1.0
-            }
-            // Disparar giro 3D coordinado con la apertura de la tarjeta
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                triggerSpin = true
             }
         }
     }

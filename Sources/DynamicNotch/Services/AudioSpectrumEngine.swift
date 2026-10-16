@@ -621,6 +621,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     // MARK: - Lectura desde la UI (a 60 fps)
     /// Lee de forma thread-safe los 6 valores de magnitud normalizados (0.0 ... 1.0)
     public func getMagnitudes() -> [Float] {
+        // 1. Modo de simulación explícito forzado por el usuario/demo
         if isSimulatedMode {
             if CallActivityProvider.shared.isCallActive {
                 return generateRealisticCallMagnitudes()
@@ -628,30 +629,27 @@ public final class AudioSpectrumEngine: ObservableObject {
             return generateRealisticMusicMagnitudes()
         }
         
-        // 1. Audio Real Activo (Process Tap digital CoreAudio de 64 bits o micrófono explícito)
+        // 2. Audio Real Activo (Process Tap digital CoreAudio de 64 bits o micrófono)
         if isRealAudioActive {
             os_unfair_lock_lock(&lock)
             let copy = currentMagnitudes
             os_unfair_lock_unlock(&lock)
             
-            // Si el audio real capturado tiene energía audible (> 0.03 en alguna banda), usarlo con total fidelidad
-            let maxEnergy = copy.max() ?? 0.0
-            if maxEnergy > 0.03 {
-                return copy
-            }
+            // Retorna SIEMPRE la captura real del sistema: si hay sonido se mueve, si hay silencio devuelve 0.0
+            return copy
         }
         
-        // 2. Si hay llamada en curso y el audio real no está fluyendo en el tap, generar espectro de voz dinámico
+        // 3. Si hay llamada en curso y no hay audio real
         if CallActivityProvider.shared.isCallActive {
             return generateRealisticCallMagnitudes()
         }
         
-        // 3. Fallback de cortesía: música activa o notch expandida
-        if MusicService.shared.currentTrack.isPlaying || MusicService.shared.hasActiveMusic || AppState.shared.mode == .expanded {
+        // 4. Fallback ÚNICAMENTE si no hay captura de audio real y la música está estrictamente reproduciéndose
+        if MusicService.shared.currentTrack.isPlaying {
             return generateRealisticMusicMagnitudes()
         }
         
-        // 4. En reposo absoluto
+        // 5. En reposo absoluto (silencio total cuando no hay nada sonando)
         return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     }
     

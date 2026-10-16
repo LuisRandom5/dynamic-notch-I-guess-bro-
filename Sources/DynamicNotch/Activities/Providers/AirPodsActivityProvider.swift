@@ -12,7 +12,7 @@ public final class AirPodsActivityProvider: ObservableObject {
         leftPercent: Int? = nil,
         rightPercent: Int? = nil,
         casePercent: Int? = nil,
-        duration: TimeInterval = 4.8
+        duration: TimeInterval = 8.0
     ) {
         guard AppState.shared.enableAirPodsAnimation else { return }
         

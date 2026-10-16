@@ -519,30 +519,30 @@ public struct ActivityDebugView: View {
                     .padding(6)
                 }
                 
-                // AIRPODS 3D ANIMATION DEMO
-                GroupBox("Animación AirPods 3D (SceneKit)") {
+                // AIRPODS WING ANIMATION DEMO
+                GroupBox("Animación de AirPods (Alas del Notch)") {
                     VStack(alignment: .leading, spacing: 10) {
                         Button(action: {
                             let details = BluetoothAudioService.shared.queryConnectedAirPods()
                             let name = details?.deviceName ?? "AirPods de Luis Angel"
-                            let bat = details?.primaryBattery ?? 45
+                            let bat = details?.primaryBattery ?? 85
                             AirPodsActivityProvider.shared.publishAirPodsActivity(
                                 name: name,
                                 batteryLevel: bat,
                                 leftPercent: details?.leftBattery,
                                 rightPercent: details?.rightBattery,
                                 casePercent: details?.caseBattery,
-                                duration: 4.5
+                                duration: 8.0
                             )
                         }) {
                             HStack {
-                                Image(systemName: "airpodsmax")
-                                Text("Disparar Animación 3D de AirPods (con datos reales)")
+                                Image(systemName: "airpods")
+                                Text("Disparar Animación de AirPods en el Notch (8s)")
                             }
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color.cyan)
+                        .tint(Color.green)
                     }
                     .padding(6)
                 }

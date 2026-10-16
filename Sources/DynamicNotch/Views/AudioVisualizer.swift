@@ -231,11 +231,14 @@ public struct AudioVisualizer: View {
                 let engine = AudioSpectrumEngine.shared
                 let levels = engine.getMagnitudes()
                 
+                let maxLevel = levels.max() ?? 0.0
+                let isAudible = maxLevel > 0.015
+                
                 var newHeights: [CGFloat] = []
                 for i in 0..<PlayerMetrics.visualizerBarCount {
                     let currentH = self.barHeights[safe: i] ?? restingDot
                     let lvl = CGFloat(levels[safe: i] ?? 0.0)
-                    let targetH = minH + lvl * (maxH - minH)
+                    let targetH: CGFloat = isAudible ? (minH + lvl * (maxH - minH)) : restingDot
                     
                     // Suavizado asimétrico: ataque rápido para transitorios y caída orgánica
                     let speed: CGFloat = targetH > currentH ? 0.85 : 0.42
