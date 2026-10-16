@@ -10,7 +10,10 @@ RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
 echo "🔨 Compilando Dynamic Notch en Swift..."
 cd "${PROJECT_DIR}"
-swift build -c release
+export CLANG_MODULE_CACHE_PATH="${PROJECT_DIR}/.build/ModuleCache"
+export SWIFTPM_MODULECACHE_OVERRIDE="${PROJECT_DIR}/.build/ModuleCache"
+mkdir -p "${CLANG_MODULE_CACHE_PATH}"
+swift build --disable-sandbox -c release -Xcc -fmodules-cache-path="${CLANG_MODULE_CACHE_PATH}"
 
 echo "📦 Empaquetando DynamicNotch.app..."
 mkdir -p "${MACOS_DIR}"
@@ -61,6 +64,10 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
     <string>Dynamic Notch analiza el espectro del audio del sistema para que las barras reaccionen a la música en tiempo real.</string>
     <key>NSContactsUsageDescription</key>
     <string>Dynamic Notch necesita acceder a tus contactos para mostrar la foto y el nombre de quien te llama.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Dynamic Notch necesita Bluetooth para detectar la conexión de tus AirPods y mostrar la animación correspondiente.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Dynamic Notch utiliza Bluetooth para monitorear el estado de conexión de tus AirPods y accesorios de audio.</string>
 </dict>
 </plist>
 EOF

@@ -49,40 +49,67 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
     private var notifLastActionTime: Date = .distantPast
     
     public override func sendEvent(_ event: NSEvent) {
-        if NotificationActivityProvider.shared.isNotificationActive {
+        let provider = NotificationActivityProvider.shared
+        if provider.isNotificationActive {
             switch event.type {
             case .scrollWheel:
                 handleNotificationScroll(event)
-                // Tragar SIEMPRE el scroll mientras hay notificación: evita que el handler duplicado
+                // Tragar SIEMPRE el scroll mientras hay notificación: evita que el handler secundario
                 // de NotchHitTestView.scrollWheel reinterprete la inercia como "swipe hacia arriba".
                 return
                 
             case .leftMouseDown:
-                notifGestureStartY = event.locationInWindow.y
-                isTrackingNotifDrag = true
+                if !provider.isQuickReplyExpanded {
+                    notifGestureStartY = event.locationInWindow.y
+                    isTrackingNotifDrag = true
+                } else {
+                    isTrackingNotifDrag = false
+                    if !self.isKeyWindow {
+                        self.allowsKeyInput = true
+                        self.makeKey()
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                }
                 
             case .leftMouseDragged:
-                if isTrackingNotifDrag {
+                if isTrackingNotifDrag && !provider.isQuickReplyExpanded {
                     // En coordenadas de ventana de macOS, y=0 está en el borde inferior.
-                    // Si el usuario arrastra el cursor hacia abajo: currentY < startY (deltaY < 0)
+                    // Si el usuario arrastra el cursor hacia abajo: currentY < startY (pullDown > 0)
                     let currentY = event.locationInWindow.y
-                    let deltaY = currentY - notifGestureStartY
+                    let pullDown = notifGestureStartY - currentY
                     
-                    if deltaY < -8 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
+                    if pullDown > 0 {
+                        provider.dragPullOffset = min(pullDown * 0.45, 24)
+                    }
+                    
+                    if pullDown >= 6 {
                         isTrackingNotifDrag = false
-                        DNDLogger.log("NotchPanel.sendEvent -> drag down detectado (deltaY=\(deltaY))! Expandiendo QuickReply")
-                        NotificationActivityProvider.shared.expandQuickReply()
-                        return
-                    } else if deltaY > 15 && NotificationActivityProvider.shared.isQuickReplyExpanded {
+                        provider.dragPullOffset = 0
+                        markNotifActionDone()
+                        DNDLogger.log("NotchPanel.sendEvent -> drag down detectado (pullDown=\(pullDown))! Expandiendo QuickReply")
+                        provider.expandQuickReply()
+                    } else if pullDown <= -10 {
                         isTrackingNotifDrag = false
-                        DNDLogger.log("NotchPanel.sendEvent -> drag up detectado (deltaY=\(deltaY))! Colapsando QuickReply")
-                        NotificationActivityProvider.shared.collapseQuickReply()
-                        return
+                        provider.dragPullOffset = 0
+                        markNotifActionDone()
+                        DNDLogger.log("NotchPanel.sendEvent -> drag up detectado (pullDown=\(pullDown))! Descartando Notificación")
+                        provider.dismissNotification()
                     }
                 }
                 
             case .leftMouseUp:
                 isTrackingNotifDrag = false
+                if provider.dragPullOffset != 0 {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                        provider.dragPullOffset = 0
+                    }
+                }
+                
+            case .keyDown:
+                if event.keyCode == 53 && provider.isQuickReplyExpanded { // Tecla Escape (Esc)
+                    provider.collapseQuickReply()
+                    return
+                }
                 
             default:
                 break
@@ -100,43 +127,51 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
             notifScrollAccum = 0
             notifScrollConsumed = false
         }
-        // Fin del gesto: liberar bloqueo para el siguiente swipe
-        if event.phase == .ended || event.phase == .cancelled {
-            notifScrollAccum = 0
-            notifScrollConsumed = false
-            return
-        }
+        
         // La inercia (momentum) nunca dispara acciones: es la causa del "abre y se cierra solo"
         if event.momentumPhase != [] { return }
         // Ya se ejecutó una acción en este gesto
         if notifScrollConsumed { return }
         // Cooldown tras la última acción (cubre ratones con rueda que no tienen fases)
-        if Date().timeIntervalSince(notifLastActionTime) < 0.6 { return }
+        if Date().timeIntervalSince(notifLastActionTime) < 0.38 { return }
         
         let rawDy = event.scrollingDeltaY
+        // Normalización física precisa:
+        // fingerDy > 0: dedos se desplazan hacia ABAJO en el trackpad (hacia el usuario)
+        // fingerDy < 0: dedos se desplazan hacia ARRIBA en el trackpad (hacia el notch)
         let fingerDy = event.isDirectionInvertedFromDevice ? rawDy : -rawDy
         // Rueda de ratón clásica (sin fases): cada "clic" de rueda cuenta como gesto
         let isDiscreteWheel = event.phase == [] && event.momentumPhase == []
         notifScrollAccum += fingerDy
         
-        let downThreshold: CGFloat = isDiscreteWheel ? 1 : 6
-        let upThreshold: CGFloat = isDiscreteWheel ? -1 : -10
-        
-        if notifScrollAccum >= downThreshold {
-            if !provider.isQuickReplyExpanded {
-                DNDLogger.log("NotchPanel: swipe DOWN -> expandQuickReply (accum=\(notifScrollAccum))")
+        if !provider.isQuickReplyExpanded {
+            let downThreshold: CGFloat = isDiscreteWheel ? 0.8 : 2.0
+            let upThreshold: CGFloat = isDiscreteWheel ? -2.0 : -8.0
+            
+            if notifScrollAccum >= downThreshold || fingerDy >= downThreshold {
+                DNDLogger.log("NotchPanel: swipe DOWN detectado -> expandQuickReply (accum=\(notifScrollAccum), fingerDy=\(fingerDy))")
                 markNotifActionDone()
-                DispatchQueue.main.async { provider.expandQuickReply() }
+                provider.expandQuickReply()
+            } else if notifScrollAccum <= upThreshold || fingerDy <= upThreshold {
+                DNDLogger.log("NotchPanel: swipe UP detectado -> dismissNotification (accum=\(notifScrollAccum))")
+                markNotifActionDone()
+                provider.dismissNotification()
             }
-        } else if notifScrollAccum <= upThreshold {
-            markNotifActionDone()
-            if provider.isQuickReplyExpanded {
-                DNDLogger.log("NotchPanel: swipe UP -> collapseQuickReply (accum=\(notifScrollAccum))")
-                DispatchQueue.main.async { provider.collapseQuickReply() }
-            } else {
-                DNDLogger.log("NotchPanel: swipe UP -> dismissNotification (accum=\(notifScrollAccum))")
-                DispatchQueue.main.async { provider.dismissNotification() }
+        } else {
+            // Cuando el cuadro de respuesta ya está abierto, exigir un swipe hacia arriba claro e intencional
+            // para evitar que un roce accidental del trackpad al pasar las manos al teclado cierre la respuesta.
+            let collapseUpThreshold: CGFloat = isDiscreteWheel ? -3.0 : -16.0
+            if notifScrollAccum <= collapseUpThreshold {
+                DNDLogger.log("NotchPanel: swipe UP intencional detectado -> collapseQuickReply (accum=\(notifScrollAccum))")
+                markNotifActionDone()
+                provider.collapseQuickReply()
             }
+        }
+        
+        // Fin del gesto
+        if event.phase == .ended || event.phase == .cancelled {
+            notifScrollAccum = 0
+            notifScrollConsumed = false
         }
     }
     
@@ -212,11 +247,19 @@ public final class NotchHostingView<Content: View>: NSHostingView<Content> {
     public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         return (superview as? NotchHitTestView)?.performDragOperation(sender) ?? true
     }
+    
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
 }
 
 public final class NotchHitTestView: NSView {
     public var hitAreaRect: CGRect = .zero
     private var trackingArea: NSTrackingArea?
+    
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
     
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -226,7 +269,6 @@ public final class NotchHitTestView: NSView {
             .init("public.file-url"),
             .init("com.apple.finder.node")
         ])
-        setupPanGesture()
     }
     
     required init?(coder: NSCoder) {
@@ -237,52 +279,6 @@ public final class NotchHitTestView: NSView {
             .init("public.file-url"),
             .init("com.apple.finder.node")
         ])
-        setupPanGesture()
-    }
-    
-    private func setupPanGesture() {
-        let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        pan.delaysPrimaryMouseButtonEvents = false
-        addGestureRecognizer(pan)
-    }
-    
-    @objc private func handlePanGesture(_ gesture: NSPanGestureRecognizer) {
-        guard NotificationActivityProvider.shared.isNotificationActive else { return }
-        let translation = gesture.translation(in: self)
-        let velocity = gesture.velocity(in: self)
-        
-        // En coordenadas AppKit: Y=0 en la base. Hacia abajo es translation.y < 0
-        let deltaDown = -translation.y
-        let deltaUp = translation.y
-        
-        switch gesture.state {
-        case .changed:
-            if deltaDown >= 6 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                DispatchQueue.main.async {
-                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.changed deltaDown=\(deltaDown)) -> expandQuickReply()")
-                    NotificationActivityProvider.shared.expandQuickReply()
-                }
-            } else if deltaUp >= 10 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                DispatchQueue.main.async {
-                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.changed deltaUp=\(deltaUp)) -> dismissNotification()")
-                    NotificationActivityProvider.shared.dismissNotification()
-                }
-            }
-        case .ended:
-            if (deltaDown >= 4 || -velocity.y > 50) && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                DispatchQueue.main.async {
-                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.ended deltaDown=\(deltaDown)) -> expandQuickReply()")
-                    NotificationActivityProvider.shared.expandQuickReply()
-                }
-            } else if (deltaUp >= 6 || velocity.y > 80) && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                DispatchQueue.main.async {
-                    DNDLogger.log("NotchHitTestView: NSPanGestureRecognizer (.ended deltaUp=\(deltaUp)) -> dismissNotification()")
-                    NotificationActivityProvider.shared.dismissNotification()
-                }
-            }
-        default:
-            break
-        }
     }
     
     private func isDraggingSessionActive() -> Bool {
@@ -354,13 +350,8 @@ public final class NotchHitTestView: NSView {
         }
     }
     
-    private var notificationMouseDownPoint: NSPoint? = nil
-    
     public override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if NotificationActivityProvider.shared.isNotificationActive {
-            notificationMouseDownPoint = point
-        }
         if hitAreaRect.contains(point) {
             // Si el Notch está colapsado (idle o compact) y no hay actividad modal activa, expandir al dar tap
             if AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {
@@ -372,36 +363,6 @@ public final class NotchHitTestView: NSView {
             }
         }
         super.mouseDown(with: event)
-    }
-    
-    public override func mouseDragged(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if NotificationActivityProvider.shared.isNotificationActive, let start = notificationMouseDownPoint {
-            // En macOS AppKit: (0,0) abajo a la izquierda.
-            // Arrastrar hacia abajo significa que point.y disminuye (start.y - point.y > 0).
-            let deltaDown = start.y - point.y
-            let deltaUp = point.y - start.y
-            
-            if deltaDown >= 10 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                notificationMouseDownPoint = nil
-                DispatchQueue.main.async {
-                    NotificationActivityProvider.shared.expandQuickReply()
-                }
-                return
-            } else if deltaUp >= 10 && !NotificationActivityProvider.shared.isQuickReplyExpanded {
-                notificationMouseDownPoint = nil
-                DispatchQueue.main.async {
-                    NotificationActivityProvider.shared.dismissNotification()
-                }
-                return
-            }
-        }
-        super.mouseDragged(with: event)
-    }
-    
-    public override func mouseUp(with event: NSEvent) {
-        notificationMouseDownPoint = nil
-        super.mouseUp(with: event)
     }
     
     // MARK: - Gestos de Trackpad (Swipe con 2 dedos: deslizamiento horizontal con overscroll elástico + scroll vertical)
@@ -532,11 +493,11 @@ public final class NotchHitTestView: NSView {
         
         // Watchdog de seguridad (0.13 s): si los dedos se detienen durante overscroll, regresa automáticamente
         trackpadResetTimer?.invalidate()
-        trackpadResetTimer = Timer.scheduledTimer(withTimeInterval: 0.13, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.resetTrackpadOverscroll()
-            }
+        let timer = Timer(timeInterval: 0.13, repeats: false) { [weak self] _ in
+            self?.resetTrackpadOverscroll()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        trackpadResetTimer = timer
         
         // 1. SCROLL VERTICAL CON 2 DEDOS (Pastilla extendida, estiramiento elástico y guardado de píldora)
         if abs(fingerDeltaY) > abs(fingerDeltaX) && abs(fingerDeltaY) > 0.3 {
@@ -547,26 +508,32 @@ public final class NotchHitTestView: NSView {
                 DNDLogger.log("scrollWheel [Notif]: rawY=\(rawDeltaY), fingerY=\(fingerDeltaY), accumY=\(accumulatedScrollDeltaY)")
                 if !NotificationActivityProvider.shared.isQuickReplyExpanded {
                     // Deslizar hacia abajo (dedos hacia el usuario / hacia la pantalla) -> Expandir respuesta rápida
-                    if (fingerDeltaY > 0.3 || rawDeltaY > 0.3 || accumulatedScrollDeltaY > 0.8) {
+                    if (fingerDeltaY > 0.3 || rawDeltaY > 0.3 || accumulatedScrollDeltaY > 0.6) {
                         guard !hasExpandedInCurrentGesture else { return }
                         lastScrollSwipeTime = Date()
                         hasExpandedInCurrentGesture = true
                         isIgnoringMomentumForOverscroll = true
                         accumulatedScrollDeltaY = 0
-                        DispatchQueue.main.async {
-                            DNDLogger.log("scrollWheel -> expandQuickReply() disparado con éxito!")
-                            NotificationActivityProvider.shared.expandQuickReply()
-                        }
+                        DNDLogger.log("scrollWheel -> expandQuickReply() disparado con éxito!")
+                        NotificationActivityProvider.shared.expandQuickReply()
+                        return
+                    } else if (fingerDeltaY < -0.3 || rawDeltaY < -0.3 || accumulatedScrollDeltaY < -0.6) {
+                        // Deslizar hacia arriba (dedos hacia el notch) -> Descartar notificación al notch
+                        guard !hasExpandedInCurrentGesture else { return }
+                        lastScrollSwipeTime = Date()
+                        hasExpandedInCurrentGesture = true
+                        isIgnoringMomentumForOverscroll = true
+                        accumulatedScrollDeltaY = 0
+                        DNDLogger.log("scrollWheel -> dismissNotification() disparado con éxito!")
+                        NotificationActivityProvider.shared.dismissNotification()
                         return
                     }
                 } else {
                     // Si ya está expandida y desliza hacia arriba -> Guardar/colapsar
-                    if (fingerDeltaY < -0.6 || rawDeltaY < -0.6 || accumulatedScrollDeltaY < -1.5) {
+                    if (fingerDeltaY < -0.4 || rawDeltaY < -0.4 || accumulatedScrollDeltaY < -0.8) {
                         accumulatedScrollDeltaY = 0
-                        DispatchQueue.main.async {
-                            DNDLogger.log("scrollWheel -> collapseQuickReply() disparado!")
-                            NotificationActivityProvider.shared.collapseQuickReply()
-                        }
+                        DNDLogger.log("scrollWheel -> collapseQuickReply() disparado!")
+                        NotificationActivityProvider.shared.collapseQuickReply()
                         return
                     }
                 }
@@ -582,31 +549,26 @@ public final class NotchHitTestView: NSView {
                         
                         // Estiramiento vertical elástico hacia abajo (anclado arriba al notch)
                         let stretch = OverscrollMetrics.calculateStretch(for: accumulatedScrollDeltaY)
-                        DispatchQueue.main.async {
-                            AppState.shared.verticalOverscrollOffset = stretch
-                            AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
-                        }
+                        AppState.shared.verticalOverscrollOffset = stretch
+                        AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
+                        
                         if accumulatedScrollDeltaY > 20 && Date().timeIntervalSince(lastScrollSwipeTime) > 0.28 {
                             lastScrollSwipeTime = Date()
                             hasExpandedInCurrentGesture = true
                             isIgnoringMomentumForOverscroll = true
                             accumulatedScrollDeltaY = 0
-                            DispatchQueue.main.async {
-                                withAnimation(.spring(response: 0.48, dampingFraction: 0.80)) {
-                                    AppState.shared.isPlayerDetailExpanded = true
-                                    AppState.shared.verticalOverscrollOffset = 0
-                                    AppState.shared.contentVerticalOverscrollOffset = 0
-                                }
-                                AppState.shared.hapticService.triggerExpand()
+                            withAnimation(.spring(response: 0.48, dampingFraction: 0.80)) {
+                                AppState.shared.isPlayerDetailExpanded = true
+                                AppState.shared.verticalOverscrollOffset = 0
+                                AppState.shared.contentVerticalOverscrollOffset = 0
                             }
+                            AppState.shared.hapticService.triggerExpand()
                         }
                     } else {
                         // Ya está expandida al máximo: estirar SOLO hacia abajo con rebote elástico (anclado arriba)
                         let stretch = OverscrollMetrics.calculateStretch(for: accumulatedScrollDeltaY)
-                        DispatchQueue.main.async {
-                            AppState.shared.verticalOverscrollOffset = stretch
-                            AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
-                        }
+                        AppState.shared.verticalOverscrollOffset = stretch
+                        AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
                     }
                 } else if CallActivityProvider.shared.isCallActive {
                     guard !hasExpandedInCurrentGesture else { return }
@@ -618,11 +580,9 @@ public final class NotchHitTestView: NSView {
                             hasExpandedInCurrentGesture = true
                             isIgnoringMomentumForOverscroll = true
                             accumulatedScrollDeltaY = 0
-                            DispatchQueue.main.async {
-                                CallActivityProvider.shared.collapseToPill()
-                                AppState.shared.isPlayerDetailExpanded = false
-                                AppState.shared.expand()
-                            }
+                            CallActivityProvider.shared.collapseToPill()
+                            AppState.shared.isPlayerDetailExpanded = false
+                            AppState.shared.expand()
                         }
                     } else {
                         // Llamada compacta en notch: expandir tarjeta de llamada
@@ -631,9 +591,7 @@ public final class NotchHitTestView: NSView {
                             hasExpandedInCurrentGesture = true
                             isIgnoringMomentumForOverscroll = true
                             accumulatedScrollDeltaY = 0
-                            DispatchQueue.main.async {
-                                CallActivityProvider.shared.expandToCard()
-                            }
+                            CallActivityProvider.shared.expandToCard()
                         }
                     }
                     return
@@ -644,10 +602,8 @@ public final class NotchHitTestView: NSView {
                     // Bandeja temporal (Drag and Drop): estiramiento elástico hacia abajo,
                     // vuelve a su forma original de forma natural (no hay menú extendido secundario)
                     let stretch = OverscrollMetrics.calculateStretch(for: accumulatedScrollDeltaY)
-                    DispatchQueue.main.async {
-                        AppState.shared.verticalOverscrollOffset = stretch
-                        AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
-                    }
+                    AppState.shared.verticalOverscrollOffset = stretch
+                    AppState.shared.contentVerticalOverscrollOffset = stretch * OverscrollMetrics.contentFollow
                 } else if isCompactOrIdle {
                     guard ActivityCenter.shared.currentActivity == nil else { return }
                     guard !hasExpandedInCurrentGesture else { return }
@@ -656,9 +612,7 @@ public final class NotchHitTestView: NSView {
                         hasExpandedInCurrentGesture = true
                         isIgnoringMomentumForOverscroll = true
                         accumulatedScrollDeltaY = 0
-                        DispatchQueue.main.async {
-                            AppState.shared.expand()
-                        }
+                        AppState.shared.expand()
                     }
                 }
             } else if fingerDeltaY < 0 {

@@ -12,13 +12,38 @@ public final class CallDetectorService: ObservableObject {
     @Published public private(set) var isCallActive: Bool = false
     @Published public private(set) var activeCallAppName: String = "FaceTime"
     
+    @Published public var isEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isEnabled, forKey: "enableCallDetector")
+            if isEnabled {
+                startMonitoring()
+            } else {
+                stopMonitoring()
+            }
+        }
+    }
+    
     // TelephonyUtilities (Llamadas Celulares / FaceTime de macOS)
     private var tuCallCenter: NSObject?
     private var hasActiveTelephonyCall: Bool = false
     private var isIncomingTelephonyCall: Bool = false
+    private var currentIncomingCallObject: NSObject?
+    
+    // WhatsApp
+    private var isWhatsAppIncomingCall: Bool = false
+    private var isScanningWhatsApp: Bool = false
+    private var whatsAppAcceptButton: AXUIElement?
+    private var whatsAppDeclineButton: AXUIElement?
+    
+    // FaceTime UI
+    private var isFaceTimeIncomingCall: Bool = false
+    private var isScanningFaceTime: Bool = false
+    private var faceTimeAcceptButton: AXUIElement?
+    private var faceTimeDeclineButton: AXUIElement?
     
     // Discord
     private var isDiscordIncomingCall: Bool = false
+    private var isScanningDiscord: Bool = false
     
     private var isCallDismissedByUser: Bool = false
     private var dismissResetTimer: Timer?
@@ -41,6 +66,11 @@ public final class CallDetectorService: ObservableObject {
     private var heartbeatTimer: Timer?
     
     private init() {
+        if UserDefaults.standard.object(forKey: "enableCallDetector") == nil {
+            self.isEnabled = true
+        } else {
+            self.isEnabled = UserDefaults.standard.bool(forKey: "enableCallDetector")
+        }
         setupTelephonyUtilities()
     }
     
@@ -53,12 +83,36 @@ public final class CallDetectorService: ObservableObject {
                     self.tuCallCenter = center
                     print("[CallDetectorService] TelephonyUtilities (TUCallCenter) enlazado con éxito.")
                     
-                    NotificationCenter.default.addObserver(
-                        forName: nil,
-                        object: center,
-                        queue: .main
-                    ) { [weak self] _ in
-                        self?.checkTelephonyCalls()
+                    // Escuchar todas las notificaciones del sistema relativas a llamadas
+                    // Nota crítica: object debe ser nil para no filtrar llamadas donde el object es un TUCall
+                    let notifNames = [
+                        "TUCallCenterCallStatusChangedNotification",
+                        "TUCallCenterCallConnectedNotification",
+                        "TUCallCenterCallStartedConnectingNotification",
+                        "TUCallCenterCallContinuityStateChangedNotification",
+                        "TUCallCenterVideoCallStatusChangedNotification",
+                        "TUCallCenterConferenceParticipantsChangedNotification",
+                        "TUCallServicesDaemonStartedNotification"
+                    ]
+                    
+                    for name in notifNames {
+                        NotificationCenter.default.addObserver(
+                            forName: NSNotification.Name(name),
+                            object: nil,
+                            queue: .main
+                        ) { [weak self] _ in
+                            guard self?.isEnabled == true else { return }
+                            self?.checkTelephonyCalls()
+                        }
+                        
+                        DistributedNotificationCenter.default().addObserver(
+                            forName: NSNotification.Name(name),
+                            object: nil,
+                            queue: .main
+                        ) { [weak self] _ in
+                            guard self?.isEnabled == true else { return }
+                            self?.checkTelephonyCalls()
+                        }
                     }
                 }
             }
@@ -66,18 +120,25 @@ public final class CallDetectorService: ObservableObject {
     }
     
     public func startMonitoring() {
+        guard isEnabled else { return }
         registerDefaultDeviceListener()
         updateCurrentInputDeviceAndAttachListener()
         
         heartbeatTimer?.invalidate()
-        heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        // Sondeo rápido a 0.35s para detectar llamadas entrantes al instante
+        let timer = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.checkTelephonyCalls()
-                self?.checkDiscordState()
-                self?.checkInputDeviceRunningState()
+                guard let self = self, self.isEnabled else { return }
+                self.checkTelephonyCalls()
+                self.checkFaceTimeState()
+                self.checkWhatsAppState()
+                self.checkDiscordState()
+                self.checkInputDeviceRunningState()
             }
         }
-        RunLoop.main.add(heartbeatTimer!, forMode: .common)
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeatTimer = timer
     }
     
     public func stopMonitoring() {
@@ -88,7 +149,10 @@ public final class CallDetectorService: ObservableObject {
     }
     
     public func recheckNow() {
+        guard isEnabled else { return }
         checkTelephonyCalls()
+        checkFaceTimeState()
+        checkWhatsAppState()
         checkDiscordState()
         checkInputDeviceRunningState()
     }
@@ -98,7 +162,30 @@ public final class CallDetectorService: ObservableObject {
         guard let center = tuCallCenter else { return }
         
         // 1. Comprobar llamada entrante real (FaceTime / Llamada celular de iPhone)
-        if let incoming = center.value(forKey: "incomingCall") as? NSObject {
+        var incoming: NSObject? = center.value(forKey: "incomingCall") as? NSObject
+        
+        if incoming == nil {
+            if let incomingList = center.value(forKey: "incomingCalls") as? [NSObject], let first = incomingList.first {
+                incoming = first
+            }
+        }
+        
+        if incoming == nil {
+            let candidates = (center.value(forKey: "displayedCalls") as? [NSObject] ?? []) +
+                             (center.value(forKey: "currentCalls") as? [NSObject] ?? []) +
+                             (center.value(forKey: "_allCalls") as? [NSObject] ?? [])
+            for c in candidates {
+                let isInc = (c.value(forKey: "isIncoming") as? Bool) ?? false
+                let status = (c.value(forKey: "status") as? Int) ?? 0
+                if isInc || status == 4 || status == 1 {
+                    incoming = c
+                    break
+                }
+            }
+        }
+        
+        if let incoming = incoming {
+            self.currentIncomingCallObject = incoming
             guard !isCallDismissedByUser else { return }
             
             let displayName = (incoming.value(forKey: "displayName") as? String) ??
@@ -140,6 +227,7 @@ public final class CallDetectorService: ObservableObject {
             }
             return
         } else {
+            self.currentIncomingCallObject = nil
             if isIncomingTelephonyCall {
                 self.isIncomingTelephonyCall = false
                 if CallActivityProvider.shared.isIncomingCall && !CallActivityProvider.shared.isSimulation {
@@ -149,9 +237,16 @@ public final class CallDetectorService: ObservableObject {
         }
         
         // 2. Comprobar llamadas activas (conectadas)
-        if let currentCalls = center.value(forKey: "currentCalls") as? [NSObject], !currentCalls.isEmpty {
+        let currentCalls = (center.value(forKey: "currentCalls") as? [NSObject] ?? []) +
+                           (center.value(forKey: "displayedCalls") as? [NSObject] ?? [])
+        let connectedCalls = currentCalls.filter { c in
+            let isInc = (c.value(forKey: "isIncoming") as? Bool) ?? false
+            let status = (c.value(forKey: "status") as? Int) ?? 0
+            return !isInc && status != 4 && status != 1
+        }
+        
+        if let active = connectedCalls.first {
             guard !isCallDismissedByUser else { return }
-            let active = currentCalls.first!
             
             let displayName = (active.value(forKey: "displayName") as? String) ??
                               (active.value(forKey: "suggestedDisplayName") as? String) ??
@@ -201,19 +296,225 @@ public final class CallDetectorService: ObservableObject {
         }
     }
     
+    // MARK: - Detección de Llamadas Entrantes en WhatsApp
+    private func checkWhatsAppState() {
+        guard !isScanningWhatsApp, !isCallDismissedByUser else { return }
+        guard let whatsApp = NSWorkspace.shared.runningApplications.first(where: {
+            ($0.bundleIdentifier?.lowercased().contains("whatsapp") ?? false) || ($0.localizedName?.lowercased().contains("whatsapp") ?? false)
+        }) else { return }
+        
+        isScanningWhatsApp = true
+        let pid = whatsApp.processIdentifier
+        
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            defer {
+                DispatchQueue.main.async {
+                    self?.isScanningWhatsApp = false
+                }
+            }
+            guard let self = self else { return }
+            let appRef = AXUIElementCreateApplication(pid)
+            var winListRef: AnyObject?
+            AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winListRef)
+            guard let windows = winListRef as? [AXUIElement] else { return }
+            
+            var foundIncoming = false
+            var callerName = "WhatsApp"
+            var acceptBtn: AXUIElement?
+            var declineBtn: AXUIElement?
+            
+            for win in windows.prefix(4) {
+                var titleRef: AnyObject?
+                AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef)
+                let title = (titleRef as? String ?? "")
+                
+                var localAccept: AXUIElement?
+                var localDecline: AXUIElement?
+                var visited = 0
+                
+                func search(elem: AXUIElement, depth: Int) {
+                    if depth > 12 || visited > 100 { return }
+                    visited += 1
+                    var tRef: AnyObject?
+                    var dRef: AnyObject?
+                    AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &tRef)
+                    AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &dRef)
+                    let t = (tRef as? String ?? "").lowercased()
+                    let d = (dRef as? String ?? "").lowercased()
+                    
+                    if t.contains("aceptar") || t.contains("contestar") || t.contains("unirse") || t.contains("accept") || t.contains("answer") ||
+                       d.contains("aceptar") || d.contains("contestar") || d.contains("unirse") || d.contains("accept") || d.contains("answer") {
+                        localAccept = elem
+                    }
+                    if t.contains("rechazar") || t.contains("decline") || t.contains("colgar") ||
+                       d.contains("rechazar") || d.contains("decline") || d.contains("colgar") {
+                        localDecline = elem
+                    }
+                    
+                    var childrenRef: AnyObject?
+                    AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef)
+                    if let children = childrenRef as? [AXUIElement] {
+                        for c in children.prefix(20) {
+                            search(elem: c, depth: depth + 1)
+                        }
+                    }
+                }
+                search(elem: win, depth: 0)
+                
+                if localAccept != nil && localDecline != nil {
+                    foundIncoming = true
+                    acceptBtn = localAccept
+                    declineBtn = localDecline
+                    if !title.isEmpty && !title.lowercased().contains("whatsapp") {
+                        callerName = title
+                    }
+                    break
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.whatsAppAcceptButton = acceptBtn
+                self.whatsAppDeclineButton = declineBtn
+                
+                if foundIncoming && !CallActivityProvider.shared.isIncomingCall && !CallActivityProvider.shared.isCallActive {
+                    self.isWhatsAppIncomingCall = true
+                    let info = ContactLookupService.shared.lookupContact(name: callerName)
+                    CallActivityProvider.shared.startIncomingCall(
+                        name: "WhatsApp",
+                        handle: callerName,
+                        avatar: info?.avatar,
+                        isSimulation: false
+                    )
+                } else if !foundIncoming && self.isWhatsAppIncomingCall {
+                    self.isWhatsAppIncomingCall = false
+                    if CallActivityProvider.shared.isIncomingCall && !CallActivityProvider.shared.isSimulation {
+                        CallActivityProvider.shared.declineCall()
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Detección de Llamadas Entrantes en FaceTime
+    private func checkFaceTimeState() {
+        guard !isScanningFaceTime, !isCallDismissedByUser else { return }
+        guard let ftApp = NSWorkspace.shared.runningApplications.first(where: {
+            let b = $0.bundleIdentifier?.lowercased() ?? ""
+            let n = $0.localizedName?.lowercased() ?? ""
+            return b.contains("facetime") || b.contains("callservices") || n.contains("facetime")
+        }) else { return }
+        
+        isScanningFaceTime = true
+        let pid = ftApp.processIdentifier
+        
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            defer {
+                DispatchQueue.main.async {
+                    self?.isScanningFaceTime = false
+                }
+            }
+            guard let self = self else { return }
+            let appRef = AXUIElementCreateApplication(pid)
+            var winListRef: AnyObject?
+            AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winListRef)
+            guard let windows = winListRef as? [AXUIElement] else { return }
+            
+            var foundIncoming = false
+            var callerName = "FaceTime"
+            var acceptBtn: AXUIElement?
+            var declineBtn: AXUIElement?
+            
+            for win in windows.prefix(4) {
+                var titleRef: AnyObject?
+                AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef)
+                let title = (titleRef as? String ?? "")
+                
+                var localAccept: AXUIElement?
+                var localDecline: AXUIElement?
+                var visited = 0
+                
+                func search(elem: AXUIElement, depth: Int) {
+                    if depth > 12 || visited > 100 { return }
+                    visited += 1
+                    var tRef: AnyObject?
+                    var dRef: AnyObject?
+                    AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &tRef)
+                    AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &dRef)
+                    let t = (tRef as? String ?? "").lowercased()
+                    let d = (dRef as? String ?? "").lowercased()
+                    
+                    if t.contains("aceptar") || t.contains("contestar") || t.contains("unirse") || t.contains("accept") || t.contains("answer") ||
+                       d.contains("aceptar") || d.contains("contestar") || d.contains("unirse") || d.contains("accept") || d.contains("answer") {
+                        localAccept = elem
+                    }
+                    if t.contains("rechazar") || t.contains("decline") || t.contains("colgar") ||
+                       d.contains("rechazar") || d.contains("decline") || d.contains("colgar") {
+                        localDecline = elem
+                    }
+                    
+                    var childrenRef: AnyObject?
+                    AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef)
+                    if let children = childrenRef as? [AXUIElement] {
+                        for c in children.prefix(20) {
+                            search(elem: c, depth: depth + 1)
+                        }
+                    }
+                }
+                search(elem: win, depth: 0)
+                
+                if localAccept != nil && localDecline != nil {
+                    foundIncoming = true
+                    acceptBtn = localAccept
+                    declineBtn = localDecline
+                    if !title.isEmpty && !title.lowercased().contains("facetime") {
+                        callerName = title
+                    }
+                    break
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.faceTimeAcceptButton = acceptBtn
+                self.faceTimeDeclineButton = declineBtn
+                
+                if foundIncoming && !CallActivityProvider.shared.isIncomingCall && !CallActivityProvider.shared.isCallActive {
+                    self.isFaceTimeIncomingCall = true
+                    let info = ContactLookupService.shared.lookupContact(name: callerName)
+                    CallActivityProvider.shared.startIncomingCall(
+                        name: "FaceTime Audio",
+                        handle: callerName,
+                        avatar: info?.avatar,
+                        isSimulation: false
+                    )
+                } else if !foundIncoming && self.isFaceTimeIncomingCall {
+                    self.isFaceTimeIncomingCall = false
+                    if CallActivityProvider.shared.isIncomingCall && !CallActivityProvider.shared.isSimulation {
+                        CallActivityProvider.shared.declineCall()
+                    }
+                }
+            }
+        }
+    }
+    
     // MARK: - Detección de Llamadas y Voz en Discord
     private func checkDiscordState() {
+        guard !isScanningDiscord, !isCallDismissedByUser else { return }
         guard let discordApp = NSWorkspace.shared.runningApplications.first(where: {
             ($0.bundleIdentifier?.contains("discord") ?? false) || $0.localizedName == "Discord"
         }) else { return }
         
-        // Si el usuario ya rechazó o cerró, respetar
-        guard !isCallDismissedByUser else { return }
+        isScanningDiscord = true
+        let pid = discordApp.processIdentifier
         
-        // 1. Detección de Llamada Entrante en Discord mediante AXUIElement
+        // 1. Detección acotada de Llamada Entrante en Discord mediante AXUIElement
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            defer {
+                DispatchQueue.main.async {
+                    self?.isScanningDiscord = false
+                }
+            }
             guard let self = self else { return }
-            let appRef = AXUIElementCreateApplication(discordApp.processIdentifier)
+            let appRef = AXUIElementCreateApplication(pid)
             var winListRef: AnyObject?
             AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winListRef)
             
@@ -221,21 +522,20 @@ public final class CallDetectorService: ObservableObject {
             
             var foundIncoming = false
             var callerName = "Discord"
+            var visitedNodes = 0
             
-            for win in windows {
+            for win in windows.prefix(2) {
                 func searchIncoming(elem: AXUIElement, depth: Int) {
-                    if foundIncoming || depth > 20 { return }
+                    if foundIncoming || depth > 10 || visitedNodes > 150 { return }
+                    visitedNodes += 1
                     var titleRef: AnyObject?
                     var descRef: AnyObject?
-                    var valRef: AnyObject?
                     AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
                     AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
-                    AXUIElementCopyAttributeValue(elem, kAXValueAttribute as CFString, &valRef)
                     
                     let title = (titleRef as? String ?? "")
                     let desc = (descRef as? String ?? "")
-                    let val = (valRef as? String ?? "")
-                    let combined = "\(title) \(desc) \(val)".lowercased()
+                    let combined = "\(title) \(desc)".lowercased()
                     
                     if combined.contains("unirse a la llamada") || combined.contains("join call") {
                         foundIncoming = true
@@ -248,9 +548,9 @@ public final class CallDetectorService: ObservableObject {
                     var childrenRef: AnyObject?
                     AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef)
                     if let children = childrenRef as? [AXUIElement] {
-                        for c in children {
+                        for c in children.prefix(25) {
                             searchIncoming(elem: c, depth: depth + 1)
-                            if foundIncoming { return }
+                            if foundIncoming || visitedNodes > 150 { return }
                         }
                     }
                 }
@@ -279,10 +579,26 @@ public final class CallDetectorService: ObservableObject {
     
     /// Contesta la llamada entrante nativa sin scripts ni atajos
     public func answerCurrentIncomingCall() {
-        if let center = tuCallCenter,
-           let incoming = center.value(forKey: "incomingCall") as? NSObject {
-            print("[CallDetectorService] Contestando llamada nativamente vía TUCallCenter...")
-            center.perform(NSSelectorFromString("answerCall:"), with: incoming)
+        if let center = tuCallCenter {
+            let incoming = (center.value(forKey: "incomingCall") as? NSObject) ?? currentIncomingCallObject
+            if let incoming = incoming {
+                print("[CallDetectorService] Contestando llamada nativamente vía TUCallCenter...")
+                center.perform(NSSelectorFromString("answerCall:"), with: incoming)
+                return
+            }
+        }
+        
+        // FaceTime UI
+        if isFaceTimeIncomingCall, let btn = faceTimeAcceptButton {
+            print("[CallDetectorService] Contestando llamada en FaceTime...")
+            AXUIElementPerformAction(btn, kAXPressAction as CFString)
+            return
+        }
+        
+        // WhatsApp
+        if isWhatsAppIncomingCall, let btn = whatsAppAcceptButton {
+            print("[CallDetectorService] Contestando llamada en WhatsApp...")
+            AXUIElementPerformAction(btn, kAXPressAction as CFString)
             return
         }
         
@@ -292,10 +608,26 @@ public final class CallDetectorService: ObservableObject {
     
     /// Rechaza la llamada entrante nativa
     public func declineCurrentIncomingCall() {
-        if let center = tuCallCenter,
-           let incoming = center.value(forKey: "incomingCall") as? NSObject {
-            print("[CallDetectorService] Rechazando llamada nativamente vía TUCallCenter...")
-            center.perform(NSSelectorFromString("disconnectCall:"), with: incoming)
+        if let center = tuCallCenter {
+            let incoming = (center.value(forKey: "incomingCall") as? NSObject) ?? currentIncomingCallObject
+            if let incoming = incoming {
+                print("[CallDetectorService] Rechazando llamada nativamente vía TUCallCenter...")
+                center.perform(NSSelectorFromString("disconnectCall:"), with: incoming)
+                return
+            }
+        }
+        
+        // FaceTime UI
+        if isFaceTimeIncomingCall, let btn = faceTimeDeclineButton {
+            print("[CallDetectorService] Rechazando llamada en FaceTime...")
+            AXUIElementPerformAction(btn, kAXPressAction as CFString)
+            return
+        }
+        
+        // WhatsApp
+        if isWhatsAppIncomingCall, let btn = whatsAppDeclineButton {
+            print("[CallDetectorService] Rechazando llamada en WhatsApp...")
+            AXUIElementPerformAction(btn, kAXPressAction as CFString)
             return
         }
         

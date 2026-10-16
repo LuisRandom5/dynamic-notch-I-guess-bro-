@@ -16,10 +16,10 @@ public final class AudioSpectrumEngine: ObservableObject {
     @Published public private(set) var isRealAudioActive: Bool = false
     @Published public private(set) var isSilent: Bool = true
     @Published public var isSimulatedMode: Bool = false
-    @Published public var enableMicrophoneCapture: Bool = false // Desactivado por defecto para evitar el puntito morado de privacidad
+    @Published public var enableMicrophoneCapture: Bool = false
     @Published public var enableSystemAudioTap: Bool = UserDefaults.standard.object(forKey: "enableSystemAudioTap") != nil
         ? UserDefaults.standard.bool(forKey: "enableSystemAudioTap")
-        : false { // Por defecto false: ¡ELIMINA EL PUNTITO MORADO! Si el usuario lo desea, puede encenderlo en Ajustes
+        : true { // Captura audio digital nativo del sistema macOS (Process Tap) sin puntito de privacidad
         didSet {
             UserDefaults.standard.set(enableSystemAudioTap, forKey: "enableSystemAudioTap")
             if enableSystemAudioTap {
@@ -34,9 +34,11 @@ public final class AudioSpectrumEngine: ObservableObject {
     }
     @Published public private(set) var hardwareSampleRate: Float = 44100.0
     
-    // Buffer atómico para la UI (6 magnitudes normalizadas 0.0 ... 1.0)
+    // Buffer atómico para la UI (6 magnitudes normalizadas 0.0 ... 1.0 y telemetría en dBFS)
     private var lock = os_unfair_lock_s()
     private var currentMagnitudes: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    private var currentBandDBs: [Float] = [-60.0, -60.0, -60.0, -60.0, -60.0, -60.0]
+    private var currentPeakDB: Float = -60.0
     
     // Hardware Input Core Audio IDs
     private var inputDeviceID: AudioObjectID = 0
@@ -527,8 +529,8 @@ public final class AudioSpectrumEngine: ObservableObject {
         }
         agcPeakDB = max(-24.0, min(0.0, agcPeakDB))
         
-        let gateDB: Float = -45.0
-        let dynamicRange: Float = max(18.0, agcPeakDB - gateDB)
+        let gateDB: Float = SpectrumMetrics.noiseGateDB
+        let dynamicRange: Float = max(16.0, agcPeakDB - gateDB)
         
         var targetLevels: [Float] = [0, 0, 0, 0, 0, 0]
         var hasAudibleSound = false
@@ -566,6 +568,11 @@ public final class AudioSpectrumEngine: ObservableObject {
             smoothedLevels[i] = max(0.0, min(1.0, envelopeLevels[i]))
         }
         
+        os_unfair_lock_lock(&lock)
+        currentBandDBs = bandDBs
+        currentPeakDB = maxDB
+        os_unfair_lock_unlock(&lock)
+        
         publishProcessedMagnitudes(smoothedLevels, timestamp: now, isSilent: isNowSilent)
     }
     
@@ -593,6 +600,22 @@ public final class AudioSpectrumEngine: ObservableObject {
                 self.isSilent = isSilent
             }
         }
+    }
+    
+    public func getBandDecibels() -> [Float] {
+        if isRealAudioActive {
+            os_unfair_lock_lock(&lock)
+            let copy = currentBandDBs
+            os_unfair_lock_unlock(&lock)
+            return copy
+        }
+        let mags = getMagnitudes()
+        return mags.map { -60.0 + ($0 * 56.0) }
+    }
+    
+    public func getPeakDecibels() -> Float {
+        let dbs = getBandDecibels()
+        return dbs.max() ?? -60.0
     }
     
     // MARK: - Lectura desde la UI (a 60 fps)
@@ -656,43 +679,46 @@ public final class AudioSpectrumEngine: ObservableObject {
         return simEnvelopeLevels
     }
     
-    // MARK: - Generador Psicoacústico Hiperrealista Multiespectral (Punchy & Vivo)
+    // MARK: - Generador Psicoacústico Hiperrealista Multiespectral (Punchy & Rítmico)
     public func generateRealisticMusicMagnitudes() -> [Float] {
         let dt = 0.026
         simBeatClock += dt
         
-        let bpm: Double = 126.0
+        let bpm: Double = 124.0
         let beatDuration = 60.0 / bpm
         let beatProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration) / beatDuration
         let barProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration * 4.0) / (beatDuration * 4.0)
+        let twoBarProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration * 8.0) / (beatDuration * 8.0)
         
-        // 1. Sub-Bass & Bass (Bombos / Kick drum punch con golpe firme y caída analógica)
-        let kickDecay = exp(-beatProgress * 4.8)
-        let subBassVal = max(0.0, kickDecay) * 0.88 + sin(simBeatClock * 14.0) * 0.12 + 0.15
+        // 1. Sub-Bass (Bombos / Kick drum punch con caída analógica rápida y punch contundente)
+        let kickDecay = exp(-beatProgress * 5.5)
+        let subBassVal = max(0.0, kickDecay) * 0.85 + 0.12
         let subBassHit = Float(subBassVal)
         
-        let bassVal = max(0.0, kickDecay * 0.82) + sin(simBeatClock * 7.5) * 0.18 + 0.20
-        let bassHit = Float(bassVal)
+        // 2. Bass (Bajo melódico sincronizado con el compás de 4 tiempos)
+        let bassPulse = (sin(barProgress * .pi * 8.0) * 0.5 + 0.5) * 0.40
+        let bassHit = Float(kickDecay * 0.65 + bassPulse + 0.14)
         
-        // 2. Low-Mids (Caja / Snare con golpe nítido en pulsos 2 y 4)
+        // 3. Low-Mids (Caja / Snare con golpe nítido en pulsos 2 y 4)
         let halfBarProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration * 2.0) / (beatDuration * 2.0)
         let snarePhase = halfBarProgress - 0.5
-        let snareHit: Double = snarePhase > 0 ? (exp(-snarePhase * 7.5) * 0.72) : 0.0
-        let lowMidsVal = snareHit + sin(simBeatClock * 4.2 + 1.2) * 0.22 + 0.24
+        let snareHit: Double = snarePhase > 0 ? (exp(-snarePhase * 8.0) * 0.78) : 0.0
+        let lowMidsVal = snareHit + (sin(barProgress * .pi * 4.0) * 0.5 + 0.5) * 0.20 + 0.16
         let lowMids = Float(lowMidsVal)
         
-        // 3. High-Mids (Melodía armónica rica y cambiante)
-        let melodyMod = sin(simBeatClock * 2.4) * 0.32 + sin(simBeatClock * 4.8) * 0.18 + 0.42
-        let highMidsVal = melodyMod + sin(barProgress * .pi * 2.0) * 0.14
-        let highMids = Float(highMidsVal)
+        // 4. High-Mids (Melodía armónica en corcheas sincronizadas)
+        let eighthProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration / 2.0) / (beatDuration / 2.0)
+        let melodyPulse = exp(-eighthProgress * 6.0) * 0.45
+        let melodyMod = (sin(twoBarProgress * .pi * 4.0) * 0.5 + 0.5) * 0.28
+        let highMids = Float(melodyPulse + melodyMod + 0.18)
         
-        // 4. Presence (Guitarras / voces / textura rítmica)
-        let presenceVal = sin(simBeatClock * 6.2 + 2.4) * 0.28 + sin(simBeatClock * 11.2) * 0.14 + 0.36
-        let presenceHit = Float(presenceVal)
+        // 5. Presence (Guitarras / voces / textura rítmica sincronizada)
+        let presencePulse = (sin(barProgress * .pi * 16.0) * 0.5 + 0.5) * 0.42
+        let presenceHit = Float(presencePulse + 0.18)
         
-        // 5. Brilliance (Hi-hats rítmicos en semicorcheas)
+        // 6. Brilliance (Hi-hats rítmicos en semicorcheas limpias)
         let sixteenthPhase = simBeatClock.truncatingRemainder(dividingBy: beatDuration / 4.0) / (beatDuration / 4.0)
-        let hiHatVal = exp(-sixteenthPhase * 8.5) * 0.58 + sin(simBeatClock * 24.0) * 0.14 + 0.22
+        let hiHatVal = exp(-sixteenthPhase * 9.0) * 0.65 + 0.14
         let hiHatHit = Float(hiHatVal)
         
         let targets: [Float] = [
@@ -704,11 +730,11 @@ public final class AudioSpectrumEngine: ObservableObject {
             min(1.0, max(0.08, hiHatHit))
         ]
         
-        // Filtro balístico con ataque ágil y caída orgánica
+        // Filtro balístico: subida ágil (punch) y caída orgánica
         for i in 0..<6 {
             let target = targets[i]
-            let attackRate: Float = 0.38
-            let releaseRate: Float = 0.15
+            let attackRate: Float = 0.55
+            let releaseRate: Float = 0.22
             let rate = target > simEnvelopeLevels[i] ? attackRate : releaseRate
             simEnvelopeLevels[i] += (target - simEnvelopeLevels[i]) * rate
         }

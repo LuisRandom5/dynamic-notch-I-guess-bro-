@@ -207,9 +207,13 @@ public struct AirPods3DView: View {
                     .foregroundColor(.white.opacity(0.85))
             }
             
-            Text("\(percent)%")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+            RollingNumberView(
+                value: percent,
+                suffix: "%",
+                font: .system(size: 11, weight: .bold, design: .rounded),
+                color: .white,
+                alignment: .center
+            )
         }
     }
 }

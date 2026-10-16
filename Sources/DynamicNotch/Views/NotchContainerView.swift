@@ -50,6 +50,7 @@ public struct NotchContainerView: View {
     @EnvironmentObject var musicService: MusicService
     @EnvironmentObject var batteryService: BatteryService
     @ObservedObject var activityCenter = ActivityCenter.shared
+    @ObservedObject var notificationProvider = NotificationActivityProvider.shared
     @ObservedObject var speedManager = AnimationSpeedManager.shared
     @ObservedObject var glassManager = GlassClearManager.shared
     @Namespace private var notchNamespace
@@ -101,10 +102,10 @@ public struct NotchContainerView: View {
     
     // Ancho: notch físico en idle, alas en compact, HUD de volumen, Live Activity o ancho fijo en expanded
     private var currentWidth: CGFloat {
-        if appState.isDropInvitationActive {
-            return 460
-        } else if appState.mode == .expanded || appState.mode == .shelf {
+        if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedWidth
+        } else if appState.isDropInvitationActive {
+            return 460
         } else if let activity = activityCenter.currentActivity {
             if activityCenter.dismissingActivityId == activity.id {
                 switch activity.style {
@@ -124,6 +125,11 @@ public struct NotchContainerView: View {
             case .airpodsPill:
                 return 390
             case .card:
+                if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
+                    return notificationProvider.isQuickReplyExpanded
+                        ? NotificationActivityProvider.expandedWidth
+                        : NotificationActivityProvider.compactWidth
+                }
                 return activityCenter.customCardWidth ?? 390
             }
         } else {
@@ -133,12 +139,12 @@ public struct NotchContainerView: View {
     
     // Alto: altura del notch en reposo, 36pt en SliderPill, 192pt en AirPods 3D, 144pt en Drop Invitation, 204pt en repisa, 196pt en reproductor
     private var currentHeight: CGFloat {
-        if appState.isDropInvitationActive {
-            return 144
-        } else if appState.mode == .expanded || appState.mode == .shelf {
+        if appState.mode == .expanded || appState.mode == .shelf {
             return (appState.isPlayerDetailExpanded && appState.mode == .expanded)
                 ? PlayerMetrics.detailCardHeight
                 : (appState.mode == .shelf ? 204 : NotchTuning.expandedHeight)
+        } else if appState.isDropInvitationActive {
+            return 144
         } else if let activity = activityCenter.currentActivity {
             if activityCenter.dismissingActivityId == activity.id {
                 return geometry.height
@@ -149,29 +155,24 @@ public struct NotchContainerView: View {
             case .airpodsPill:
                 return 192
             case .card:
+                if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
+                    return notificationProvider.isQuickReplyExpanded
+                        ? NotificationActivityProvider.expandedHeight
+                        : NotificationActivityProvider.compactHeight
+                }
                 return activityCenter.customCardHeight ?? 112
             }
         } else {
-            switch appState.mode {
-            case .idle, .compact:
-                return geometry.height
-            case .expanded, .shelf:
-                return (appState.isPlayerDetailExpanded && appState.mode == .expanded)
-                    ? PlayerMetrics.detailCardHeight
-                    : (appState.mode == .shelf ? 204 : NotchTuning.expandedHeight)
-            }
+            return geometry.height
         }
     }
     
     // Curvatura de esquinas: se redondea dinámicamente al arrastrar para convertirse en PÍLDORA completa
     private var topRadius: CGFloat {
-        if appState.isDropInvitationActive {
-            return 0
-        } else if appState.mode == .expanded || appState.mode == .shelf {
+        if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedTopRadius
-        } else if dragOffsetY > 0 {
-            // ¡Al arrastrar hacia abajo se redondea progresivamente a PÍLDORA flotante continua!
-            return min(dragOffsetY * 0.9, 18.0)
+        } else if appState.isDropInvitationActive {
+            return 0
         } else if let activity = activityCenter.currentActivity {
             switch activity.style {
             case .pill, .sliderPill, .airpodsPill:
@@ -179,23 +180,19 @@ public struct NotchContainerView: View {
             case .card:
                 return activityCenter.customTopRadius ?? 28
             }
+        } else if dragOffsetY > 0 {
+            // ¡Al arrastrar hacia abajo se redondea progresivamente a PÍLDORA flotante continua!
+            return min(dragOffsetY * 0.9, 18.0)
         } else {
-            switch appState.mode {
-            case .idle, .compact:
-                return 0
-            case .expanded, .shelf:
-                return NotchTuning.expandedTopRadius
-            }
+            return 0
         }
     }
     
     private var bottomRadius: CGFloat {
-        if appState.isDropInvitationActive {
-            return 42
-        } else if appState.mode == .expanded || appState.mode == .shelf {
+        if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedBottomRadius
-        } else if dragOffsetY > 0 {
-            return 17.0 + min(dragOffsetY * 0.15, 3.0)
+        } else if appState.isDropInvitationActive {
+            return 42
         } else if let activity = activityCenter.currentActivity {
             if activityCenter.dismissingActivityId == activity.id {
                 return 17
@@ -206,15 +203,17 @@ public struct NotchContainerView: View {
             case .airpodsPill:
                 return 38
             case .card:
+                if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
+                    return notificationProvider.isQuickReplyExpanded
+                        ? NotificationActivityProvider.expandedBottomRadius
+                        : NotificationActivityProvider.compactBottomRadius
+                }
                 return activityCenter.customBottomRadius ?? 32
             }
+        } else if dragOffsetY > 0 {
+            return 17.0 + min(dragOffsetY * 0.15, 3.0)
         } else {
-            switch appState.mode {
-            case .idle, .compact:
-                return 17
-            case .expanded, .shelf:
-                return NotchTuning.expandedBottomRadius
-            }
+            return 17
         }
     }
     
@@ -227,7 +226,8 @@ public struct NotchContainerView: View {
     }
 
     private var activeExpandedHeight: CGFloat {
-        currentHeight + appState.verticalOverscrollOffset
+        let notifPull = notificationProvider.isNotificationActive ? notificationProvider.dragPullOffset : 0
+        return currentHeight + appState.verticalOverscrollOffset + notifPull
     }
     
     private var containerOffsetY: CGFloat {
@@ -238,26 +238,26 @@ public struct NotchContainerView: View {
         }
     }
     
-    // Escala temporal: si presiona (squash & stretch), si pasa cursor (latido), si no 1.0
+    // Escala reactiva: si presiona (squash & stretch), si mantiene cursor encima (expansión continua tipo Dynamic Island), si no 1.0
     private var scaleX: CGFloat {
-        if interactionState == .pressed && appState.mode != .expanded {
+        if interactionState == .pressed && appState.mode != .expanded && appState.mode != .shelf {
             return NotchTuning.pressScaleX
-        } else if appState.mode != .expanded {
+        } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
             return appState.heartbeatScaleX
         }
         return 1.0
     }
     
     private var scaleY: CGFloat {
-        if interactionState == .pressed && appState.mode != .expanded {
+        if interactionState == .pressed && appState.mode != .expanded && appState.mode != .shelf {
             return NotchTuning.pressScaleY
-        } else if appState.mode != .expanded {
+        } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
             return appState.heartbeatScaleY
         }
         return 1.0
     }
     
-    // Sombra suave en anticipación, latido de hover, Live Activities o fija en expandido/bandeja
+    // Sombra suave en anticipación, fija y profunda en hover de Dynamic Island, Live Activities o fija en expandido/bandeja
     private var shadowRadius: CGFloat {
         if interactionState == .pressed && appState.mode != .expanded {
             return NotchTuning.pressShadowRadius
@@ -271,7 +271,7 @@ public struct NotchContainerView: View {
                 return 22
             }
         } else if appState.heartbeatShadowOpacity > 0 && appState.mode != .expanded {
-            return 16
+            return 22
         } else if appState.mode == .compact {
             return 14
         }
@@ -311,7 +311,7 @@ public struct NotchContainerView: View {
                 return 7
             }
         } else if appState.heartbeatShadowOpacity > 0 && appState.mode != .expanded {
-            return 6
+            return 8
         } else if appState.mode == .compact {
             return 5
         }
@@ -362,7 +362,27 @@ public struct NotchContainerView: View {
                 
                 // Contenido según el modo, Live Activity o HUD de volumen
                 Group {
-                    if activityCenter.currentActivity != nil {
+                    if appState.mode == .expanded {
+                        NotchPlayerView(
+                            namespace: notchNamespace,
+                            animStage1: animStage1,
+                            animStage2: animStage2,
+                            animStage3: animStage3,
+                            controlsExiting: controlsExiting,
+                            progressExiting: progressExiting,
+                            topRowExiting: topRowExiting
+                        )
+                        .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                        .transition(.opacity)
+                    } else if appState.mode == .shelf {
+                        NotchShelfView()
+                            .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                                removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
+                            ))
+                            .id("notchShelfView")
+                    } else if activityCenter.currentActivity != nil {
                         // Live Activity activa (Pill / SliderPill / Card): Máxima prioridad, nunca es desplazada por el reproductor
                         LiveActivityContainerView()
                             .frame(width: currentWidth, height: currentHeight, alignment: .top)
@@ -378,26 +398,6 @@ public struct NotchContainerView: View {
                         NotchDropInvitationView()
                             .frame(width: currentWidth, height: currentHeight, alignment: .top)
                             .transition(.opacity)
-                    } else if appState.mode == .shelf {
-                        NotchShelfView()
-                            .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
-                                removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
-                            ))
-                            .id("notchShelfView")
-                    } else if appState.mode == .expanded {
-                        NotchPlayerView(
-                            namespace: notchNamespace,
-                            animStage1: animStage1,
-                            animStage2: animStage2,
-                            animStage3: animStage3,
-                            controlsExiting: controlsExiting,
-                            progressExiting: progressExiting,
-                            topRowExiting: topRowExiting
-                        )
-                        .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
-                        .transition(.opacity)
                     } else {
                         switch appState.mode {
                         case .idle:
@@ -489,7 +489,7 @@ public struct NotchContainerView: View {
                         .onTapGesture {
                             performCollapse()
                         }
-                } else if let activity = activityCenter.currentActivity, activity.style == .card {
+                } else if let activity = activityCenter.currentActivity, activity.style == .card && activity.customView == nil {
                     Color.clear
                         .frame(width: max(geometry.width, 180), height: max(geometry.height, 36))
                         .contentShape(Rectangle())
@@ -506,20 +506,21 @@ public struct NotchContainerView: View {
             )
             .offset(x: cardOffsetX)
             // Sombra Multicapa (Ambient + Key): profundidad hiperrealista tipo isla dinámica
-            // En modo Cristal Claro, se anula la sombra interior directa para evitar manchas oscuras bajo la tarjeta
+            // En modo Cristal Claro EXPANDIDO, se anula la sombra interior directa para evitar manchas oscuras bajo la tarjeta translúcida;
+            // cuando está colapsado (idle/compact), la píldora es negro puro y sí proyecta su sombra fija de Dynamic Island.
             .shadow(
                 color: Color.black.opacity(
-                    appState.effectiveAppearanceMode == .clearGlass
+                    (appState.effectiveAppearanceMode == .clearGlass && (appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive))
                         ? 0.0
-                        : ((shadowOpacity * 0.40) + (hasDownPull ? 0.14 : 0.0))
+                        : ((shadowOpacity * 0.42) + (hasDownPull ? 0.14 : 0.0))
                 ),
-                radius: (shadowRadius * 0.35) + (hasDownPull ? 4 : 0),
+                radius: (shadowRadius * 0.38) + (hasDownPull ? 4 : 0),
                 x: 0,
                 y: (shadowY * 0.45) + totalOffsetY * 0.2
             )
             .shadow(
                 color: Color.black.opacity(
-                    appState.effectiveAppearanceMode == .clearGlass
+                    (appState.effectiveAppearanceMode == .clearGlass && (appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive))
                         ? 0.0
                         : (shadowOpacity + (hasDownPull ? 0.22 : 0.0))
                 ),
@@ -527,10 +528,10 @@ public struct NotchContainerView: View {
                 x: 0,
                 y: shadowY + totalOffsetY * 0.4
             )
-            // Sombra exterior con máscara inversa para Cristal Claro (la sombra existe fuera y es nula dentro)
+            // Sombra exterior con máscara inversa para Cristal Claro expandido (la sombra existe fuera y es nula dentro)
             .background(
                 Group {
-                    if appState.effectiveAppearanceMode == .clearGlass && glassManager.showCardShadow {
+                    if appState.effectiveAppearanceMode == .clearGlass && glassManager.showCardShadow && (appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive) {
                         let pill = ElasticPillShape(
                             topRadius: topRadius,
                             bottomRadius: bottomRadius,
@@ -564,7 +565,16 @@ public struct NotchContainerView: View {
                 gesture: pillPressGesture
             ))
             .onTapGesture {
-                if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
+                if appState.mode == .expanded || appState.mode == .shelf {
+                    // Ya está expandido: no colapsar al hacer click dentro del contenido de la tarjeta
+                    return
+                } else if notificationProvider.isNotificationActive {
+                    if !notificationProvider.isQuickReplyExpanded {
+                        notificationProvider.expandQuickReply()
+                    }
+                } else if activityCenter.currentActivity != nil {
+                    activityCenter.handleTap()
+                } else {
                     performExpand()
                 }
             }
@@ -574,29 +584,31 @@ public struct NotchContainerView: View {
                 gesture: cardSwipeGesture
             ))
             .onHover { isHovering in
-                let wasInside = isMouseInsideWidget
+                let wasHovered = isMouseInsideWidget
                 isMouseInsideWidget = isHovering
                 
-                if appState.mode == .expanded && appState.autoCollapseOnHoverExit {
-                    if !isHovering {
+                if (appState.mode == .expanded || appState.mode == .shelf) && appState.autoCollapseOnHoverExit {
+                    if wasHovered && !isHovering {
                         // Inicia timer de ~0.6 s al salir del widget
                         hoverExitTimer?.invalidate()
                         let delay = speedManager.adjustedDuration(ExitAnimationMetrics.hoverExitDelay)
                         hoverExitTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
                             DispatchQueue.main.async {
-                                if appState.mode == .expanded && appState.autoCollapseOnHoverExit {
+                                if (appState.mode == .expanded || appState.mode == .shelf) && appState.autoCollapseOnHoverExit && !self.isMouseInsideWidget {
                                     performCollapse()
                                 }
                             }
                         }
-                    } else {
+                    } else if isHovering {
                         // El cursor regresó al widget: cancela el timer
                         hoverExitTimer?.invalidate()
                         hoverExitTimer = nil
                     }
-                } else if isHovering && !wasInside && appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
-                    // Pulso cardíaco ejecutado SOLO UNA VEZ al ingresar el cursor (sin espasmos repetitivos en reposo)
-                    appState.triggerHeartbeat()
+                } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
+                    // Expansión suave sostenida con sombra fija mientras el cursor permanece sobre la Dynamic Island
+                    appState.setHoverState(isHovering)
+                } else if !isHovering {
+                    appState.setHoverState(false)
                 }
             }
             .animation(NotchTuning.pressSpring, value: interactionState)
@@ -605,6 +617,7 @@ public struct NotchContainerView: View {
             .animation(currentShapeSpring, value: currentHeight)
             .animation(currentShapeSpring, value: topRadius)
             .animation(currentShapeSpring, value: bottomRadius)
+            .animation(.spring(response: 0.38, dampingFraction: 0.80), value: notificationProvider.isQuickReplyExpanded)
             
             Spacer()
         }
@@ -699,7 +712,7 @@ public struct NotchContainerView: View {
     
     // Gesto de presión y arrastre hacia abajo con desenfoque (blur) tipo iPhone Dynamic Island
     private var pillPressGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: 4)
             .onChanged { value in
                 guard appState.mode != .expanded && appState.mode != .shelf else { return }
                 
@@ -982,9 +995,11 @@ public struct NotchContainerView: View {
             performExpand()
         } else if mode == .shelf {
             appState.activeTab = .shelf
+            appState.setHoverState(false)
         } else if mode == .compact {
             interactionState = .collapsed
             isCollapsing = false
+            isTransitioningFromActivity = false
         } else {
             performCollapse()
         }
@@ -994,6 +1009,8 @@ public struct NotchContainerView: View {
     private func performExpand() {
         hoverExitTimer?.invalidate()
         hoverExitTimer = nil
+        appState.setHoverState(false)
+        isTransitioningFromActivity = false
         
         isCollapsing = false
         controlsExiting = false
@@ -1006,21 +1023,28 @@ public struct NotchContainerView: View {
         )
         
         let targetMode: NotchMode
-        if !appState.shelfItems.isEmpty && !musicService.hasActiveMusic {
+        if appState.activeMiniAppOverlay != nil || musicService.hasActiveMusic {
+            targetMode = .expanded
+            appState.activeTab = .music
+        } else if !appState.shelfItems.isEmpty {
             targetMode = .shelf
             appState.activeTab = .shelf
         } else if appState.mode == .expanded {
             targetMode = .expanded
-        } else if appState.activeTab == .shelf {
-            targetMode = .shelf
+            appState.activeTab = .music
         } else {
             targetMode = .expanded
+            appState.activeTab = .music
         }
         withAnimation(shapeSpring) {
             interactionState = .expanded
-            appState.mode = targetMode
+            if appState.mode != targetMode {
+                appState.mode = targetMode
+            }
         }
-        appState.hapticService.triggerExpand()
+        if appState.mode != targetMode {
+            appState.hapticService.triggerExpand()
+        }
         if targetMode == .expanded {
             triggerStaggeredIn()
         }
@@ -1056,6 +1080,8 @@ public struct NotchContainerView: View {
         
         hoverExitTimer?.invalidate()
         hoverExitTimer = nil
+        appState.setHoverState(false)
+        appState.activeMiniAppOverlay = nil
         isCollapsing = true
         
         let exitAnim = speedManager.easeIn(duration: ExitAnimationMetrics.contentExitDuration)
@@ -1090,11 +1116,16 @@ public struct NotchContainerView: View {
             guard self.isCollapsing else { return }
             withAnimation(shapeSpring) {
                 self.interactionState = .collapsed
+                self.isTransitioningFromActivity = false
+                self.appState.isHoldingBareNotch = false
                 self.appState.isPlayerDetailExpanded = false
                 self.appState.verticalOverscrollOffset = 0
                 self.appState.contentVerticalOverscrollOffset = 0
                 self.appState.overscrollOffset = 0
                 self.appState.contentOverscrollOffset = 0
+                if self.appState.shelfItems.isEmpty || self.musicService.hasActiveMusic {
+                    self.appState.activeTab = .music
+                }
                 if self.appState.shouldShowCompact {
                     self.appState.mode = .compact
                 } else {
@@ -1115,6 +1146,7 @@ public struct NotchContainerView: View {
             self.animStage1 = false
             self.animStage2 = false
             self.animStage3 = false
+            self.appState.reconcileCompactMode()
         }
     }
 }

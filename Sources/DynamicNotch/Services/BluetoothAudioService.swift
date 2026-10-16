@@ -15,12 +15,16 @@ private final class BluetoothDeviceObserver: NSObject {
     }
     
     @objc func deviceConnected(notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
+        // Ignorar sondeos y paquetes BLE si el dispositivo no está verdaderamente conectado
+        guard device.isConnected() else {
+            return
+        }
+        
         let name = device.name ?? device.nameOrAddress ?? "AirPods"
         DNDLogger.log("BluetoothDeviceObserver: Hardware Bluetooth connected -> '\(name)', isConnected=\(device.isConnected())")
         
         let isAirPods = name.localizedCaseInsensitiveContains("AirPods") ||
-                        name.localizedCaseInsensitiveContains("Beats") ||
-                        device.deviceClassMinor == 1
+                        name.localizedCaseInsensitiveContains("Beats")
                         
         if isAirPods {
             DispatchQueue.main.async {
@@ -44,18 +48,45 @@ public final class BluetoothAudioService {
     public static let shared = BluetoothAudioService()
     
     private var lastConnectedDevice: String = ""
+    private var lastAlertTime: Date = Date.distantPast
+    private var lastAlertedDeviceName: String = ""
+    private let alertCooldown: TimeInterval = 60.0
     
     private init() {
         startMonitoringAudioDevices()
         BluetoothDeviceObserver.shared.startObserving()
     }
     
-    public func handleAirPodsConnected(name: String) {
-        DNDLogger.log("BluetoothAudioService.handleAirPodsConnected: '\(name)'")
-        if name != lastConnectedDevice {
+    public func handleAirPodsConnected(name: String, isInitialCheck: Bool = false) {
+        guard AppState.shared.enableAirPodsAnimation else { return }
+        
+        // Si es el escaneo de arranque o ya está conectado como salida actual, solo registrar sin alertar
+        if isInitialCheck {
             self.lastConnectedDevice = name
-            self.fetchBatteryAndTriggerAlert(deviceName: name)
+            self.lastAlertedDeviceName = name
+            return
         }
+        
+        // Si es exactamente el mismo dispositivo ya conectado, no disparar repetidamente
+        if name == lastConnectedDevice && !lastConnectedDevice.isEmpty {
+            return
+        }
+        
+        let now = Date()
+        let elapsed = now.timeIntervalSince(lastAlertTime)
+        
+        // Cooldown: si ya se mostró la animación hace menos de 60 segundos para el mismo dispositivo, omitir
+        if elapsed < alertCooldown && name == lastAlertedDeviceName {
+            DNDLogger.log("BluetoothAudioService.handleAirPodsConnected: en cooldown (\(Int(elapsed))s < \(Int(alertCooldown))s). Omitiendo alerta para '\(name)'")
+            self.lastConnectedDevice = name
+            return
+        }
+        
+        DNDLogger.log("BluetoothAudioService.handleAirPodsConnected: Disparando alerta de conexión para '\(name)'")
+        self.lastConnectedDevice = name
+        self.lastAlertedDeviceName = name
+        self.lastAlertTime = now
+        self.fetchBatteryAndTriggerAlert(deviceName: name)
     }
     
     public func handleAirPodsDisconnected(name: String) {
@@ -105,19 +136,21 @@ public final class BluetoothAudioService {
                     let devName = dev.name ?? dev.nameOrAddress ?? ""
                     if devName.localizedCaseInsensitiveContains("AirPods") || devName.localizedCaseInsensitiveContains("Beats") {
                         DNDLogger.log("BluetoothAudioService: Paired AirPods already connected on launch: '\(devName)'")
+                        self.lastConnectedDevice = devName
+                        self.lastAlertedDeviceName = devName
                         dev.register(forDisconnectNotification: BluetoothDeviceObserver.shared, selector: #selector(BluetoothDeviceObserver.deviceDisconnected(notification:device:)))
                     }
                 }
             }
         }
         
-        // Verificación inicial de estado actual
+        // Verificación inicial silenciosa de estado actual al arrancar
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            BluetoothAudioService.shared.checkDefaultOutputDevice()
+            BluetoothAudioService.shared.checkDefaultOutputDevice(isInitialCheck: true)
         }
     }
     
-    public func checkDefaultOutputDevice() {
+    public func checkDefaultOutputDevice(isInitialCheck: Bool = false) {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -166,25 +199,21 @@ public final class BluetoothAudioService {
         
         DNDLogger.log("BluetoothAudioService.checkDefaultOutputDevice: Active output device is '\(name)', last reported: '\(lastConnectedDevice)'")
         
-        // 1. Comprobar si el dispositivo por defecto es AirPods o Beats
+        // 1. Comprobar si el dispositivo por defecto/activo es AirPods o Beats
         let isAirPodsDevice = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats")
         if isAirPodsDevice {
-            handleAirPodsConnected(name: name)
+            if isInitialCheck {
+                self.lastConnectedDevice = name
+                self.lastAlertedDeviceName = name
+            } else if name != self.lastConnectedDevice {
+                handleAirPodsConnected(name: name, isInitialCheck: false)
+            }
             return
         }
         
-        // 2. Comprobar si alguno de los dispositivos de salida conectados en el sistema es AirPods
-        let allOutputs = AudioDeviceService.shared.getOutputDevices()
-        for dev in allOutputs {
-            if dev.isAirPods {
-                DNDLogger.log("BluetoothAudioService: Found connected AirPods in audio device list: '\(dev.name)'")
-                handleAirPodsConnected(name: dev.name)
-                return
-            }
-        }
-        
+        // 2. Si la salida activa NO son AirPods (ej. altavoces del Mac), resetear
         if !self.lastConnectedDevice.isEmpty {
-            DNDLogger.log("BluetoothAudioService: AirPods disconnected. Resetting last reported device from '\(self.lastConnectedDevice)' to empty.")
+            DNDLogger.log("BluetoothAudioService: Salida activa es '\(name)'. Reseteando lastConnectedDevice desde '\(self.lastConnectedDevice)'.")
             self.lastConnectedDevice = ""
         }
     }

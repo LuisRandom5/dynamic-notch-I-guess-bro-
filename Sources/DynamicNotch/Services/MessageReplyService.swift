@@ -26,25 +26,19 @@ public final class MessageReplyService {
         let encodedMessage = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
         
         if app.lowercased().contains("whatsapp") {
-            let cleanNumber = recipient.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(trimmed, forType: .string)
+            print("[MessageReplyService] Mensaje copiado al portapapeles: \"\(trimmed)\"")
             
-            if preferWhatsAppWeb {
-                // Solo si el usuario explícitamente lo solicita o hay un número real abrimos la pestaña web
-                if openBrowser && cleanNumber.count >= 8 {
-                    let webUrlStr = "https://web.whatsapp.com/send?phone=\(cleanNumber)&text=\(encodedMessage)"
-                    if let url = URL(string: webUrlStr) {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-            } else {
-                // Modo Desktop App (solo si preferWhatsAppWeb es false)
-                let urlStr = cleanNumber.count >= 8 ?
-                    "whatsapp://send?phone=\(cleanNumber)&text=\(encodedMessage)" :
-                    "whatsapp://send?text=\(encodedMessage)"
-                
-                if let url = URL(string: urlStr) {
+            let cleanNumber = recipient.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+            if cleanNumber.count >= 8 {
+                let webUrlStr = "https://web.whatsapp.com/send?phone=\(cleanNumber)&text=\(encodedMessage)"
+                if let url = URL(string: webUrlStr) {
                     NSWorkspace.shared.open(url)
                 }
+            } else {
+                WhatsAppWebObserverService.shared.deliverQuickReply(message: trimmed, recipient: recipient)
             }
         }
         

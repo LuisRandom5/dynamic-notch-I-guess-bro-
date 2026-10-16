@@ -83,6 +83,7 @@ public final class ContactLookupService: ObservableObject {
         handle: String? = nil
     ) -> ContactInfo? {
         let status = CNContactStore.authorizationStatus(for: .contacts)
+        DNDLogger.log("ContactLookupService.lookupContact: status=\(status.rawValue)")
         guard status == .authorized else {
             // Si no hay acceso, generar monograma elegante para no dejar la UI vacía
             let fallbackName = name ?? handle ?? "Contacto"
@@ -192,7 +193,7 @@ public final class ContactLookupService: ObservableObject {
         
         if contact.imageDataAvailable {
             if let data = contact.thumbnailImageData ?? contact.imageData {
-                avatarImage = NSImage(data: data)
+                avatarImage = NSImage.decodedImage(from: data)
             }
         }
         
@@ -204,7 +205,7 @@ public final class ContactLookupService: ObservableObject {
         return ContactInfo(name: fullName, avatar: avatarImage, initials: initials)
     }
     
-    private func extractInitials(from name: String) -> String {
+    public func extractInitials(from name: String) -> String {
         let parts = name.split(separator: " ").filter { !$0.isEmpty }
         if parts.count >= 2 {
             let f = parts[0].prefix(1)

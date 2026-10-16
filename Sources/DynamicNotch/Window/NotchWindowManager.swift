@@ -62,7 +62,7 @@ public final class NotchWindowManager: ObservableObject {
     public func setAllowsKeyInput(_ allow: Bool) {
         panel?.allowsKeyInput = allow
         if allow {
-            panel?.makeKey()
+            panel?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         } else {
             panel?.resignKey()
@@ -87,12 +87,18 @@ public final class NotchWindowManager: ObservableObject {
         let geom = ScreenService.shared.currentGeometry
         let mode = AppState.shared.mode
         
+        if mode == .expanded || mode == .shelf {
+            let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
+            updateHitArea(width: max(PlayerMetrics.cardWidth + 140, 330), height: cardH + 70)
+            return
+        }
+        
         if AppState.shared.isDropInvitationActive {
             updateHitArea(width: 480, height: 160)
             return
         }
         
-        // Modal Live Activities (como notificaciones, AirPods, llamadas) mandan sobre el reproductor
+        // Modal Live Activities (como notificaciones, AirPods, llamadas) mandan sobre el notch en reposo
         if let activity = ActivityCenter.shared.currentActivity {
             if ActivityCenter.shared.dismissingActivityId == activity.id {
                 updateHitArea(width: geom.width + 24, height: geom.height + 10)
@@ -112,12 +118,6 @@ public final class NotchWindowManager: ObservableObject {
                 let extraH: CGFloat = NotificationActivityProvider.shared.isNotificationActive ? 180 : 50
                 updateHitArea(width: max(w + 60, 440), height: max(h + extraH, 280))
             }
-            return
-        }
-        
-        if mode == .expanded || mode == .shelf {
-            let cardH = AppState.shared.isPlayerDetailExpanded ? PlayerMetrics.detailCardHeight : (mode == .shelf ? 204 : PlayerMetrics.cardHeight)
-            updateHitArea(width: max(PlayerMetrics.cardWidth + 140, 330), height: cardH + 70)
             return
         }
         
@@ -216,6 +216,14 @@ public final class NotchWindowManager: ObservableObject {
             .store(in: &cancellables)
             
         ActivityCenter.shared.$dismissingActivityId
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateHitAreaForCurrentState()
+                }
+            }
+            .store(in: &cancellables)
+            
+        NotificationActivityProvider.shared.$isQuickReplyExpanded
             .sink { [weak self] _ in
                 DispatchQueue.main.async {
                     self?.updateHitAreaForCurrentState()

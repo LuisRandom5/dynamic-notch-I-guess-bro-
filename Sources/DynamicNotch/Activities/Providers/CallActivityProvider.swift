@@ -145,6 +145,14 @@ public final class CallActivityProvider: ObservableObject {
         isMuted.toggle()
         AudioDeviceService.shared.setMicrophoneMuted(isMuted)
         AppState.shared.hapticService.triggerSnap()
+        
+        // Confirmación auditiva nativa para avisar al usuario cuando se silencia o reactiva
+        if isMuted {
+            NSSound(named: "Bottle")?.play()
+        } else {
+            NSSound(named: "Tink")?.play()
+        }
+        
         publishCurrentState()
     }
     
@@ -643,7 +651,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 95,
+            priority: 100,
             style: .card,
             leading: leading,
             center: center,

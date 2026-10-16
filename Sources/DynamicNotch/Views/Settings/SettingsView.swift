@@ -3,14 +3,21 @@ import SwiftUI
 public struct SettingsView: View {
     @ObservedObject var appState = AppState.shared
     @ObservedObject var volumeInterceptor = VolumeInterceptorService.shared
+    @ObservedObject var spectrumEngine = AudioSpectrumEngine.shared
+    @ObservedObject var whatsAppObserver = WhatsAppWebObserverService.shared
+    @ObservedObject var callDetector = CallDetectorService.shared
+    @ObservedObject var timerProvider = TimerActivityProvider.shared
+    @ObservedObject var lockScreenBridge = LockScreenSkyLightBridge.shared
     
     @State private var selectedTab: SettingsTab = .appearance
+    @State private var noiseGateDB: Double = Double(SpectrumMetrics.noiseGateDB)
     
     public enum SettingsTab: String, CaseIterable, Identifiable {
         case appearance = "Apariencia"
         case gestures = "Gestos"
         case shelf = "Drag & Drop"
         case media = "Multimedia"
+        case miniApps = "Mini-Apps"
         case system = "Sistema"
         
         public var id: String { rawValue }
@@ -21,6 +28,7 @@ public struct SettingsView: View {
             case .gestures: return "hand.tap"
             case .shelf: return "tray.and.arrow.down.fill"
             case .media: return "play.circle"
+            case .miniApps: return "square.grid.2x2.fill"
             case .system: return "gearshape"
             }
         }
@@ -31,21 +39,22 @@ public struct SettingsView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Header con pestañas estilo macOS Sequoia
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 ForEach(SettingsTab.allCases) { tab in
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.18)) {
                             selectedTab = tab
                         }
                     }) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Image(systemName: tab.icon)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 12.5, weight: .semibold))
                             Text(tab.rawValue)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 12.5, weight: .medium))
+                                .lineLimit(1)
                         }
                         .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.6))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(
                             selectedTab == tab
@@ -55,9 +64,9 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 18)
             .padding(.top, 16)
             .padding(.bottom, 12)
             .background(Color.black.opacity(0.35))
@@ -67,7 +76,7 @@ public struct SettingsView: View {
             
             // Contenido de la pestaña
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 18) {
                     switch selectedTab {
                     case .appearance:
                         appearanceSection
@@ -77,6 +86,8 @@ public struct SettingsView: View {
                         shelfSection
                     case .media:
                         mediaSection
+                    case .miniApps:
+                        miniAppsSection
                     case .system:
                         systemSection
                     }
@@ -84,262 +95,323 @@ public struct SettingsView: View {
                 .padding(24)
             }
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 620, height: 520)
         .background(VisualEffectBackground(material: .underWindowBackground, blendingMode: .behindWindow, state: .active))
     }
     
     // MARK: - Sección Apariencia
     private var appearanceSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Estilo Visual del Notch")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
-                    Text("Reducción de transparencia activa")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DesignTokens.orange)
-                }
-            }
-            
-            HStack(spacing: 12) {
-                // Opción 1: Negro Puro OLED
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        appState.appearanceMode = .pureOLED
-                    }
-                }) {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.black)
-                                .frame(height: 70)
-                                .overlay(
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.12))
-                                        .frame(width: 44, height: 12)
-                                )
-                            
-                            if appState.appearanceMode == .pureOLED {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(DesignTokens.blue, lineWidth: 2.5)
-                            }
-                        }
-                        
-                        Text("Negro Puro OLED")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundColor(appState.appearanceMode == .pureOLED ? .white : .white.opacity(0.65))
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                
-                // Opción 2: Cristal Oscuro (Dark Glass - Por Defecto)
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        appState.appearanceMode = .darkGlass
-                    }
-                }) {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.20), Color.black.opacity(0.85)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(height: 70)
-                                .overlay(
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.25))
-                                        .frame(width: 44, height: 12)
-                                )
-                            
-                            if appState.appearanceMode == .darkGlass {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(DesignTokens.blue, lineWidth: 2.5)
-                            }
-                        }
-                        
-                        Text("Cristal Oscuro")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundColor(appState.appearanceMode == .darkGlass ? .white : .white.opacity(0.65))
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                
-                // Opción 3: Cristal Claro (Clear Glass)
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        appState.appearanceMode = .clearGlass
-                    }
-                }) {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(height: 70)
-                                .overlay(
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.40))
-                                        .frame(width: 44, height: 12)
-                                )
-                            
-                            if appState.appearanceMode == .clearGlass {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(DesignTokens.blue, lineWidth: 2.5)
-                            }
-                        }
-                        
-                        Text("Cristal Claro")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundColor(appState.appearanceMode == .clearGlass ? .white : .white.opacity(0.65))
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-            }
-            
-            if appState.appearanceMode == .darkGlass {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Opacidad del Tinte Oscuro")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
-                        Spacer()
-                        Text("\(Int(round(appState.glassDarknessOpacity * 100)))%")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.9))
-                    }
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Estilo Visual del Notch")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
                     
-                    // Rango exacto de 30% a 90% (DEFAULT ~55%)
-                    Slider(
-                        value: Binding(
-                            get: { Double(round(appState.glassDarknessOpacity * 100)) },
-                            set: { appState.glassDarknessOpacity = min(0.90, max(0.30, $0 / 100.0)) }
-                        ),
-                        in: 30...90,
-                        step: 1
-                    )
-                        .tint(DesignTokens.blue)
+                    Spacer()
+                    
+                    if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+                        Text("Reducción de transparencia activa")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(DesignTokens.orange)
+                    }
                 }
-                .padding(.top, 4)
-            }
-            
-            if appState.appearanceMode == .clearGlass {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Atenuación Mínima (Slider Transparencia)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.85))
-                            Text("Atenuación uniforme: 0% totalmente claro, 10% default, 35% máxima legibilidad.")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.55))
-                        }
-                        Spacer()
-                        Text("\(Int(round(GlassClearManager.shared.uniformScrimOpacity * 100)))%")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.95))
-                    }
-                    
-                    Slider(
-                        value: Binding(
-                            get: { round(GlassClearManager.shared.uniformScrimOpacity * 100) },
-                            set: { GlassClearManager.shared.uniformScrimOpacity = min(0.35, max(0.0, $0 / 100.0)) }
-                        ),
-                        in: 0...35,
-                        step: 1
-                    )
-                    .tint(DesignTokens.blue)
-                    
-                    HStack {
-                        Toggle(isOn: Binding(
-                            get: { GlassClearManager.shared.enableAutoWallpaperLuminance },
-                            set: { GlassClearManager.shared.enableAutoWallpaperLuminance = $0 }
-                        )) {
-                            Text("Adaptar al fondo de pantalla")
-                                .font(.system(size: 11.5))
-                                .foregroundColor(.white.opacity(0.80))
-                        }
-                        .toggleStyle(.checkbox)
-                        
-                        Spacer()
-                        
-                        if GlassClearManager.shared.enableAutoWallpaperLuminance {
-                            Text("Luminosidad: \(Int(round(GlassClearManager.shared.detectedWallpaperLuminance * 100)))%")
-                                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    // Botón para abrir el panel de bisección
+                
+                HStack(spacing: 12) {
+                    // Opción 1: Negro Puro OLED
                     Button(action: {
-                        ActivityDebugWindow.shared.show()
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "slider.horizontal.3")
-                            Text("Abrir Bisección de Capas y Debug")
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.appearanceMode = .pureOLED
                         }
-                        .font(.system(size: 11.5, weight: .medium))
+                    }) {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.black)
+                                    .frame(height: 70)
+                                    .overlay(
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.12))
+                                            .frame(width: 44, height: 12)
+                                    )
+                                
+                                if appState.appearanceMode == .pureOLED {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(DesignTokens.blue, lineWidth: 2.5)
+                                }
+                            }
+                            
+                            Text("Negro Puro OLED")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(appState.appearanceMode == .pureOLED ? .white : .white.opacity(0.65))
+                        }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    
+                    // Opción 2: Cristal Oscuro (Dark Glass - Por Defecto)
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.appearanceMode = .darkGlass
+                        }
+                    }) {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.20), Color.black.opacity(0.85)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(height: 70)
+                                    .overlay(
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.25))
+                                            .frame(width: 44, height: 12)
+                                    )
+                                
+                                if appState.appearanceMode == .darkGlass {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(DesignTokens.blue, lineWidth: 2.5)
+                                }
+                            }
+                            
+                            Text("Cristal Oscuro")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(appState.appearanceMode == .darkGlass ? .white : .white.opacity(0.65))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    
+                    // Opción 3: Cristal Claro (Clear Glass)
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.appearanceMode = .clearGlass
+                        }
+                    }) {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(height: 70)
+                                    .overlay(
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.40))
+                                            .frame(width: 44, height: 12)
+                                    )
+                                
+                                if appState.appearanceMode == .clearGlass {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(DesignTokens.blue, lineWidth: 2.5)
+                                }
+                            }
+                            
+                            Text("Cristal Claro")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(appState.appearanceMode == .clearGlass ? .white : .white.opacity(0.65))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                }
+                
+                if appState.appearanceMode == .darkGlass {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Opacidad del Tinte Oscuro")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                            RollingNumberView(
+                                value: Int(round(appState.glassDarknessOpacity * 100)),
+                                suffix: "%",
+                                font: .system(size: 12, weight: .bold, design: .rounded),
+                                color: .white.opacity(0.9)
+                            )
+                        }
+                        
+                        Slider(
+                            value: Binding(
+                                get: { Double(round(appState.glassDarknessOpacity * 100)) },
+                                set: { appState.glassDarknessOpacity = min(0.90, max(0.30, $0 / 100.0)) }
+                            ),
+                            in: 30...90,
+                            step: 1
+                        )
+                        .tint(DesignTokens.blue)
+                    }
                     .padding(.top, 4)
                 }
-                .padding(.top, 4)
+                
+                if appState.appearanceMode == .clearGlass {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Atenuación Mínima (Slider Transparencia)")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.85))
+                                Text("Atenuación uniforme: 0% totalmente claro, 10% default, 35% máxima legibilidad.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.55))
+                            }
+                            Spacer()
+                            RollingNumberView(
+                                value: Int(round(GlassClearManager.shared.uniformScrimOpacity * 100)),
+                                suffix: "%",
+                                font: .system(size: 12, weight: .bold, design: .rounded),
+                                color: .white.opacity(0.95)
+                            )
+                        }
+                        
+                        Slider(
+                            value: Binding(
+                                get: { round(GlassClearManager.shared.uniformScrimOpacity * 100) },
+                                set: { GlassClearManager.shared.uniformScrimOpacity = min(0.35, max(0.0, $0 / 100.0)) }
+                            ),
+                            in: 0...35,
+                            step: 1
+                        )
+                        .tint(DesignTokens.blue)
+                        
+                        HStack {
+                            Toggle(isOn: Binding(
+                                get: { GlassClearManager.shared.enableAutoWallpaperLuminance },
+                                set: { GlassClearManager.shared.enableAutoWallpaperLuminance = $0 }
+                            )) {
+                                Text("Adaptar al fondo de pantalla")
+                                    .font(.system(size: 11.5))
+                                    .foregroundColor(.white.opacity(0.80))
+                            }
+                            .toggleStyle(.checkbox)
+                            
+                            Spacer()
+                            
+                            if GlassClearManager.shared.enableAutoWallpaperLuminance {
+                                Text("Luminosidad: \(Int(round(GlassClearManager.shared.detectedWallpaperLuminance * 100)))%")
+                                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        Button(action: {
+                            ActivityDebugWindow.shared.show()
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "slider.horizontal.3")
+                                Text("Abrir Bisección de Capas y Debug")
+                            }
+                            .font(.system(size: 11.5, weight: .medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.top, 4)
+                    }
+                    .padding(.top, 4)
+                }
+                
+                // Avisos del Sistema
+                if GlassClearManager.shared.isReduceTransparencyActive {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 14))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("«Reducir transparencia» está activo en macOS")
+                                .font(.system(size: 11.5, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("Por accesibilidad del sistema, el efecto Liquid Glass se desactiva y cae automáticamente al modo Negro Puro OLED.")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.white.opacity(0.70))
+                        }
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.15)))
+                }
+                
+                if GlassClearManager.shared.isSystemLiquidGlassTinted {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "paintpalette.fill")
+                            .foregroundColor(.blue)
+                            .font(.system(size: 14))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Liquid Glass Tintado por el Sistema")
+                                .font(.system(size: 11.5, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("macOS tiene configurado un color de acento o modo tintado en Ajustes. El cristal adoptará un leve tinte por decisión del sistema.")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.white.opacity(0.70))
+                        }
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.blue.opacity(0.15)))
+                }
             }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
             
-            // Avisos del Sistema
-            if GlassClearManager.shared.isReduceTransparencyActive {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.system(size: 14))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("«Reducir transparencia» está activo en macOS")
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundColor(.white)
-                        Text("Por accesibilidad del sistema, el efecto Liquid Glass se desactiva y cae automáticamente al modo Negro Puro OLED.")
-                            .font(.system(size: 10.5))
-                            .foregroundColor(.white.opacity(0.70))
+            // Nueva Tarjeta: Comportamiento de Expansión y Sombra en Hover
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Image(systemName: "cursorarrow.motionlines")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(DesignTokens.blue)
+                    Text("Expansión y Sombra al Pasar el Cursor (Hover)")
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Toggle("", isOn: $appState.enableHoverExpansion)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+                
+                Text("Al posar el cursor sobre el Notch, la píldora se expande suavemente con una sombra profunda y constante mientras el cursor permanece encima, volviendo a su tamaño original al salir.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.60))
+                
+                if appState.enableHoverExpansion {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Escala de crecimiento en Hover")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.85))
+                            Spacer()
+                            Text("+\(String(format: "%.1f", (appState.hoverScaleAmount - 1.0) * 100))%")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundColor(DesignTokens.blue)
+                        }
+                        Slider(value: $appState.hoverScaleAmount, in: 1.01...1.08, step: 0.005)
+                            .tint(DesignTokens.blue)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Profundidad de sombra flotante")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.85))
+                            Spacer()
+                            RollingNumberView(
+                                value: Int(round(appState.hoverShadowIntensity * 100)),
+                                suffix: "%",
+                                font: .system(size: 12, weight: .bold, design: .rounded),
+                                color: DesignTokens.blue
+                            )
+                        }
+                        Slider(value: $appState.hoverShadowIntensity, in: 0.20...1.0, step: 0.05)
+                            .tint(DesignTokens.blue)
                     }
                 }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.15)))
             }
-            
-            if GlassClearManager.shared.isSystemLiquidGlassTinted {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "paintpalette.fill")
-                        .foregroundColor(.blue)
-                        .font(.system(size: 14))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Liquid Glass Tintado por el Sistema")
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundColor(.white)
-                        Text("macOS tiene configurado un color de acento o modo tintado en Ajustes. El cristal adoptará un leve tinte por decisión del sistema.")
-                            .font(.system(size: 10.5))
-                            .foregroundColor(.white.opacity(0.70))
-                    }
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.blue.opacity(0.15)))
-            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
     }
     
     // MARK: - Sección Gestos
@@ -352,8 +424,8 @@ public struct SettingsView: View {
             )
             
             ToggleRow(
-                title: "Expandir al pasar el cursor (Hover)",
-                subtitle: "Despliega automáticamente el Notch al acercar el cursor a la cámara",
+                title: "Expandir automáticamente al acercar el cursor",
+                subtitle: "Despliega el panel completo del Notch sin hacer clic al acercar el cursor a la cámara",
                 isOn: $appState.expandOnHover
             )
             
@@ -572,7 +644,7 @@ public struct SettingsView: View {
                         Text("Sonda de Detección Drag & Drop en Vivo")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
-                        Text("Monitorea coordenadas, proximidad euclidiana y eventos de NSPasteboard.")
+                        Text("Monitorea coordenadas, proximidad euclidiana y eventos de NSPasteboard (0% CPU en reposo).")
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.6))
                     }
@@ -591,7 +663,7 @@ public struct SettingsView: View {
     
     // MARK: - Sección Multimedia
     private var mediaSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             ToggleRow(
                 title: "Mostrar mini píldora durante la reproducción",
                 subtitle: "Muestra la carátula y el visualizador animado junto al Notch mientras escuchas música",
@@ -599,8 +671,8 @@ public struct SettingsView: View {
             )
             
             ToggleRow(
-                title: "Animación de AirPods",
-                subtitle: "Muestra la animación y el estado de batería al conectar auriculares Bluetooth o AirPods",
+                title: "Animación 3D de AirPods",
+                subtitle: "Muestra la animación PBR de estudio y el estado de batería al conectar AirPods",
                 isOn: $appState.enableAirPodsAnimation
             )
             
@@ -608,26 +680,12 @@ public struct SettingsView: View {
                 title: "Captura de Audio del Sistema (Process Tap)",
                 subtitle: "Lee el audio del sistema vía CoreAudio. Al apagarlo, el visualizador usa simulación rítmica inteligente y el punto morado de macOS desaparece por completo.",
                 isOn: Binding(
-                    get: { AudioSpectrumEngine.shared.enableSystemAudioTap },
-                    set: { AudioSpectrumEngine.shared.enableSystemAudioTap = $0 }
+                    get: { spectrumEngine.enableSystemAudioTap },
+                    set: { spectrumEngine.enableSystemAudioTap = $0 }
                 )
             )
             
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundColor(.green)
-                    Text("Compatibilidad Universal Activa")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                Text("Detecta automáticamente videos de YouTube, Spotify, Apple Music, Safari, Google Chrome, Arc, Brave, VLC y más.")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
+            visualizerStyleAndCalibrationCard
             
             // Acceso al Monitor de Audio en Tiempo Real
             Button(action: {
@@ -648,10 +706,10 @@ public struct SettingsView: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Monitor de Audio Real & Espectro 6 Bandas")
+                        Text("Abrir Laboratorio de Espectro FFT (6 y 10 Bandas)")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
-                        Text("Visualiza y calibra las 6 bandas logarítmicas con balística profesional.")
+                        Text("Visualiza picos dBFS, Peak Hold y calibra ganancia, ataque y caída por banda.")
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.6))
                     }
@@ -665,12 +723,534 @@ public struct SettingsView: View {
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
             }
             .buttonStyle(.plain)
+            
+            lockScreenViabilityCard
+        }
+    }
+    
+    private var lockScreenViabilityCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundColor(.cyan)
+                    .font(.system(size: 15, weight: .bold))
+                Text("Pantalla de Bloqueo: Viabilidad SkyLight (Paso 0)")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(.white)
+                Spacer()
+                if lockScreenBridge.isSupported {
+                    Text("SkyLight SPIs ✅")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.green.opacity(0.18)))
+                } else {
+                    Text("Kill Switch ❌")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.red.opacity(0.18)))
+                }
+            }
+            
+            ToggleRow(
+                title: "Reproductor en Pantalla de Bloqueo",
+                subtitle: "Muestra controles y carátula grande bajo el reloj de macOS al bloquear",
+                isOn: $appState.enableLockScreenPlayer
+            )
+            
+            if appState.enableLockScreenPlayer {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Diseño del Reproductor")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.85))
+                    
+                    Picker("", selection: $appState.lockScreenStyle) {
+                        Text("Hero Artwork + Cápsula (iOS Widget)").tag(AppState.LockScreenStyle.heroWidget)
+                        Text("Tarjeta Horizontal (macOS)").tag(AppState.LockScreenStyle.compactCard)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .padding(.horizontal, 4)
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Modo de Renderizado Liquid Glass (Paso 3)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.85))
+                    
+                    Picker("", selection: $appState.lockScreenRenderMode) {
+                        ForEach(AppState.LockScreenRenderMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+                .padding(.horizontal, 4)
+                
+                ToggleRow(
+                    title: "Ocultar detalles por privacidad",
+                    subtitle: "Oculta la carátula y los nombres de canciones en la pantalla bloqueada",
+                    isOn: $appState.lockScreenHideMediaDetails
+                )
+                
+                ToggleRow(
+                    title: "Halo ambiental de carátula",
+                    subtitle: "Proyecta un resplandor atmosférico suave con el color dominante de la canción",
+                    isOn: $appState.lockScreenShowArtworkHalo
+                )
+                
+                ToggleRow(
+                    title: "Control de volumen",
+                    subtitle: "Muestra un deslizador interactivo de volumen en la tarjeta de bloqueo",
+                    isOn: $appState.lockScreenShowVolumeSlider
+                )
+                
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("Ajuste vertical bajo el reloj")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.85))
+                        Spacer()
+                        Text("\(Int(appState.lockScreenVerticalOffset)) pt")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                    }
+                    Slider(value: Binding(
+                        get: { Double(appState.lockScreenVerticalOffset) },
+                        set: { appState.lockScreenVerticalOffset = CGFloat($0) }
+                    ), in: -200.0...200.0, step: 5.0)
+                    .tint(.cyan)
+                }
+                .padding(.horizontal, 4)
+                
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("Tiempo visible tras pausar")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.85))
+                        Spacer()
+                        Text("\(appState.lockScreenPauseTimeoutSeconds) s")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                    }
+                    Slider(value: Binding(
+                        get: { Double(appState.lockScreenPauseTimeoutSeconds) },
+                        set: { appState.lockScreenPauseTimeoutSeconds = Int($0) }
+                    ), in: 5.0...60.0, step: 5.0)
+                    .tint(.cyan)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("Atenuación uniforme de fondo")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.85))
+                        Spacer()
+                        RollingNumberView(
+                            value: Int(round(appState.lockScreenDimmingOpacity * 100)),
+                            suffix: "%",
+                            font: .system(size: 12, weight: .bold, design: .monospaced),
+                            color: .cyan
+                        )
+                    }
+                    Slider(value: $appState.lockScreenDimmingOpacity, in: 0.10...0.35, step: 0.01)
+                    .tint(.cyan)
+                }
+                .padding(.horizontal, 4)
+                
+                ToggleRow(
+                    title: "Modo Debug de contornos",
+                    subtitle: "Dibuja contornos de colores en ventana, silueta y capas para comprobar la geometría",
+                    isOn: $appState.lockScreenDebugOutlines
+                )
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Diagnóstico:")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.75))
+                Text(lockScreenBridge.diagnosticStatus)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.cyan.opacity(0.9))
+                    .lineLimit(2)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.25)))
+            
+            HStack(spacing: 10) {
+                // Botón de prueba con cuenta atrás
+                if lockScreenBridge.testCountdownSeconds > 0 {
+                    Button(action: {
+                        lockScreenBridge.cancelArmedTest()
+                    }) {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                            Text("Bloquea en \(lockScreenBridge.testCountdownSeconds)s (⌘⌃Q) • Cancelar")
+                                .font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .foregroundColor(.yellow)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 12)
+                        .background(Capsule().fill(Color.yellow.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: {
+                        lockScreenBridge.startCountdownAndArmTest(seconds: 3)
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "timer")
+                            Text("Iniciar prueba (3s para ⌘⌃Q)")
+                                .font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 12)
+                        .background(Capsule().fill(Color.cyan.opacity(0.28)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // Previsualizar en escritorio
+                Button(action: {
+                    lockScreenBridge.showTestPanel(isPreview: true)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eye")
+                        Text("Previsualizar (5 s)")
+                            .font(.system(size: 11.5, weight: .medium))
+                    }
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 12)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                
+                if lockScreenBridge.isTestPanelActive {
+                    Button(action: {
+                        lockScreenBridge.hideTestPanel(reason: "Cerrado manualmente")
+                    }) {
+                        Text("Ocultar")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(.red.opacity(0.9))
+                            .padding(.vertical, 7)
+                            .padding(.horizontal, 12)
+                            .background(Capsule().fill(Color.red.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.cyan.opacity(0.25), lineWidth: 1)
+        )
+    }
+    
+    private var visualizerStyleAndCalibrationCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "waveform.path.ecg")
+                    .foregroundColor(.pink)
+                Text("Estilo y Respuesta del Visualizador de Audio")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Paleta de color de las barras")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(.white.opacity(0.75))
+                
+                HStack(spacing: 8) {
+                    ForEach(VisualizerColorStyle.allCases) { style in
+                        visualizerStyleButton(for: style)
+                    }
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Preset de balística FFT")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(.white.opacity(0.75))
+                
+                HStack(spacing: 8) {
+                    ForEach(SpectrumResponsePreset.allCases) { preset in
+                        spectrumPresetButton(for: preset)
+                    }
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Umbral de Silencio (Noise Gate)")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.80))
+                    Spacer()
+                    Text("\(Int(noiseGateDB)) dBFS")
+                        .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(.cyan)
+                }
+                Slider(
+                    value: Binding(
+                        get: { noiseGateDB },
+                        set: { newVal in
+                            noiseGateDB = newVal
+                            SpectrumMetrics.noiseGateDB = Float(newVal)
+                        }
+                    ),
+                    in: -65...(-30),
+                    step: 1
+                )
+                .tint(.cyan)
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
+    }
+    
+    private func visualizerStyleButton(for style: VisualizerColorStyle) -> some View {
+        let isSelected = appState.visualizerColorStyle == style
+        let fillOpacity: Double = isSelected ? 0.32 : 0.07
+        let fillColor: Color = isSelected ? DesignTokens.blue.opacity(fillOpacity) : Color.white.opacity(fillOpacity)
+        let strokeColor: Color = isSelected ? DesignTokens.blue : Color.clear
+        return Button(action: {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                appState.visualizerColorStyle = style
+            }
+        }) {
+            Text(style.title)
+                .font(.system(size: 11.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                .foregroundColor(isSelected ? .white : .white.opacity(0.65))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(fillColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(strokeColor, lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private func spectrumPresetButton(for preset: SpectrumResponsePreset) -> some View {
+        Button(action: {
+            SpectrumMetrics.applyPreset(preset)
+            noiseGateDB = Double(SpectrumMetrics.noiseGateDB)
+            appState.hapticService.triggerSnap()
+        }) {
+            VStack(spacing: 2) {
+                Text(preset.shortTitle)
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                Text(preset.subtitle)
+                    .font(.system(size: 9.5))
+                    .foregroundColor(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+    
+    // MARK: - Sección Banco de Mini-Apps
+    private var miniAppsSection: some View {
+        VStack(spacing: 16) {
+            // Descripción del Banco de Mini-Apps
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(DesignTokens.orange)
+                    Text("Banco de Mini-Apps del Notch")
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                Text("Las Mini-Apps se ejecutan como overlays instantáneos dentro del Notch y como Live Activities en el Dynamic Island, manteniendo la navegación principal del Notch minimalista de solo 2 páginas (Música y Bandeja).")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.white.opacity(0.65))
+                    .lineSpacing(2)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
+            
+            // Accesos rápidos fijados en la esquina superior derecha del Notch
+            VStack(spacing: 10) {
+                ToggleRow(
+                    title: "Fijar icono de Cronómetro / Temporizador en el Notch",
+                    subtitle: "Muestra un botón de acceso rápido en la esquina superior derecha del reproductor",
+                    isOn: $appState.pinTimerMiniAppInNotch
+                )
+                
+                ToggleRow(
+                    title: "Fijar icono del Monitor de Audio FFT en el Notch",
+                    subtitle: "Permite abrir el analizador de espectro de 10 bandas en vivo con 1 clic desde el Notch",
+                    isOn: $appState.pinAudioMonitorMiniAppInNotch
+                )
+            }
+            
+            // Tarjeta Mini-App 1: Cronómetro & Temporizador Pomodoro
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(DesignTokens.orange.opacity(0.22))
+                            .frame(width: 34, height: 34)
+                        Image(systemName: timerProvider.mode.icon)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(DesignTokens.orange)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cronómetro & Temporizador Pomodoro")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(timerProvider.hasActiveSession ? "En curso: \(timerProvider.formattedDuration) (\(timerProvider.mode.title))" : "Cuenta atrás con presets rápidos y cronómetro con registro de vueltas")
+                            .font(.system(size: 11))
+                            .foregroundColor(timerProvider.hasActiveSession ? DesignTokens.orange : .white.opacity(0.60))
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        appState.openWithMiniApp(.timer)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.up.right.square.fill")
+                            Text("Abrir en Notch")
+                        }
+                        .font(.system(size: 11.5, weight: .semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignTokens.orange)
+                    .controlSize(.small)
+                }
+                
+                // Lanzadores rápidos desde Ajustes
+                HStack(spacing: 8) {
+                    Button("1 min") { timerProvider.startTimer(duration: 60, title: "Temporizador 1m", asCard: false) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("5 min") { timerProvider.startTimer(duration: 300, title: "Temporizador 5m", asCard: false) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("15 min") { timerProvider.startTimer(duration: 900, title: "Temporizador 15m", asCard: false) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("25m Pomodoro 🍅") { timerProvider.startTimer(duration: 1500, title: "Pomodoro 25m", asCard: false) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("Iniciar Cronómetro") { timerProvider.startStopwatch(asCard: false) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    
+                    if timerProvider.hasActiveSession {
+                        Spacer()
+                        Button(timerProvider.isRunning ? "Pausar" : "Reanudar") {
+                            timerProvider.togglePauseResume()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Button("Detener") {
+                            timerProvider.cancelTimer()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .controlSize(.small)
+                    }
+                }
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
+            
+            // Tarjeta Mini-App 2: Monitor de Audio FFT en Tiempo Real
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(Color.cyan.opacity(0.20))
+                            .frame(width: 34, height: 34)
+                        Image(systemName: "waveform.badge.magnifyingglass")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.cyan)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Monitor de Audio FFT en Tiempo Real")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Analizador de 10 bandas con indicadores Peak Hold, lectura dBFS y presets de respuesta.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.60))
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        appState.openWithMiniApp(.audioMonitor)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.up.right.square.fill")
+                            Text("Abrir en Notch")
+                        }
+                        .font(.system(size: 11.5, weight: .semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.cyan)
+                    .controlSize(.small)
+                }
+                
+                HStack(spacing: 8) {
+                    Text("Respuesta rápida:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.60))
+                    
+                    ForEach(SpectrumResponsePreset.allCases) { preset in
+                        Button(preset.shortTitle) {
+                            SpectrumMetrics.applyPreset(preset)
+                            noiseGateDB = Double(SpectrumMetrics.noiseGateDB)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    
+                    Spacer()
+                    
+                    Button("Ventana de Calibración...") {
+                        AudioSpectrumTestWindowController.shared.show()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
         }
     }
     
     // MARK: - Sección Sistema
     private var systemSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             ToggleRow(
                 title: "Ocultar HUD nativo de macOS",
                 subtitle: "Reemplaza los cuadros grises flotantes de volumen y brillo de macOS por las animaciones en el Notch",
@@ -679,6 +1259,114 @@ public struct SettingsView: View {
                     set: { volumeInterceptor.suppressNativeHUD = $0 }
                 )
             )
+            
+            // Nueva Sección: Rendimiento y Observadores en Segundo Plano
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "bolt.shield.fill")
+                        .foregroundColor(.green)
+                    Text("Rendimiento y Observadores en Segundo Plano")
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                
+                ToggleRow(
+                    title: "Detector de Llamadas (FaceTime, Celular, WhatsApp, Discord)",
+                    subtitle: "Detecta llamadas entrantes para contestar/rechazar desde el Notch y llamadas activas con onda de voz reactiva y sonido al mutear.",
+                    isOn: $callDetector.isEnabled
+                )
+                
+                if callDetector.isEnabled {
+                    Button(action: {
+                        CallActivityProvider.shared.startIncomingCall(
+                            name: "FaceTime Audio",
+                            handle: "Mamá",
+                            isSimulation: true
+                        )
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Probar llamada entrante en el Notch")
+                                .font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.green.opacity(0.16)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 4)
+                }
+                
+                ToggleRow(
+                    title: "Observador de Mensajes de WhatsApp Web",
+                    subtitle: "Detecta mensajes entrantes en pestañas de WhatsApp Web usando AppleScript precompilado en caché.",
+                    isOn: $whatsAppObserver.isEnabled
+                )
+                
+                if whatsAppObserver.isEnabled {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Intervalo de consulta de WhatsApp Web")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.85))
+                            Spacer()
+                            Text(String(format: "%.1f s", whatsAppObserver.pollInterval))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(DesignTokens.blue)
+                        }
+                        Slider(value: $whatsAppObserver.pollInterval, in: 2.0...10.0, step: 0.5)
+                            .tint(DesignTokens.blue)
+                    }
+                    .padding(.horizontal, 8)
+                    
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            whatsAppObserver.simulateTestNotification()
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "message.fill")
+                                Text("Probar Notificación de WhatsApp")
+                                    .font(.system(size: 11.5, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color(red: 0.15, green: 0.78, blue: 0.45).opacity(0.35)))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: {
+                            whatsAppObserver.activateWhatsAppWeb()
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.up.forward.app")
+                                Text("Ir a WhatsApp")
+                                    .font(.system(size: 11.5, weight: .medium))
+                            }
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                }
+                
+                HStack(spacing: 8) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 12))
+                        .foregroundColor(.green)
+                    Text("Optimizaciones activas: Sonda Drag & Drop bajo demanda (0% CPU en reposo) • Caché IPC diferencial de carátulas • Escena 3D con suspensión automática de GPU.")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.white.opacity(0.60))
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
             
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -714,12 +1402,12 @@ public struct SettingsView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
                 Spacer()
-                Text("Versión 1.0.0")
+                Text("Versión 1.1.0 • Optimizado")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(.white.opacity(0.4))
             }
             .padding(.horizontal, 4)
-            .padding(.top, 8)
+            .padding(.top, 4)
         }
     }
 }
@@ -749,3 +1437,4 @@ private struct ToggleRow: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
     }
 }
+

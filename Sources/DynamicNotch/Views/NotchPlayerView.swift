@@ -96,8 +96,8 @@ public struct NotchPlayerView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     
                     // Extremos izquierdo y derecho
-                    HStack {
-                        if appState.isPlayerDetailExpanded {
+                    HStack(spacing: 4) {
+                        if appState.isPlayerDetailExpanded && appState.activeMiniAppOverlay == nil && !isShowingAirPlayPicker {
                             Button(action: {
                                 withAnimation(.spring(response: 0.44, dampingFraction: 0.86)) {
                                     appState.isPlayerDetailExpanded = false
@@ -116,13 +116,92 @@ public struct NotchPlayerView: View {
                         
                         Spacer()
                         
-                        Color.clear.frame(width: 28, height: 16)
+                        // Botones de acceso rápido al Banco de Mini-Apps (configurables en Ajustes)
+                        HStack(spacing: 5) {
+                            if appState.pinTimerMiniAppInNotch {
+                                let isTimerOpen = appState.activeMiniAppOverlay == .timer
+                                let hasActiveTimer = TimerActivityProvider.shared.hasActiveSession
+                                Button(action: {
+                                    appState.hapticService.triggerSnap()
+                                    withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                                        isShowingAirPlayPicker = false
+                                        appState.activeMiniAppOverlay = isTimerOpen ? nil : .timer
+                                    }
+                                }) {
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(systemName: TimerActivityProvider.shared.mode.icon)
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor((isTimerOpen || hasActiveTimer) ? DesignTokens.orange : Color.white.opacity(0.55))
+                                            .frame(width: 22, height: 16)
+                                            .background(
+                                                Capsule()
+                                                    .fill((isTimerOpen || hasActiveTimer) ? DesignTokens.orange.opacity(0.18) : Color.white.opacity(0.07))
+                                            )
+                                        
+                                        if hasActiveTimer && !isTimerOpen {
+                                            Circle()
+                                                .fill(DesignTokens.orange)
+                                                .frame(width: 4.5, height: 4.5)
+                                                .offset(x: -1, y: 1)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .help("Cronómetro y Temporizador")
+                            }
+                            
+                            if appState.pinAudioMonitorMiniAppInNotch {
+                                let isMonitorOpen = appState.activeMiniAppOverlay == .audioMonitor
+                                Button(action: {
+                                    appState.hapticService.triggerSnap()
+                                    withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                                        isShowingAirPlayPicker = false
+                                        appState.activeMiniAppOverlay = isMonitorOpen ? nil : .audioMonitor
+                                    }
+                                }) {
+                                    Image(systemName: "waveform.badge.magnifyingglass")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(isMonitorOpen ? Color.cyan : Color.white.opacity(0.55))
+                                        .frame(width: 22, height: 16)
+                                        .background(
+                                            Capsule()
+                                                .fill(isMonitorOpen ? Color.cyan.opacity(0.18) : Color.white.opacity(0.07))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help("Monitor de Espectro FFT en Tiempo Real")
+                            }
+                        }
                     }
                 }
                 .padding(.top, 4)
                 .padding(.bottom, appState.isPlayerDetailExpanded ? 8 : 4)
                 
-                if isShowingAirPlayPicker {
+                if let miniApp = appState.activeMiniAppOverlay {
+                    // MARK: - Mini-App Integrada (Cronómetro/Temporizador o Monitor FFT)
+                    Group {
+                        switch miniApp {
+                        case .timer:
+                            TimerMiniAppOverlayView {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    appState.activeMiniAppOverlay = nil
+                                }
+                                appState.hapticService.triggerSnap()
+                            }
+                        case .audioMonitor:
+                            AudioMonitorMiniAppOverlayView {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    appState.activeMiniAppOverlay = nil
+                                }
+                                appState.hapticService.triggerSnap()
+                            }
+                        }
+                    }
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                        removal: .opacity.combined(with: .scale(scale: 0.95))
+                    ))
+                } else if isShowingAirPlayPicker {
                     // MARK: - Selector de Audio Integrado en la Píldora
                     airPlayPickerContent
                         .transition(.asymmetric(
@@ -571,33 +650,70 @@ public struct NotchPlayerView: View {
     // Fila de controles compartida
     private var controlsRow: some View {
         ZStack {
-            // Controles Laterales: Shuffle y AirPlay (con margen lateral adicional para las esquinas redondeadas)
+            // Controles Laterales: Shuffle + Repeat (izquierda) y AirPlay (derecha)
             HStack {
-                PlayerControlButton(scaleAmount: 0.85, haloSize: 26) {
-                    musicService.toggleShuffle()
-                    appState.hapticService.triggerSnap()
-                } content: {
-                    Image(systemName: "shuffle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(musicService.isShuffle ? Color.orange : PlayerMetrics.sideButtonColor)
-                        .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
+                HStack(spacing: 4) {
+                    PlayerControlButton(
+                        scaleAmount: 0.85,
+                        haloSize: 26,
+                        isActive: musicService.isShuffle,
+                        activeTint: .orange
+                    ) {
+                        musicService.toggleShuffle()
+                        appState.hapticService.triggerSnap()
+                    } content: {
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundColor(musicService.isShuffle ? Color.orange : PlayerMetrics.sideButtonColor)
+                            .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
+                    }
+                    .help(musicService.isShuffle ? "Aleatorio activado" : "Activar modo aleatorio")
+                    
+                    let isRepeatActive = musicService.repeatMode != .off
+                    PlayerControlButton(
+                        scaleAmount: 0.85,
+                        haloSize: 26,
+                        isActive: isRepeatActive,
+                        activeTint: .orange
+                    ) {
+                        musicService.toggleRepeat()
+                        appState.hapticService.triggerSnap()
+                    } content: {
+                        Image(systemName: musicService.repeatMode.icon)
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundColor(isRepeatActive ? Color.orange : PlayerMetrics.sideButtonColor)
+                            .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
+                    }
+                    .help("Modo de repetición: \(musicService.repeatMode.label)")
                 }
                 
                 Spacer()
                 
-                PlayerControlButton(scaleAmount: 0.85, haloSize: 26) {
+                // Selector de salida de audio / AirPlay integrado en la píldora
+                PlayerControlButton(
+                    scaleAmount: 0.85,
+                    haloSize: 26,
+                    isActive: isShowingAirPlayPicker || audioService.isAirPodsActive || audioService.isAirPlayActive,
+                    activeTint: .blue
+                ) {
                     appState.hapticService.triggerSnap()
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                         isShowingAirPlayPicker.toggle()
                     }
                 } content: {
-                    let isAirPods = audioService.isAirPodsActive
-                    let iconName: String = isAirPods ? audioService.currentDeviceIcon : "airplayaudio"
+                    let iconName: String = {
+                        if audioService.isAirPodsActive {
+                            return audioService.currentDeviceIcon
+                        } else {
+                            return "airplayaudio"
+                        }
+                    }()
                     Image(systemName: iconName)
-                        .font(.system(size: isAirPods ? 16 : 15, weight: .semibold))
-                        .foregroundColor((audioService.isAirPlayActive || isAirPods || isShowingAirPlayPicker) ? Color.blue : PlayerMetrics.sideButtonColor)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor((isShowingAirPlayPicker || audioService.isAirPodsActive || audioService.isAirPlayActive) ? Color.blue : PlayerMetrics.sideButtonColor)
                         .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
                 }
+                .help("Seleccionar salida de audio (AirPlay / AirPods)")
             }
             .padding(.horizontal, 10)
             

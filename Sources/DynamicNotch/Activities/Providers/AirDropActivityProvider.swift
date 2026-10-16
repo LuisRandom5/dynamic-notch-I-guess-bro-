@@ -86,7 +86,7 @@ public final class AirDropActivityProvider: ObservableObject {
     }
     
     /// Al terminar la transferencia: muestra la tarjeta expandida (.card) con checkmark verde
-    public func publishCompletedCard(fileName: String, sender: String) {
+    public func publishCompletedCard(fileName: String, sender: String, fileSize: String? = nil, fileURL: URL? = nil) {
         let blue = Color(red: 0x0A / 255.0, green: 0x84 / 255.0, blue: 0xFF / 255.0)
         
         let leading = AnyView(
@@ -99,11 +99,14 @@ public final class AirDropActivityProvider: ObservableObject {
             }
         )
         
+        let subtitleText = (fileSize != nil && !fileSize!.isEmpty) ? "\(fileName) (\(fileSize!))" : "\(fileName)"
+        let titleText = (!sender.isEmpty && sender != "AirDrop") ? "AirDrop de \(sender)" : "AirDrop recibido"
+        
         let center = AnyView(
             VStack(alignment: .leading, spacing: 3) {
-                Text("AirDrop recibido")
+                Text(titleText)
                     .liveActivityTitle()
-                Text("\(fileName) (24 MB)")
+                Text(subtitleText)
                     .liveActivitySubtitle()
             }
         )
@@ -122,12 +125,17 @@ public final class AirDropActivityProvider: ObservableObject {
             center: center,
             trailing: trailing,
             tint: blue,
-            duration: 4.0,
+            duration: 4.5,
             onTap: {
-                AppState.shared.expand()
+                if let url = fileURL {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } else {
+                    AppState.shared.expand()
+                }
             }
         )
         
         ActivityCenter.shared.publish(activity)
     }
 }
+

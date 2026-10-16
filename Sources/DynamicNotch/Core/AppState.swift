@@ -17,6 +17,40 @@ public enum NotchAppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+public enum VisualizerColorStyle: String, CaseIterable, Identifiable {
+    case adaptive = "adaptive"
+    case vibrant = "vibrant"
+    case pureWhite = "pureWhite"
+    
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .adaptive: return "Adaptativo (Carátula)"
+        case .vibrant: return "Vibrante (Apple Music)"
+        case .pureWhite: return "Blanco Minimalista"
+        }
+    }
+}
+
+public enum MiniAppKind: String, CaseIterable, Identifiable {
+    case timer = "timer"
+    case audioMonitor = "audioMonitor"
+    
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .timer: return "Cronómetro y Temporizador"
+        case .audioMonitor: return "Monitor de Audio FFT"
+        }
+    }
+    public var icon: String {
+        switch self {
+        case .timer: return "timer"
+        case .audioMonitor: return "waveform.badge.magnifyingglass"
+        }
+    }
+}
+
 public final class AppState: ObservableObject {
     public static let shared = AppState()
     
@@ -25,13 +59,20 @@ public final class AppState: ObservableObject {
     @Published public var activeTab: NotchTab = .music
     @Published public var activeAlert: NotchAlert?
     @Published public var isHovered: Bool = false
-    @Published public var shelfItems: [ShelfItem] = []
+    @Published public var shelfItems: [ShelfItem] = [] {
+        didSet {
+            if shelfItems.isEmpty && activeTab == .shelf && mode != .shelf {
+                activeTab = .music
+            }
+        }
+    }
     @Published public var isShelfDragTargeted: Bool = false
     @Published public var isDropInvitationActive: Bool = false
     @Published public var isDropSuccessAnimating: Bool = false
     @Published public var trackpadDragOffset: CGFloat = 0
     @Published public var trackpadDragOffsetY: CGFloat = 0
     @Published public var isHoldingBareNotch: Bool = false
+    @Published public var activeMiniAppOverlay: MiniAppKind? = nil
     
     // Elastic Overscroll State (Forma vs Contenido)
     @Published public var overscrollOffset: CGFloat = 0           // Estiramiento asimétrico de la cápsula negra (pt)
@@ -46,24 +87,94 @@ public final class AppState: ObservableObject {
     @Published public var isVolumeMuted: Bool = false
     private var volumeDismissTimer: Timer?
     
-    // Hover Heartbeat ("Latido") State
+    // Hover Sustained Expansion State (reemplaza los antiguos "espasmos" por expansión continua con sombra fija)
     @Published public var heartbeatScaleX: CGFloat = 1.0
     @Published public var heartbeatScaleY: CGFloat = 1.0
     @Published public var heartbeatShadowOpacity: Double = 0.0
-    private var lastHeartbeatTime: Date = Date.distantPast
     
     // Settings
-    @Published public var expandOnHover: Bool = false
-    @Published public var enableHaptics: Bool = true
-    @Published public var enableSoundFeedback: Bool = true
-    @Published public var showCompactWhenPlaying: Bool = true
-    @Published public var autoCollapseOnHoverExit: Bool = true
+    @Published public var expandOnHover: Bool = UserDefaults.standard.object(forKey: "expandOnHover") != nil
+        ? UserDefaults.standard.bool(forKey: "expandOnHover")
+        : false {
+        didSet { UserDefaults.standard.set(expandOnHover, forKey: "expandOnHover") }
+    }
+    @Published public var enableHoverExpansion: Bool = UserDefaults.standard.object(forKey: "enableHoverExpansion") != nil
+        ? UserDefaults.standard.bool(forKey: "enableHoverExpansion")
+        : true {
+        didSet {
+            UserDefaults.standard.set(enableHoverExpansion, forKey: "enableHoverExpansion")
+            if !enableHoverExpansion {
+                setHoverState(false)
+            }
+        }
+    }
+    @Published public var hoverScaleAmount: Double = UserDefaults.standard.object(forKey: "hoverScaleAmount") != nil
+        ? UserDefaults.standard.double(forKey: "hoverScaleAmount")
+        : 1.045 {
+        didSet { UserDefaults.standard.set(hoverScaleAmount, forKey: "hoverScaleAmount") }
+    }
+    @Published public var hoverShadowIntensity: Double = UserDefaults.standard.object(forKey: "hoverShadowIntensity") != nil
+        ? UserDefaults.standard.double(forKey: "hoverShadowIntensity")
+        : 0.52 {
+        didSet { UserDefaults.standard.set(hoverShadowIntensity, forKey: "hoverShadowIntensity") }
+    }
+    @Published public var enableHaptics: Bool = UserDefaults.standard.object(forKey: "enableHaptics") != nil
+        ? UserDefaults.standard.bool(forKey: "enableHaptics")
+        : true {
+        didSet { UserDefaults.standard.set(enableHaptics, forKey: "enableHaptics") }
+    }
+    @Published public var enableSoundFeedback: Bool = UserDefaults.standard.object(forKey: "enableSoundFeedback") != nil
+        ? UserDefaults.standard.bool(forKey: "enableSoundFeedback")
+        : true {
+        didSet { UserDefaults.standard.set(enableSoundFeedback, forKey: "enableSoundFeedback") }
+    }
+    @Published public var showCompactWhenPlaying: Bool = UserDefaults.standard.object(forKey: "showCompactWhenPlaying") != nil
+        ? UserDefaults.standard.bool(forKey: "showCompactWhenPlaying")
+        : true {
+        didSet {
+            UserDefaults.standard.set(showCompactWhenPlaying, forKey: "showCompactWhenPlaying")
+            reconcileCompactMode()
+        }
+    }
+    @Published public var autoCollapseOnHoverExit: Bool = UserDefaults.standard.object(forKey: "autoCollapseOnHoverExit") != nil
+        ? UserDefaults.standard.bool(forKey: "autoCollapseOnHoverExit")
+        : true {
+        didSet { UserDefaults.standard.set(autoCollapseOnHoverExit, forKey: "autoCollapseOnHoverExit") }
+    }
     @Published public var isPlayerDetailExpanded: Bool = false
+    
+    // Mini-Apps Quick Access Pins
+    @Published public var pinTimerMiniAppInNotch: Bool = UserDefaults.standard.object(forKey: "pinTimerMiniAppInNotch") != nil
+        ? UserDefaults.standard.bool(forKey: "pinTimerMiniAppInNotch")
+        : true {
+        didSet { UserDefaults.standard.set(pinTimerMiniAppInNotch, forKey: "pinTimerMiniAppInNotch") }
+    }
+    @Published public var pinAudioMonitorMiniAppInNotch: Bool = UserDefaults.standard.object(forKey: "pinAudioMonitorMiniAppInNotch") != nil
+        ? UserDefaults.standard.bool(forKey: "pinAudioMonitorMiniAppInNotch")
+        : false {
+        didSet { UserDefaults.standard.set(pinAudioMonitorMiniAppInNotch, forKey: "pinAudioMonitorMiniAppInNotch") }
+    }
+    
+    // Visualizer Style Setting
+    @Published public var visualizerColorStyle: VisualizerColorStyle = {
+        if let saved = UserDefaults.standard.string(forKey: "visualizerColorStyle"),
+           let style = VisualizerColorStyle(rawValue: saved) {
+            return style
+        }
+        return .adaptive
+    }() {
+        didSet { UserDefaults.standard.set(visualizerColorStyle.rawValue, forKey: "visualizerColorStyle") }
+    }
+    
+    @Published public var enableDragDropShelf: Bool = UserDefaults.standard.object(forKey: "enableDragDropShelf") != nil
+        ? UserDefaults.standard.bool(forKey: "enableDragDropShelf")
+        : true {
+        didSet { UserDefaults.standard.set(enableDragDropShelf, forKey: "enableDragDropShelf") }
+    }
     
     // MARK: - Modos de Apariencia & Liquid Glass Nativo (macOS 26+)
     @Published public var appearanceMode: NotchAppearanceMode = {
-        let suite = UserDefaults(suiteName: "com.luisrandom.DynamicNotch")
-        if let saved = suite?.string(forKey: "notchAppearanceMode") ?? UserDefaults.standard.string(forKey: "notchAppearanceMode"),
+        if let saved = UserDefaults.standard.string(forKey: "notchAppearanceMode"),
            let mode = NotchAppearanceMode(rawValue: saved) {
             return mode
         }
@@ -71,7 +182,6 @@ public final class AppState: ObservableObject {
     }() {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: "notchAppearanceMode")
-            UserDefaults(suiteName: "com.luisrandom.DynamicNotch")?.set(appearanceMode.rawValue, forKey: "notchAppearanceMode")
             isLiquidGlassEnabled = (appearanceMode != .pureOLED)
         }
     }
@@ -103,6 +213,112 @@ public final class AppState: ObservableObject {
     @Published public var enableAirPodsAnimation: Bool = UserDefaults.standard.object(forKey: "enableAirPodsAnimation") != nil ? UserDefaults.standard.bool(forKey: "enableAirPodsAnimation") : true {
         didSet { UserDefaults.standard.set(enableAirPodsAnimation, forKey: "enableAirPodsAnimation") }
     }
+    
+    // MARK: - Lock Screen Player Settings (Paso 0 - Paso 5)
+    public enum LockScreenStyle: String, CaseIterable, Identifiable {
+        case heroWidget = "heroWidget" // Carátula Hero + Cápsula Flotante (Referencia / iOS Widget)
+        case compactCard = "compactCard" // Tarjeta Horizontal Unificada (macOS)
+        public var id: String { rawValue }
+    }
+    
+    public enum LockScreenRenderMode: String, CaseIterable, Identifiable {
+        case nativeGlass = "nativeGlass" // 1. Liquid Glass nativo (.glassEffect macOS 26+)
+        case visualEffect = "visualEffect" // 2. NSVisualEffectView behind-window
+        case privateBlur = "privateBlur" // 3. CGSSetWindowBackgroundBlurRadius
+        case solidDark = "solidDark" // 4. Translúcido oscuro sólido (fallback)
+        public var id: String { rawValue }
+        
+        public var displayName: String {
+            switch self {
+            case .nativeGlass: return "Liquid Glass Nativo (macOS 26+)"
+            case .visualEffect: return "NSVisualEffectView (Detrás de Ventana)"
+            case .privateBlur: return "CoreGraphics Blur (CGSSetWindowBackgroundBlurRadius)"
+            case .solidDark: return "Sólido Oscuro Translúcido"
+            }
+        }
+    }
+    
+    @Published public var lockScreenRenderMode: LockScreenRenderMode = {
+        if let raw = UserDefaults.standard.string(forKey: "lockScreenRenderMode"),
+           let mode = LockScreenRenderMode(rawValue: raw) {
+            return mode
+        }
+        return .nativeGlass
+    }() {
+        didSet {
+            UserDefaults.standard.set(lockScreenRenderMode.rawValue, forKey: "lockScreenRenderMode")
+            print("🎨 [AppState] LockScreenRenderMode actualizado a: \(lockScreenRenderMode.rawValue) (\(lockScreenRenderMode.displayName))")
+        }
+    }
+    
+    @Published public var isLockScreenArtworkExpanded: Bool = UserDefaults.standard.object(forKey: "isLockScreenArtworkExpanded") != nil
+        ? UserDefaults.standard.bool(forKey: "isLockScreenArtworkExpanded")
+        : false {
+        didSet { UserDefaults.standard.set(isLockScreenArtworkExpanded, forKey: "isLockScreenArtworkExpanded") }
+    }
+    
+    @Published public var lockScreenStyle: LockScreenStyle = {
+        if let raw = UserDefaults.standard.string(forKey: "lockScreenStyle"),
+           let style = LockScreenStyle(rawValue: raw) {
+            return style
+        }
+        return .heroWidget
+    }() {
+        didSet { UserDefaults.standard.set(lockScreenStyle.rawValue, forKey: "lockScreenStyle") }
+    }
+    
+    @Published public var isLockScreenTestArmed: Bool = false
+    @Published public var enableLockScreenPlayer: Bool = UserDefaults.standard.object(forKey: "enableLockScreenPlayer") != nil
+        ? UserDefaults.standard.bool(forKey: "enableLockScreenPlayer")
+        : true {
+        didSet { UserDefaults.standard.set(enableLockScreenPlayer, forKey: "enableLockScreenPlayer") }
+    }
+    @Published public var lockScreenPauseTimeoutSeconds: Int = UserDefaults.standard.object(forKey: "lockScreenPauseTimeoutSeconds") != nil
+        ? UserDefaults.standard.integer(forKey: "lockScreenPauseTimeoutSeconds")
+        : 30 {
+        didSet { UserDefaults.standard.set(lockScreenPauseTimeoutSeconds, forKey: "lockScreenPauseTimeoutSeconds") }
+    }
+    @Published public var lockScreenVerticalOffset: CGFloat = UserDefaults.standard.object(forKey: "lockScreenVerticalOffset") != nil
+        ? CGFloat(UserDefaults.standard.double(forKey: "lockScreenVerticalOffset"))
+        : 0.0 {
+        didSet { UserDefaults.standard.set(Double(lockScreenVerticalOffset), forKey: "lockScreenVerticalOffset") }
+    }
+    @Published public var lockScreenShowArtworkHalo: Bool = UserDefaults.standard.object(forKey: "lockScreenShowArtworkHalo") != nil
+        ? UserDefaults.standard.bool(forKey: "lockScreenShowArtworkHalo")
+        : false {
+        didSet { UserDefaults.standard.set(lockScreenShowArtworkHalo, forKey: "lockScreenShowArtworkHalo") }
+    }
+    @Published public var lockScreenShowVolumeSlider: Bool = UserDefaults.standard.object(forKey: "lockScreenShowVolumeSlider") != nil
+        ? UserDefaults.standard.bool(forKey: "lockScreenShowVolumeSlider")
+        : false {
+        didSet { UserDefaults.standard.set(lockScreenShowVolumeSlider, forKey: "lockScreenShowVolumeSlider") }
+    }
+    @Published public var lockScreenDimmingOpacity: Double = UserDefaults.standard.object(forKey: "lockScreenDimmingOpacity") != nil
+        ? UserDefaults.standard.double(forKey: "lockScreenDimmingOpacity")
+        : 0.22 {
+        didSet { UserDefaults.standard.set(lockScreenDimmingOpacity, forKey: "lockScreenDimmingOpacity") }
+    }
+    @Published public var lockScreenDebugOutlines: Bool = UserDefaults.standard.object(forKey: "lockScreenDebugOutlines") != nil
+        ? UserDefaults.standard.bool(forKey: "lockScreenDebugOutlines")
+        : false {
+        didSet { UserDefaults.standard.set(lockScreenDebugOutlines, forKey: "lockScreenDebugOutlines") }
+    }
+    @Published public var lockScreenHideMediaDetails: Bool = UserDefaults.standard.object(forKey: "lockScreenHideMediaDetails") != nil
+        ? UserDefaults.standard.bool(forKey: "lockScreenHideMediaDetails")
+        : false {
+        didSet { UserDefaults.standard.set(lockScreenHideMediaDetails, forKey: "lockScreenHideMediaDetails") }
+    }
+    @Published public var hasPromptedLockScreenPrivacy: Bool = UserDefaults.standard.object(forKey: "hasPromptedLockScreenPrivacy") != nil
+        ? UserDefaults.standard.bool(forKey: "hasPromptedLockScreenPrivacy")
+        : false {
+        didSet { UserDefaults.standard.set(hasPromptedLockScreenPrivacy, forKey: "hasPromptedLockScreenPrivacy") }
+    }
+    @Published public var lockScreenShowOnAllDisplays: Bool = UserDefaults.standard.object(forKey: "lockScreenShowOnAllDisplays") != nil
+        ? UserDefaults.standard.bool(forKey: "lockScreenShowOnAllDisplays")
+        : false {
+        didSet { UserDefaults.standard.set(lockScreenShowOnAllDisplays, forKey: "lockScreenShowOnAllDisplays") }
+    }
+
     // Drag & Drop / Shelf Settings
     @Published public var moveFilesToShelf: Bool = UserDefaults.standard.object(forKey: "moveFilesToShelf") != nil
         ? UserDefaults.standard.bool(forKey: "moveFilesToShelf")
@@ -157,6 +373,24 @@ public final class AppState: ObservableObject {
         return (musicService.hasActiveMusic || musicPauseDismissTimer != nil || !shelfItems.isEmpty) && showCompactWhenPlaying
     }
     
+    /// Reconcilia de forma segura el modo compacto cuando cambia la música, la bandeja o se cierra una actividad
+    public func reconcileCompactMode() {
+        guard mode != .expanded && mode != .shelf else { return }
+        if shouldShowCompact {
+            if mode == .idle {
+                withAnimation(.spring(response: 0.48, dampingFraction: 0.82)) {
+                    mode = .compact
+                }
+            }
+        } else {
+            if mode == .compact {
+                withAnimation(.spring(response: 0.48, dampingFraction: 0.82)) {
+                    mode = .idle
+                }
+            }
+        }
+    }
+    
     private init() {
         setupSubscriptions()
         self.shelfItems = ShelfStorageService.shared.loadExistingStashedItems()
@@ -192,27 +426,19 @@ public final class AppState: ObservableObject {
                     // Cancela cualquier timer de colapso pendiente
                     self.musicPauseDismissTimer?.invalidate()
                     self.musicPauseDismissTimer = nil
-                    if self.mode == .idle && self.showCompactWhenPlaying {
-                        withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
-                            self.mode = .compact
-                        }
-                    }
+                    self.reconcileCompactMode()
                 } else {
                     // Al pausar: retener el minirreproductor durante 30 segundos antes de colapsar
                     self.musicPauseDismissTimer?.invalidate()
                     self.musicPauseDismissTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
                         DispatchQueue.main.async {
                             guard let self = self, !self.musicService.hasActiveMusic else { return }
-                            if self.mode == .compact {
-                                withAnimation(.spring(response: 0.48, dampingFraction: 0.82)) {
-                                    self.mode = .idle
-                                }
-                            } else if self.mode == .expanded {
-                                withAnimation(.spring(response: 0.48, dampingFraction: 0.82)) {
-                                    self.mode = .idle
-                                }
-                            }
                             self.musicPauseDismissTimer = nil
+                            if self.mode == .compact || self.mode == .idle {
+                                self.reconcileCompactMode()
+                            } else if self.mode == .expanded && !self.isHovered {
+                                self.collapse()
+                            }
                         }
                     }
                 }
@@ -226,30 +452,27 @@ public final class AppState: ObservableObject {
         self.isVolumeHUDActive = false
     }
     
-    // Latido reactivo e inmersivo ("Notch Vivo" - respiración orgánica con física elástica)
-    public func triggerHeartbeat() {
-        guard mode != .expanded && mode != .shelf else { return }
-        
-        let now = Date()
-        guard now.timeIntervalSince(lastHeartbeatTime) > 0.40 else { return }
-        lastHeartbeatTime = now
-        
-        // Pulso reactivo orgánico (expansión elástica con presencia táctil viva)
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.72)) {
-            heartbeatScaleX = 1.035
-            heartbeatScaleY = 1.022
-            heartbeatShadowOpacity = 0.40
-        }
-        
-        // Retorno suave y fluido al reposo con inercia elástica
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-            guard let self = self, self.mode != .expanded && self.mode != .shelf else { return }
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
-                self.heartbeatScaleX = 1.0
-                self.heartbeatScaleY = 1.0
-                self.heartbeatShadowOpacity = 0.0
+    /// Expansión suave y continua tipo Dynamic Island real con sombra fija mientras el cursor permanece sobre el Notch
+    public func setHoverState(_ hovering: Bool) {
+        if hovering && enableHoverExpansion && mode != .expanded && mode != .shelf {
+            let targetX = CGFloat(max(1.01, min(1.09, hoverScaleAmount)))
+            let targetY = CGFloat(1.0 + (hoverScaleAmount - 1.0) * 0.72)
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                heartbeatScaleX = targetX
+                heartbeatScaleY = targetY
+                heartbeatShadowOpacity = hoverShadowIntensity
+            }
+        } else {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                heartbeatScaleX = 1.0
+                heartbeatScaleY = 1.0
+                heartbeatShadowOpacity = 0.0
             }
         }
+    }
+    
+    public func triggerHeartbeat() {
+        setHoverState(true)
     }
     
     public func triggerAlert(_ type: AlertType, duration: TimeInterval = 4.0) {
@@ -278,23 +501,24 @@ public final class AppState: ObservableObject {
         if expandOnHover {
             if mode == .idle || mode == .compact {
                 withAnimation(.spring(response: 0.68, dampingFraction: 0.76)) {
-                    if !self.shelfItems.isEmpty {
+                    if !self.shelfItems.isEmpty && !self.musicService.hasActiveMusic {
                         self.mode = .shelf
                         self.activeTab = .shelf
                     } else {
                         self.mode = .expanded
+                        self.activeTab = .music
                     }
                 }
                 hapticService.triggerExpand()
             }
         } else {
-            // Latido al pasar el cursor (solo una vez por entrada)
-            triggerHeartbeat()
+            setHoverState(true)
         }
     }
     
     public func handleMouseLeave() {
         self.isHovered = false
+        setHoverState(false)
         if expandOnHover {
             if mode == .expanded && activeAlert == nil {
                 collapse()
@@ -307,6 +531,11 @@ public final class AppState: ObservableObject {
         contentOverscrollOffset = 0
         verticalOverscrollOffset = 0
         contentVerticalOverscrollOffset = 0
+        activeMiniAppOverlay = nil
+        setHoverState(false)
+        if shelfItems.isEmpty || musicService.hasActiveMusic {
+            activeTab = .music
+        }
         
         if let requestCollapse = requestCollapse {
             requestCollapse()
@@ -329,13 +558,32 @@ public final class AppState: ObservableObject {
         verticalOverscrollOffset = 0
         contentVerticalOverscrollOffset = 0
         isPlayerDetailExpanded = false
+        setHoverState(false)
+        if shelfItems.isEmpty {
+            activeTab = .music
+        }
         
         let springAnim = AnimationSpeedManager.shared.spring(
             response: ExitAnimationMetrics.shapeOpenResponse,
             dampingFraction: ExitAnimationMetrics.shapeOpenDamping
         )
         withAnimation(springAnim) {
-            mode = (activeTab == .shelf) ? .shelf : .expanded
+            mode = (activeTab == .shelf && !shelfItems.isEmpty) ? .shelf : .expanded
+            hapticService.triggerExpand()
+        }
+    }
+    
+    public func openWithMiniApp(_ miniApp: MiniAppKind) {
+        activeMiniAppOverlay = miniApp
+        activeTab = .music
+        if mode != .expanded {
+            let springAnim = AnimationSpeedManager.shared.spring(
+                response: ExitAnimationMetrics.shapeOpenResponse,
+                dampingFraction: ExitAnimationMetrics.shapeOpenDamping
+            )
+            withAnimation(springAnim) {
+                mode = .expanded
+            }
             hapticService.triggerExpand()
         }
     }

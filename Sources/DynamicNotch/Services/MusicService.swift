@@ -2,6 +2,33 @@ import AppKit
 import Combine
 import SwiftUI
 
+public enum MusicRepeatMode: Int, CaseIterable {
+    case off = 0
+    case all = 1
+    case one = 2
+    
+    public var systemImage: String {
+        switch self {
+        case .off, .all: return "repeat"
+        case .one: return "repeat.1"
+        }
+    }
+    
+    public var icon: String { systemImage }
+    
+    public var label: String {
+        switch self {
+        case .off: return "Desactivado"
+        case .all: return "Repetir todo"
+        case .one: return "Repetir una"
+        }
+    }
+    
+    public var isActive: Bool {
+        self != .off
+    }
+}
+
 public final class MusicService: ObservableObject {
     public static let shared = MusicService()
     
@@ -10,6 +37,8 @@ public final class MusicService: ObservableObject {
     
     private var progressTimer: Timer?
     private var pauseDebounceTimer: Timer?
+    private var cachedTrackKey: String = ""
+    private var cachedTrackArtwork: NSImage? = nil
     
     private init() {
         setupDistributedNotifications()
@@ -45,9 +74,42 @@ public final class MusicService: ObservableObject {
             
             DispatchQueue.main.async {
                 print("[MusicService] Received track: '\(track.title)', isPlaying: \(isPlaying), source: \(track.appSource)")
+                
+                // Descartar por completo notificaciones y chats web (WhatsApp, Telegram, Slack)
+                // para que jamás sustituyan la pista actual ni borren su carátula
+                let lowTitle = track.title.lowercased()
+                if lowTitle.contains("whatsapp") || lowTitle.contains("notification") || lowTitle.contains("telegram") || lowTitle.contains("slack") {
+                    return
+                }
+                
                 var resolvedTrack = track
-                if resolvedTrack.artwork == nil && !resolvedTrack.title.isEmpty && resolvedTrack.title == self.currentTrack.title {
-                    resolvedTrack.artwork = self.currentTrack.artwork
+                if resolvedTrack.artwork == nil {
+                    if !resolvedTrack.title.isEmpty && resolvedTrack.title == self.currentTrack.title && self.currentTrack.artwork != nil {
+                        resolvedTrack.artwork = self.currentTrack.artwork
+                    } else if let cached = ArtworkResolverService.shared.cachedArtwork(title: resolvedTrack.title, artist: resolvedTrack.artist) {
+                        resolvedTrack.artwork = cached
+                    } else if let np = NowPlayingService.shared.cachedArtwork(title: resolvedTrack.title, artist: resolvedTrack.artist) {
+                        resolvedTrack.artwork = np
+                    } else if resolvedTrack.appSource == "Apple Music" || resolvedTrack.appSource.contains("Music") {
+                        resolvedTrack.artwork = self.fetchAppleMusicArtwork()
+                    } else if resolvedTrack.appSource == "Spotify" {
+                        resolvedTrack.artwork = self.fetchSpotifyArtwork()
+                    }
+                }
+                
+                // Si aún no tenemos carátula pero hay título, consultar en segundo plano la API de alta resolución
+                if resolvedTrack.artwork == nil && !resolvedTrack.title.isEmpty {
+                    ArtworkResolverService.shared.fetchArtworkAsync(title: resolvedTrack.title, artist: resolvedTrack.artist) { [weak self] fetchedImage in
+                        guard let self = self, let fetchedImage = fetchedImage else { return }
+                        DispatchQueue.main.async {
+                            if self.currentTrack.title == resolvedTrack.title {
+                                self.updateCurrentArtwork(fetchedImage)
+                            }
+                        }
+                    }
+                } else if let art = resolvedTrack.artwork {
+                    ArtworkResolverService.shared.storeArtwork(art, title: resolvedTrack.title, artist: resolvedTrack.artist)
+                    self.cachedTrackArtwork = art
                 }
                 
                 if isPlaying && !resolvedTrack.title.isEmpty {
@@ -59,11 +121,7 @@ public final class MusicService: ObservableObject {
                     if !self.hasActiveMusic {
                         self.hasActiveMusic = true
                     }
-                    if AppState.shared.mode == .idle && AppState.shared.showCompactWhenPlaying && ActivityCenter.shared.currentActivity == nil {
-                        withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
-                            AppState.shared.mode = .compact
-                        }
-                    }
+                    AppState.shared.reconcileCompactMode()
                     self.updateProgressTimer(isPlaying: true)
                 } else if !isPlaying {
                     // Si ya teníamos música activa, evitar que un frame espurio o cambio de foco
@@ -78,13 +136,16 @@ public final class MusicService: ObservableObject {
                             return
                         }
                         
-                        // 2. Debounce de 2.5s antes de confirmar la pausa real (evita parpadeos de buffer en YouTube/Safari)
+                        // 2. Debounce de 3.2s antes de confirmar la pausa real (evita parpadeos de buffer o cambio de pestaña en YouTube/Safari)
                         if self.pauseDebounceTimer == nil {
-                            self.pauseDebounceTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                                NowPlayingService.shared.refreshNowPlaying()
+                            }
+                            self.pauseDebounceTimer = Timer.scheduledTimer(withTimeInterval: 3.2, repeats: false) { [weak self] _ in
                                 guard let self = self else { return }
                                 self.pauseDebounceTimer = nil
                                 
-                                // Re-verificar estado
+                                // Re-verificar estado nativo
                                 if (self.currentTrack.appSource == "Apple Music" || track.appSource == "Apple Music") && self.isAppleMusicActuallyPlaying() {
                                     return
                                 }
@@ -92,7 +153,7 @@ public final class MusicService: ObservableObject {
                                     return
                                 }
                                 
-                                print("[MusicService] Pausa confirmada tras debounce de 2.5s. Desactivando minirreproductor.")
+                                print("[MusicService] Pausa confirmada tras debounce. Desactivando minirreproductor.")
                                 if !resolvedTrack.title.isEmpty {
                                     var updated = resolvedTrack
                                     updated.isPlaying = false
@@ -141,6 +202,16 @@ public final class MusicService: ObservableObject {
         }
     }
     
+    public func updateCurrentArtwork(_ image: NSImage) {
+        guard !currentTrack.title.isEmpty else { return }
+        var updated = currentTrack
+        updated.artwork = image
+        self.currentTrack = updated
+        self.cachedTrackArtwork = image
+        self.cachedTrackKey = "\(currentTrack.appSource.prefix(2).uppercased())_\(currentTrack.title)_\(currentTrack.artist)"
+        ArtworkResolverService.shared.storeArtwork(image, title: currentTrack.title, artist: currentTrack.artist)
+    }
+    
     private func handleAppleMusicNotification(_ notification: Notification) {
         guard let userInfo = notification.userInfo else { return }
         
@@ -153,6 +224,42 @@ public final class MusicService: ObservableObject {
         
         // Sincronizar posición real
         let position = fetchCurrentPlaybackPosition(app: "Apple Music")
+        let trackKey = "AM_\(title)_\(artist)"
+        var artwork: NSImage? = nil
+        
+        if trackKey == cachedTrackKey, let cached = cachedTrackArtwork {
+            artwork = cached
+        } else if self.currentTrack.title == title, let current = self.currentTrack.artwork {
+            artwork = current
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = current
+        } else if let disk = ArtworkResolverService.shared.cachedArtwork(title: title, artist: artist) {
+            artwork = disk
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = disk
+        } else if let np = NowPlayingService.shared.cachedArtwork(title: title, artist: artist) {
+            artwork = np
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = np
+        } else if let fetched = fetchAppleMusicArtwork() {
+            artwork = fetched
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = fetched
+        } else {
+            // No sobreescribir con nil si ya teníamos una carátula para esta misma canción
+            if self.currentTrack.title == title && self.currentTrack.artwork != nil {
+                artwork = self.currentTrack.artwork
+            } else {
+                ArtworkResolverService.shared.fetchArtworkAsync(title: title, artist: artist) { [weak self] fetchedImage in
+                    guard let self = self, let fetchedImage = fetchedImage else { return }
+                    DispatchQueue.main.async {
+                        if self.currentTrack.title == title {
+                            self.updateCurrentArtwork(fetchedImage)
+                        }
+                    }
+                }
+            }
+        }
         
         self.pauseDebounceTimer?.invalidate()
         self.pauseDebounceTimer = nil
@@ -161,7 +268,7 @@ public final class MusicService: ObservableObject {
             title: title,
             artist: artist,
             album: album,
-            artwork: fetchAppleMusicArtwork(),
+            artwork: artwork,
             isPlaying: isPlaying,
             playbackPosition: position,
             duration: totalTimeMs / 1000.0,
@@ -170,11 +277,9 @@ public final class MusicService: ObservableObject {
         self.hasActiveMusic = isPlaying
         updateProgressTimer(isPlaying: isPlaying)
         
-        if isPlaying && AppState.shared.mode == .idle && AppState.shared.showCompactWhenPlaying && ActivityCenter.shared.currentActivity == nil {
+        if isPlaying {
             DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
-                    AppState.shared.mode = .compact
-                }
+                AppState.shared.reconcileCompactMode()
             }
         }
     }
@@ -190,7 +295,41 @@ public final class MusicService: ObservableObject {
         let durationSec = userInfo["Duration"] as? Double ?? 180.0
         
         let position = fetchCurrentPlaybackPosition(app: "Spotify")
-        let artwork = fetchSpotifyArtwork()
+        let trackKey = "SP_\(title)_\(artist)"
+        var artwork: NSImage? = nil
+        
+        if trackKey == cachedTrackKey, let cached = cachedTrackArtwork {
+            artwork = cached
+        } else if self.currentTrack.title == title, let current = self.currentTrack.artwork {
+            artwork = current
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = current
+        } else if let disk = ArtworkResolverService.shared.cachedArtwork(title: title, artist: artist) {
+            artwork = disk
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = disk
+        } else if let np = NowPlayingService.shared.cachedArtwork(title: title, artist: artist) {
+            artwork = np
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = np
+        } else if let fetched = fetchSpotifyArtwork() {
+            artwork = fetched
+            cachedTrackKey = trackKey
+            cachedTrackArtwork = fetched
+        } else {
+            if self.currentTrack.title == title && self.currentTrack.artwork != nil {
+                artwork = self.currentTrack.artwork
+            } else {
+                ArtworkResolverService.shared.fetchArtworkAsync(title: title, artist: artist) { [weak self] fetchedImage in
+                    guard let self = self, let fetchedImage = fetchedImage else { return }
+                    DispatchQueue.main.async {
+                        if self.currentTrack.title == title {
+                            self.updateCurrentArtwork(fetchedImage)
+                        }
+                    }
+                }
+            }
+        }
         
         self.pauseDebounceTimer?.invalidate()
         self.pauseDebounceTimer = nil
@@ -208,11 +347,9 @@ public final class MusicService: ObservableObject {
         self.hasActiveMusic = isPlaying
         updateProgressTimer(isPlaying: isPlaying)
         
-        if isPlaying && AppState.shared.mode == .idle && AppState.shared.showCompactWhenPlaying && ActivityCenter.shared.currentActivity == nil {
+        if isPlaying {
             DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
-                    AppState.shared.mode = .compact
-                }
+                AppState.shared.reconcileCompactMode()
             }
         }
     }
@@ -257,6 +394,7 @@ public final class MusicService: ObservableObject {
     }
     
     @Published public var isShuffle: Bool = false
+    @Published public var repeatMode: MusicRepeatMode = .off
     
     public func toggleShuffle() {
         if currentTrack.appSource == "Spotify" {
@@ -284,7 +422,39 @@ public final class MusicService: ObservableObject {
                 isShuffle.toggle()
             }
         } else {
+            _ = NowPlayingService.shared.toggleShuffle()
             isShuffle.toggle()
+        }
+    }
+    
+    public func toggleRepeat() {
+        let nextRaw = (repeatMode.rawValue + 1) % MusicRepeatMode.allCases.count
+        let nextMode = MusicRepeatMode(rawValue: nextRaw) ?? .off
+        repeatMode = nextMode
+        
+        if currentTrack.appSource == "Spotify" {
+            let shouldRepeat = nextMode != .off
+            let script = """
+            tell application "Spotify"
+                set repeating to \(shouldRepeat ? "true" : "false")
+            end tell
+            """
+            runAppleScript(script)
+        } else if currentTrack.appSource == "Apple Music" {
+            let appleMode: String
+            switch nextMode {
+            case .off: appleMode = "off"
+            case .all: appleMode = "all"
+            case .one: appleMode = "one"
+            }
+            let script = """
+            tell application "Music"
+                set song repeat to \(appleMode)
+            end tell
+            """
+            runAppleScript(script)
+        } else {
+            _ = NowPlayingService.shared.toggleRepeat()
         }
     }
     
@@ -310,8 +480,10 @@ public final class MusicService: ObservableObject {
     
     public func seek(to position: TimeInterval) {
         currentTrack.playbackPosition = position
-        if currentTrack.appSource == "Music" {
+        if currentTrack.appSource == "Apple Music" || currentTrack.appSource == "Music" {
             runAppleScript("tell application \"Music\" to set player position to \(Int(position))")
+        } else if currentTrack.appSource == "Spotify" {
+            runAppleScript("tell application \"Spotify\" to set player position to \(Int(position))")
         }
     }
     
@@ -350,7 +522,7 @@ public final class MusicService: ObservableObject {
         let descriptor = scriptObj.executeAndReturnError(&error)
         guard error == nil else { return nil }
         let data = descriptor.data
-        return NSImage(data: data)
+        return NSImage.decodedImage(from: data)
     }
     
     private func fetchSpotifyArtwork() -> NSImage? {
@@ -370,7 +542,7 @@ public final class MusicService: ObservableObject {
             return nil
         }
         if let data = try? Data(contentsOf: url) {
-            return NSImage(data: data)
+            return NSImage.decodedImage(from: data)
         }
         return nil
     }
@@ -418,7 +590,11 @@ public final class MusicService: ObservableObject {
                         let pos = Double(posStr) ?? 0
                         let dur = Double(durStr) ?? 180
                         
-                        let artwork = self.fetchAppleMusicArtwork()
+                        let artwork = (self.currentTrack.title == title ? self.currentTrack.artwork : nil)
+                            ?? ArtworkResolverService.shared.cachedArtwork(title: title, artist: artist)
+                            ?? NowPlayingService.shared.cachedArtwork(title: title, artist: artist)
+                            ?? self.fetchAppleMusicArtwork()
+                        
                         DispatchQueue.main.async {
                             self.currentTrack = MusicTrack(
                                 title: title,
@@ -432,6 +608,16 @@ public final class MusicService: ObservableObject {
                             )
                             self.hasActiveMusic = isPlaying
                             self.updateProgressTimer(isPlaying: isPlaying)
+                            if artwork == nil && !title.isEmpty {
+                                ArtworkResolverService.shared.fetchArtworkAsync(title: title, artist: artist) { [weak self] fetchedImage in
+                                    guard let self = self, let fetchedImage = fetchedImage else { return }
+                                    DispatchQueue.main.async {
+                                        if self.currentTrack.title == title {
+                                            self.updateCurrentArtwork(fetchedImage)
+                                        }
+                                    }
+                                }
+                            }
                         }
                         return
                     }
@@ -461,7 +647,11 @@ public final class MusicService: ObservableObject {
                         let pos = Double(posStr) ?? 0
                         let dur = Double(durStr) ?? 180
                         
-                        let artwork = self.fetchSpotifyArtwork()
+                        let artwork = (self.currentTrack.title == title ? self.currentTrack.artwork : nil)
+                            ?? ArtworkResolverService.shared.cachedArtwork(title: title, artist: artist)
+                            ?? NowPlayingService.shared.cachedArtwork(title: title, artist: artist)
+                            ?? self.fetchSpotifyArtwork()
+                        
                         DispatchQueue.main.async {
                             self.currentTrack = MusicTrack(
                                 title: title,
@@ -475,6 +665,16 @@ public final class MusicService: ObservableObject {
                             )
                             self.hasActiveMusic = isPlaying
                             self.updateProgressTimer(isPlaying: isPlaying)
+                            if artwork == nil && !title.isEmpty {
+                                ArtworkResolverService.shared.fetchArtworkAsync(title: title, artist: artist) { [weak self] fetchedImage in
+                                    guard let self = self, let fetchedImage = fetchedImage else { return }
+                                    DispatchQueue.main.async {
+                                        if self.currentTrack.title == title {
+                                            self.updateCurrentArtwork(fetchedImage)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

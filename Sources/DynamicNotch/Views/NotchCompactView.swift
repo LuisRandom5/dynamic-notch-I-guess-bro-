@@ -10,7 +10,8 @@ public struct NotchCompactView: View {
     private var wingExtra: CGFloat {
         (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
     }
-    @State private var compactTilt: Double = 0.0
+    @State private var artworkRotationY: Double = 0.0
+    @State private var artworkScale: CGFloat = 1.0
     
     public init(namespace: Namespace.ID? = nil) {
         self.namespace = namespace
@@ -34,7 +35,7 @@ public struct NotchCompactView: View {
     public var body: some View {
         HStack(spacing: 0) {
             
-            // Ala izquierda compacta (Leading): Carátula
+            // Ala izquierda compacta (Leading): Carátula con 3D Flip estilo Apple Music
             ZStack {
                 if !musicService.hasActiveMusic && !appState.shelfItems.isEmpty {
                     ZStack {
@@ -55,6 +56,11 @@ public struct NotchCompactView: View {
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                         )
+                        .id(musicService.currentTrack.title + musicService.currentTrack.artist)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.82)),
+                            removal: .opacity
+                        ))
                 } else {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(
@@ -77,19 +83,26 @@ public struct NotchCompactView: View {
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                         )
+                        .id(musicService.currentTrack.title + musicService.currentTrack.artist)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.82)),
+                            removal: .opacity
+                        ))
                 }
             }
             .frame(width: 19, height: 19)
             .modifier(OptionalMatchedGeometry(id: "albumArtwork", namespace: namespace))
-            .rotation3DEffect(.degrees(compactTilt), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+            .scaleEffect(artworkScale)
+            .rotation3DEffect(.degrees(artworkRotationY), axis: (x: 0, y: 1, z: 0), perspective: 0.40)
             .onChange(of: musicService.currentTrack.title) { oldTitle, newTitle in
                 guard !newTitle.isEmpty, newTitle != oldTitle else { return }
-                withAnimation(.spring(response: 0.26, dampingFraction: 0.65)) {
-                    compactTilt = 18.0
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                    artworkRotationY += 360.0
+                    artworkScale = 0.84
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    withAnimation(.spring(response: 0.44, dampingFraction: 0.70)) {
-                        compactTilt = 0.0
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
+                        artworkScale = 1.0
                     }
                 }
             }

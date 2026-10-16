@@ -58,6 +58,8 @@ public final class ActivityCenter: ObservableObject {
             dismissingActivityId = nil
         }
         
+        NotificationActivityProvider.shared.handleActivityRemoved(id: id)
+        
         activeActivities.removeAll(where: { $0.id == id })
         if currentActivity?.id == id {
             customCardWidth = nil
@@ -66,6 +68,10 @@ public final class ActivityCenter: ObservableObject {
             customBottomRadius = nil
         }
         evaluateHighestPriority()
+        if currentActivity == nil {
+            AppState.shared.isHoldingBareNotch = false
+            AppState.shared.reconcileCompactMode()
+        }
     }
     
     /// Pausa o cancela el temporizador de cierre automático (por ejemplo al abrir Quick Reply para escribir)
@@ -87,6 +93,8 @@ public final class ActivityCenter: ObservableObject {
         dismissTimers.removeValue(forKey: id)
         dismissingActivityId = id
         lastDismissedActivity = current
+        
+        NotificationActivityProvider.shared.handleActivityRemoved(id: id)
         
         let isCard = current.style == .card
         let duration = isCard ? ExitAnimationMetrics.cardDismissDuration : ExitAnimationMetrics.sliderDismissDuration
@@ -110,25 +118,22 @@ public final class ActivityCenter: ObservableObject {
             self.evaluateHighestPriority()
             self.dismissingActivityId = nil
             
-            if isCard && AppState.shared.mode == .compact && MusicService.shared.hasActiveMusic {
-                // Permanecer como notch puro durante 1.0 segundo exacto, luego expandir las alas del reproductor
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if isCard && (AppState.shared.mode == .compact || AppState.shared.shouldShowCompact) && MusicService.shared.hasActiveMusic {
+                // Permanecer como notch puro durante 0.45s, luego expandir las alas del reproductor
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                     guard self.currentActivity == nil else {
                         AppState.shared.isHoldingBareNotch = false
                         return
                     }
                     withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
                         AppState.shared.isHoldingBareNotch = false
+                        AppState.shared.reconcileCompactMode()
                     }
                 }
             } else {
                 AppState.shared.isHoldingBareNotch = false
                 if self.currentActivity == nil {
-                    if AppState.shared.shouldShowCompact && AppState.shared.mode == .idle {
-                        withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
-                            AppState.shared.mode = .compact
-                        }
-                    }
+                    AppState.shared.reconcileCompactMode()
                 }
             }
         }
@@ -163,6 +168,11 @@ public final class ActivityCenter: ObservableObject {
         if let duration = activity.duration, duration > 0 {
             let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
                 DispatchQueue.main.async {
+                    // Si es una notificación cuyo Quick Reply ya está abierto para escribir, nunca cerrarla automáticamente
+                    if NotificationActivityProvider.shared.currentNotificationId == activity.id &&
+                        NotificationActivityProvider.shared.isQuickReplyExpanded {
+                        return
+                    }
                     self?.dismissWithAnimation(id: activity.id)
                 }
             }

@@ -161,14 +161,15 @@ public struct ActivitySliderPillView: View {
                 }
                 .frame(height: 14)
                 
-                // Nivel numérico 0-100 (con margen holgado para no cortarse jamás)
-                Text("\(Int(round(level * 100)))")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .foregroundColor(isMuted ? DesignTokens.red : .white)
-                    .frame(width: 32, alignment: .trailing)
+                // Nivel numérico 0-100 con animación de cronómetro (odómetro vertical hacia arriba/abajo)
+                RollingNumberView(
+                    value: Int(round(level * 100)),
+                    font: .system(size: 13, weight: .semibold, design: .rounded),
+                    color: isMuted ? DesignTokens.red : .white,
+                    alignment: .trailing
+                )
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(width: 32, alignment: .trailing)
             }
             .padding(.trailing, 18)
             .frame(width: wingWidth, height: geometry.height, alignment: .center)

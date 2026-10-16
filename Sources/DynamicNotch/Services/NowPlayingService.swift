@@ -19,6 +19,8 @@ public final class NowPlayingService {
     private var lastArtworkTitle: String = ""
     private var artworkCache: [String: NSImage] = [:]
     private var durationCache: [String: Double] = [:]
+    private var artworkRetryCount: Int = 0
+    private var lastTrackTitle: String = ""
     
     private init() {
         startBridgeProcess()
@@ -111,6 +113,17 @@ public final class NowPlayingService {
         stdoutPipe = nil
     }
     
+    public func cachedArtwork(title: String, artist: String) -> NSImage? {
+        let trackKey = "\(title)_\(artist)"
+        if let img = artworkCache[trackKey] ?? artworkCache[title] {
+            return img
+        }
+        if !title.isEmpty && title == lastArtworkTitle, let img = lastArtworkImage {
+            return img
+        }
+        return ArtworkResolverService.shared.cachedArtwork(title: title, artist: artist)
+    }
+    
     // MARK: - Procesamiento de eventos en tiempo real
     private func processIncomingData(_ data: Data) {
         readBuffer.append(data)
@@ -136,28 +149,64 @@ public final class NowPlayingService {
         let elapsed = json["elapsed"] as? Double ?? 0.0
         let isPlaying = json["isPlaying"] as? Bool ?? false
         let appSource = json["appSource"] as? String ?? "YouTube"
+        let artworkUrlString = json["artworkUrl"] as? String ?? ""
         
         // Resolver y cachear duración real
         var resolvedDuration = rawDuration
         if rawDuration > 2.0 {
+            if durationCache.count > 40 { durationCache.removeAll(keepingCapacity: true) }
             durationCache[title] = rawDuration
         } else if let cachedDur = durationCache[title], cachedDur > 2.0 {
             resolvedDuration = cachedDur
         }
         
-        // Carátula opcional en Base64 con preservación en caché por título
+        // Carátula opcional en Base64 con preservación en caché por título y artista
         var artworkImage: NSImage? = nil
+        let trackKey = "\(title)_\(artist)"
         if let b64 = json["artwork"] as? String, !b64.isEmpty, let artData = Data(base64Encoded: b64) {
-            artworkImage = NSImage(data: artData)
+            artworkImage = NSImage.decodedImage(from: artData)
             lastArtworkImage = artworkImage
             lastArtworkTitle = title
             if !title.isEmpty && artworkImage != nil {
+                if artworkCache.count > 25 { artworkCache.removeAll(keepingCapacity: true) }
                 artworkCache[title] = artworkImage
+                artworkCache[trackKey] = artworkImage
             }
-        } else if let cached = artworkCache[title] {
+        } else if let cached = artworkCache[trackKey] ?? artworkCache[title] {
             artworkImage = cached
-        } else if !title.isEmpty && title == lastArtworkTitle {
-            artworkImage = lastArtworkImage
+        } else if !title.isEmpty && title == lastArtworkTitle, let last = lastArtworkImage {
+            artworkImage = last
+        } else if let diskCached = ArtworkResolverService.shared.cachedArtwork(title: title, artist: artist) {
+            artworkImage = diskCached
+        }
+        
+        if let art = artworkImage, !title.isEmpty {
+            ArtworkResolverService.shared.storeArtwork(art, title: title, artist: artist)
+        } else if artworkImage == nil && !artworkUrlString.isEmpty, let url = URL(string: artworkUrlString) {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                if let data = try? Data(contentsOf: url), let img = NSImage.decodedImage(from: data) {
+                    DispatchQueue.main.async {
+                        self?.artworkCache[trackKey] = img
+                        self?.artworkCache[title] = img
+                        self?.lastArtworkImage = img
+                        self?.lastArtworkTitle = title
+                        ArtworkResolverService.shared.storeArtwork(img, title: title, artist: artist)
+                        MusicService.shared.updateCurrentArtwork(img)
+                    }
+                }
+            }
+        }
+        
+        // Si no tenemos carátula para esta pista y está reproduciendo, solicitar reenvío inmediato
+        if artworkImage == nil && isPlaying && !title.isEmpty {
+            if title != lastTrackTitle {
+                lastTrackTitle = title
+                artworkRetryCount = 0
+            }
+            if artworkRetryCount < 3 {
+                artworkRetryCount += 1
+                sendCommandString("getArtwork")
+            }
         }
         
         let track = MusicTrack(
@@ -212,6 +261,18 @@ public final class NowPlayingService {
     @discardableResult
     public func previousTrack() -> Bool {
         sendCommandString("prev")
+        return true
+    }
+    
+    @discardableResult
+    public func toggleShuffle() -> Bool {
+        sendCommandString("shuffle")
+        return true
+    }
+    
+    @discardableResult
+    public func toggleRepeat() -> Bool {
+        sendCommandString("repeat")
         return true
     }
     

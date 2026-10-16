@@ -79,44 +79,46 @@ public final class GlassClearManager: ObservableObject {
     }
     
     public func checkWallpaperLuminance() {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        guard let url = NSWorkspace.shared.desktopImageURL(for: screen),
-              let img = NSImage(contentsOf: url),
-              let cgImg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
-        
-        let w = cgImg.width
-        let h = cgImg.height
-        let sampleRect = CGRect(x: max(0, w / 2 - w / 10), y: 0, width: w / 5, height: max(10, h / 10))
-        guard let cropped = cgImg.cropping(to: sampleRect) else { return }
-        
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        var rawData = [UInt8](repeating: 0, count: 16 * 16 * 4)
-        guard let ctx = CGContext(
-            data: &rawData,
-            width: 16,
-            height: 16,
-            bitsPerComponent: 8,
-            bytesPerRow: 16 * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return }
-        
-        ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: 16, height: 16))
-        
-        var totalLum: Double = 0
-        let pixels = 16 * 16
-        for p in 0..<pixels {
-            let r = Double(rawData[p * 4]) / 255.0
-            let g = Double(rawData[p * 4 + 1]) / 255.0
-            let b = Double(rawData[p * 4 + 2]) / 255.0
-            let lum = 0.299 * r + 0.587 * g + 0.114 * b
-            totalLum += lum
-        }
-        let avg = totalLum / Double(pixels)
-        DispatchQueue.main.async {
-            self.detectedWallpaperLuminance = avg
-            if self.enableAutoWallpaperLuminance && avg > 0.65 {
-                self.uniformScrimOpacity = min(0.30, 0.10 + (avg - 0.65) * 0.4)
+        DispatchQueue.global(qos: .utility).async {
+            guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+            guard let url = NSWorkspace.shared.desktopImageURL(for: screen),
+                  let img = NSImage(contentsOf: url),
+                  let cgImg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+            
+            let w = cgImg.width
+            let h = cgImg.height
+            let sampleRect = CGRect(x: max(0, w / 2 - w / 10), y: 0, width: w / 5, height: max(10, h / 10))
+            guard let cropped = cgImg.cropping(to: sampleRect) else { return }
+            
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            var rawData = [UInt8](repeating: 0, count: 16 * 16 * 4)
+            guard let ctx = CGContext(
+                data: &rawData,
+                width: 16,
+                height: 16,
+                bitsPerComponent: 8,
+                bytesPerRow: 16 * 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return }
+            
+            ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+            
+            var totalLum: Double = 0
+            let pixels = 16 * 16
+            for p in 0..<pixels {
+                let r = Double(rawData[p * 4]) / 255.0
+                let g = Double(rawData[p * 4 + 1]) / 255.0
+                let b = Double(rawData[p * 4 + 2]) / 255.0
+                let lum = 0.299 * r + 0.587 * g + 0.114 * b
+                totalLum += lum
+            }
+            let avg = totalLum / Double(pixels)
+            DispatchQueue.main.async {
+                self.detectedWallpaperLuminance = avg
+                if self.enableAutoWallpaperLuminance && avg > 0.65 {
+                    self.uniformScrimOpacity = min(0.30, 0.10 + (avg - 0.65) * 0.4)
+                }
             }
         }
     }

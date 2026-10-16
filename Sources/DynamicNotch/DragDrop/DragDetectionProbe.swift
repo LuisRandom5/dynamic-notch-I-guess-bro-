@@ -43,28 +43,37 @@ public final class DragDetectionProbe: ObservableObject {
         let dragPb = NSPasteboard(name: .drag)
         baseChangeCount = dragPb.changeCount
         lastChangeCount = dragPb.changeCount
-        statusMessage = "Sonda activa y lista"
+        statusMessage = "Sonda activa (0% CPU en reposo)"
         
-        // 1. Iniciar temporizador de sondeo de alta frecuencia pero ultra-ligero (20 Hz / 50 ms)
-        heartbeatTimer?.invalidate()
-        heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            self?.pollDragState()
-        }
-        RunLoop.main.add(heartbeatTimer!, forMode: .common)
-        
-        // 2. Monitores de soporte para despertar inmediato
+        // Monitores pasivos de eventos: despiertan el sondeo a 20 Hz ÚNICAMENTE mientras el ratón/trackpad está presionado
         installEventMonitors()
     }
     
     public func stopProbe() {
         isProbeActive = false
-        heartbeatTimer?.invalidate()
-        heartbeatTimer = nil
+        stopActiveMousePolling()
         uninstallEventMonitors()
         isDragging = false
         isMouseDown = false
         proximity = 0.0
         statusMessage = "Sonda detenida"
+    }
+    
+    private func startActiveMousePolling() {
+        guard isProbeActive, AppState.shared.enableDragDropShelf else { return }
+        if heartbeatTimer == nil {
+            let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+                self?.pollDragState()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            heartbeatTimer = timer
+        }
+        pollDragState()
+    }
+    
+    private func stopActiveMousePolling() {
+        heartbeatTimer?.invalidate()
+        heartbeatTimer = nil
     }
     
     // MARK: - Bucle de Sondeo Inteligente (Cero coste cuando el ratón no está presionado)
@@ -128,7 +137,7 @@ public final class DragDetectionProbe: ObservableObject {
                         self.detectedTypes = []
                         self.previewItems = []
                         self.proximity = 0.0
-                        self.statusMessage = "En reposo"
+                        self.statusMessage = "En reposo (0% CPU)"
                         
                         if wasInvitation && AppState.shared.isDropInvitationActive {
                             withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
@@ -138,6 +147,7 @@ public final class DragDetectionProbe: ObservableObject {
                     }
                 }
             }
+            stopActiveMousePolling()
             return
         }
         
@@ -288,11 +298,11 @@ public final class DragDetectionProbe: ObservableObject {
     private func installEventMonitors() {
         uninstallEventMonitors()
         
-        downGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
-            self?.pollDragState()
+        downGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged]) { [weak self] _ in
+            self?.startActiveMousePolling()
         }
-        downLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
-            self?.pollDragState()
+        downLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged]) { [weak self] event in
+            self?.startActiveMousePolling()
             return event
         }
         upGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in

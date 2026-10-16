@@ -13,11 +13,10 @@ public struct QuickReplyNotificationView: View {
     public let appIcon: String
     public let tintColor: Color
     
-    // Fuente de verdad única: el proveedor. Antes había un @State local + closures capturados en onAppear
-    // que apuntaban a una copia vieja de la vista, por eso el swipe cambiaba el proveedor pero no la UI.
+    // Fuente de verdad única: el proveedor.
     @ObservedObject private var provider = NotificationActivityProvider.shared
     private var isExpanded: Bool {
-        provider.isQuickReplyExpanded && provider.currentNotificationId == id
+        provider.isQuickReplyExpanded && (provider.currentNotificationId == id || provider.currentNotificationId == nil)
     }
     @State private var replyText: String = ""
     @State private var isSending: Bool = false
@@ -25,13 +24,11 @@ public struct QuickReplyNotificationView: View {
     @State private var dragOffsetY: CGFloat = 0
     @FocusState private var isInputFocused: Bool
     
-    // Geometría calibrada para que NADA quede recortado ni aplastado:
-    // Altura compacta aumentada a 96pt para alojar holgadamente el despeje de 32pt de la cámara,
-    // el avatar, el texto de 2 líneas y el hint inferior sin tocar las esquinas redondeadas.
-    private let compactWidth: CGFloat = 396
-    private let compactHeight: CGFloat = 96
-    private let expandedWidth: CGFloat = 424
-    private let expandedHeight: CGFloat = 180
+    // Geometría calibrada sincronizada con NotificationActivityProvider
+    private let compactWidth: CGFloat = NotificationActivityProvider.compactWidth
+    private let compactHeight: CGFloat = NotificationActivityProvider.compactHeight
+    private let expandedWidth: CGFloat = NotificationActivityProvider.expandedWidth
+    private let expandedHeight: CGFloat = NotificationActivityProvider.expandedHeight
     
     public init(
         id: String,
@@ -57,31 +54,36 @@ public struct QuickReplyNotificationView: View {
         VStack(spacing: 0) {
             if !isExpanded {
                 compactNotificationView
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             } else {
                 expandedQuickReplyView
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
         .frame(width: isExpanded ? expandedWidth : compactWidth)
-        .offset(y: dragOffsetY * 0.40)
+        .offset(y: (dragOffsetY + provider.dragPullOffset) * 0.40)
         .onAppear {
-            NotificationActivityProvider.shared.setNotificationState(active: true, expanded: false, id: id)
+            // NO sobrescribir isQuickReplyExpanded en onAppear (evita revertir la expansión si SwiftUI reconstruye la vista)
+            if provider.currentNotificationId == nil {
+                NotificationActivityProvider.shared.setNotificationState(active: true, expanded: provider.isQuickReplyExpanded, id: id)
+            }
             NotificationActivityProvider.shared.onDismissRequested = {
                 NotchWindowManager.shared.setAllowsKeyInput(false)
                 ActivityCenter.shared.dismissWithAnimation(id: id)
             }
-            syncContainerDimensions(expanded: false)
+            syncContainerDimensions(expanded: isExpanded)
+            if isExpanded {
+                focusReplyField()
+            }
         }
         .onChange(of: isExpanded) { _, expanded in
             applyExpansion(expanded)
         }
         .onDisappear {
-            NotificationActivityProvider.shared.setNotificationState(active: false, expanded: false, id: nil)
-            NotificationActivityProvider.shared.onExpandRequested = nil
-            NotificationActivityProvider.shared.onCollapseRequested = nil
-            NotificationActivityProvider.shared.onDismissRequested = nil
-            NotchWindowManager.shared.setAllowsKeyInput(false)
-            ActivityCenter.shared.customCardWidth = nil
-            ActivityCenter.shared.customCardHeight = nil
+            // Solo limpiar si esta notificación ya no es la actividad actual en ActivityCenter
+            if ActivityCenter.shared.currentActivity?.id != id {
+                NotificationActivityProvider.shared.handleActivityRemoved(id: id)
+            }
         }
     }
     
@@ -176,43 +178,48 @@ public struct QuickReplyNotificationView: View {
         .padding(.top, 32) // Despeja perfectamente el notch físico sin desperdiciar espacio
         .padding(.bottom, 12)
         .contentShape(Rectangle())
-        // Gesto unificado bidireccional sin zonas muertas:
-        // Arrastre hacia abajo (>= 6pt o continuo >= 24pt) o tap -> expandir respuesta rápida
-        // Arrastre hacia arriba (<= -8pt) -> guardar/descartar la notificación hacia el notch
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 4)
+        // Gesto unificado omnidireccional:
+        // - Deslizar hacia abajo (dy >= 8 o inercia >= 14) -> Expandir respuesta rápida
+        // - Deslizar hacia arriba (dy <= -8 o inercia <= -14) -> Descartar notificación al notch
+        // - Tap directo (dy y dx < 6) -> Expandir respuesta rápida
+        .gesture(
+            DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    if value.translation.height > 0 {
-                        self.dragOffsetY = min(value.translation.height, 35)
-                        if value.translation.height >= 10 && !self.isExpanded {
-                            expandToQuickReply()
-                        }
+                    guard !self.isExpanded else { return }
+                    let dy = value.translation.height
+                    if dy > 0 {
+                        self.dragOffsetY = min(dy, 45)
                     } else {
-                        self.dragOffsetY = max(value.translation.height, -25)
+                        self.dragOffsetY = max(dy, -35)
                     }
                 }
                 .onEnded { value in
                     guard !self.isExpanded else { return }
                     let dy = value.translation.height
+                    let dx = value.translation.width
                     let pdy = value.predictedEndTranslation.height
                     
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         self.dragOffsetY = 0
                     }
                     
+                    // 1. Swipe hacia arriba -> Descartar notificación
                     if dy <= -6 || pdy <= -10 {
                         AppState.shared.hapticService.triggerSnap()
                         dismissActivity()
-                    } else if dy >= 4 || pdy >= 6 {
+                    }
+                    // 2. Swipe hacia abajo -> Expandir respuesta rápida
+                    else if dy >= 6 || pdy >= 10 {
+                        AppState.shared.hapticService.triggerExpand()
+                        expandToQuickReply()
+                    }
+                    // 3. Tap directo
+                    else if abs(dy) < 6 && abs(dx) < 6 {
+                        AppState.shared.hapticService.triggerExpand()
                         expandToQuickReply()
                     }
                 }
         )
-        .onTapGesture {
-            if !self.isExpanded {
-                expandToQuickReply()
-            }
-        }
     }
     
     // MARK: - Estado Expandido (Quick Reply con Espacio Amplio y Diseño Apple)
@@ -247,6 +254,26 @@ public struct QuickReplyNotificationView: View {
                     .foregroundColor(tintColor)
                 
                 Spacer()
+                
+                // Botón abrir app / pestaña en navegador
+                Button(action: {
+                    if appName.lowercased().contains("whatsapp") {
+                        WhatsAppWebObserverService.shared.activateWhatsAppWeb()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Abrir chat")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundColor(tintColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(tintColor.opacity(0.18)))
+                }
+                .buttonStyle(.plain)
+                .help("Ir a la conversación")
                 
                 // Botón retraer
                 Button(action: {
@@ -310,6 +337,10 @@ public struct QuickReplyNotificationView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusReplyField()
+                }
                 .background(
                     RoundedRectangle(cornerRadius: 20)
                         .fill(Color.white.opacity(0.10))
@@ -354,32 +385,37 @@ public struct QuickReplyNotificationView: View {
         .padding(.top, 34) // Despeje para la cámara del notch
         .padding(.bottom, 16)
         .onAppear {
-            isInputFocused = true
+            focusReplyField()
         }
-        // Gesto de swipe hacia arriba en la tarjeta expandida para retraerla suavemente
-        .gesture(
-            DragGesture(minimumDistance: 12)
-                .onEnded { value in
-                    if value.translation.height <= -15 || value.predictedEndTranslation.height <= -25 {
-                        collapseBack()
-                    }
-                }
-        )
     }
     
     // MARK: - Control de Animaciones y Dimensiones
+    
+    private func focusReplyField() {
+        NotchWindowManager.shared.setAllowsKeyInput(true)
+        isInputFocused = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            guard self.isExpanded else { return }
+            NotchWindowManager.shared.setAllowsKeyInput(true)
+            self.isInputFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            guard self.isExpanded else { return }
+            self.isInputFocused = true
+        }
+    }
     
     private func syncContainerDimensions(expanded: Bool) {
         if expanded {
             ActivityCenter.shared.customCardWidth = expandedWidth
             ActivityCenter.shared.customCardHeight = expandedHeight
-            ActivityCenter.shared.customTopRadius = 24
-            ActivityCenter.shared.customBottomRadius = 34
+            ActivityCenter.shared.customTopRadius = NotificationActivityProvider.topRadius
+            ActivityCenter.shared.customBottomRadius = NotificationActivityProvider.expandedBottomRadius
         } else {
             ActivityCenter.shared.customCardWidth = compactWidth
             ActivityCenter.shared.customCardHeight = compactHeight
-            ActivityCenter.shared.customTopRadius = 24
-            ActivityCenter.shared.customBottomRadius = 28
+            ActivityCenter.shared.customTopRadius = NotificationActivityProvider.topRadius
+            ActivityCenter.shared.customBottomRadius = NotificationActivityProvider.compactBottomRadius
         }
         NotchWindowManager.shared.updateHitAreaForCurrentState()
     }
@@ -396,23 +432,15 @@ public struct QuickReplyNotificationView: View {
     /// Efectos secundarios del cambio de estado (tamaño del contenedor, foco, teclado, timer)
     private func applyExpansion(_ expanded: Bool) {
         if expanded {
-            if AppState.shared.mode == .expanded {
-                AppState.shared.mode = AppState.shared.shouldShowCompact ? .compact : .idle
-            }
-            AppState.shared.hapticService.triggerExpand()
-            NotchWindowManager.shared.setAllowsKeyInput(true)
             ActivityCenter.shared.pauseDismissTimer(for: id)
             withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
                 self.dragOffsetY = 0
                 syncContainerDimensions(expanded: true)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.isInputFocused = true
-            }
+            focusReplyField()
         } else {
             isInputFocused = false
             NotchWindowManager.shared.setAllowsKeyInput(false)
-            AppState.shared.hapticService.triggerSnap()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.84)) {
                 self.dragOffsetY = 0
                 syncContainerDimensions(expanded: false)
@@ -422,24 +450,22 @@ public struct QuickReplyNotificationView: View {
     
     private func sendReply() {
         let textToSend = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !textToSend.isEmpty else { return }
+        guard !textToSend.isEmpty, !isSending else { return }
         
         isSending = true
         isSentSuccess = true
         AppState.shared.hapticService.triggerSnap()
         
-        // Despachar respuesta sin abrir la app de escritorio desactualizada
-        MessageReplyService.shared.sendReply(to: handle, message: textToSend, app: appName, openBrowser: false)
+        // Despachar respuesta hacia WhatsApp Web / Desktop (inyectando en DOM o pegando en el chat activo)
+        MessageReplyService.shared.sendReply(to: handle, message: textToSend, app: appName, openBrowser: true)
         
         // Micro-animación de éxito antes de desvanecer hacia el notch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
-            NotchWindowManager.shared.setAllowsKeyInput(false)
-            dismissActivity()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            NotificationActivityProvider.shared.dismissNotification()
         }
     }
     
     private func dismissActivity() {
-        NotchWindowManager.shared.setAllowsKeyInput(false)
-        ActivityCenter.shared.dismissWithAnimation(id: id)
+        NotificationActivityProvider.shared.dismissNotification()
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct LiveActivityContainerView: View {
     @ObservedObject var center = ActivityCenter.shared
+    @ObservedObject var notificationProvider = NotificationActivityProvider.shared
     @EnvironmentObject var appState: AppState
     
     public init() {}
@@ -41,7 +42,24 @@ public struct LiveActivityContainerView: View {
                             removal: .opacity.animation(.easeOut(duration: 0.10))
                         ))
                 case .card:
-                    if let custom = activity.customView {
+                    if activity.id.hasPrefix("notification_"),
+                       let payload = notificationProvider.currentPayload,
+                       payload.id == activity.id {
+                        QuickReplyNotificationView(
+                            id: payload.id,
+                            title: payload.title,
+                            message: payload.message,
+                            handle: payload.handle,
+                            avatar: payload.avatar,
+                            appName: payload.appName,
+                            appIcon: payload.appIcon,
+                            tintColor: payload.tintColor
+                        )
+                        .transition(.asymmetric(
+                            insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                            removal: .opacity.animation(.easeOut(duration: 0.10))
+                        ))
+                    } else if let custom = activity.customView {
                         custom
                             .transition(.asymmetric(
                                 insertion: .opacity.animation(.easeInOut(duration: 0.18)),

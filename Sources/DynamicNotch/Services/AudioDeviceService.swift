@@ -104,6 +104,20 @@ public final class AudioDeviceService: NSObject, ObservableObject {
         updateCurrentDeviceName()
     }
     
+    public func cycleOutputDevice() {
+        let devices = getOutputDevices()
+        guard devices.count > 1 else { return }
+        let currentID = getDefaultOutputDeviceID()
+        if let idx = devices.firstIndex(where: { $0.id == currentID }) {
+            let nextIdx = (idx + 1) % devices.count
+            setDefaultOutputDevice(id: devices[nextIdx].id)
+            AppState.shared.hapticService.triggerSnap()
+        } else if let first = devices.first {
+            setDefaultOutputDevice(id: first.id)
+            AppState.shared.hapticService.triggerSnap()
+        }
+    }
+    
     public func getDeviceName(id: AudioDeviceID) -> String {
         var nameAddress = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceNameCFString,
@@ -367,6 +381,11 @@ public final class AudioDeviceService: NSObject, ObservableObject {
     
     /// Publica la actividad SliderPill en la Isla Dinámica con duración natural de 2.5 s
     public func publishVolumeActivity(volume: Float, isMuted: Bool) {
+        // Si el reproductor extendido o la repisa están abiertos, no publicar el HUD flotante
+        // ya que el reproductor posee su propio slider reactivo en pantalla.
+        if AppState.shared.mode == .expanded || AppState.shared.mode == .shelf {
+            return
+        }
         let activity = LiveActivity(
             id: "system_slider",
             priority: 85,

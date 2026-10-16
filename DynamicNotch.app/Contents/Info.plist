@@ -32,5 +32,9 @@
     <string>Dynamic Notch analiza el espectro del audio del sistema para que las barras reaccionen a la música en tiempo real.</string>
     <key>NSContactsUsageDescription</key>
     <string>Dynamic Notch necesita acceder a tus contactos para mostrar la foto y el nombre de quien te llama.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Dynamic Notch necesita Bluetooth para detectar la conexión de tus AirPods y mostrar la animación correspondiente.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Dynamic Notch utiliza Bluetooth para monitorear el estado de conexión de tus AirPods y accesorios de audio.</string>
 </dict>
 </plist>

@@ -23,9 +23,13 @@ public struct NotchAlertView: View {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.green)
-                        Text("\(percent)%")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
+                        RollingNumberView(
+                            value: percent,
+                            suffix: "%",
+                            font: .system(size: 11, weight: .bold, design: .rounded),
+                            color: .white,
+                            alignment: .center
+                        )
                     }
                 }
                 

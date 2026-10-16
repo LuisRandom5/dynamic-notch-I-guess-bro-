@@ -50,6 +50,8 @@ public struct AudioSpectrumTestView: View {
     
     // Live metering a 60 fps
     @State private var liveLevels: [Float] = [0, 0, 0, 0, 0, 0]
+    @State private var peakHolds: [Float] = [0, 0, 0, 0, 0, 0]
+    @State private var peakDecibels: Float = -60.0
     @State private var smoothedPercentages: [Double] = [0, 0, 0, 0, 0, 0]
     @State private var displayPercentages: [Int] = [0, 0, 0, 0, 0, 0]
     @State private var lastTextUpdate: Date = Date.distantPast
@@ -67,11 +69,11 @@ public struct AudioSpectrumTestView: View {
                 // Header
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Monitor de Audio y Reactividad")
+                        Text("Monitor de Audio en Tiempo Real & FFT")
                             .font(.system(size: 18, weight: .bold))
                         Text(engine.isRealAudioActive
-                             ? "Audio Digital del Sistema Activo (Process Tap CoreAudio 64-bit) • Muestras PCM Reales • Cero Micrófono"
-                             : (engine.isSimulatedMode ? "Modo Simulado Activo" : "Esperando flujo de audio..."))
+                             ? "Audio Digital del Sistema Activo (Process Tap CoreAudio 64-bit) • FFT 1024 pts • Cero Micrófono"
+                             : (engine.isSimulatedMode ? "Modo Simulado Psicoacústico Activo" : "Modo Automático (activa Tap Digital o reproduce música)"))
                             .font(.system(size: 11.5))
                             .foregroundColor(engine.isRealAudioActive ? .green : (engine.isSimulatedMode ? .purple : .orange))
                     }
@@ -91,9 +93,9 @@ public struct AudioSpectrumTestView: View {
                             Circle()
                                 .fill((!engine.isSilent || MusicService.shared.currentTrack.isPlaying || engine.isSimulatedMode) ? Color.green : Color.orange)
                                 .frame(width: 9, height: 9)
-                            Text((!engine.isSilent || MusicService.shared.currentTrack.isPlaying || engine.isSimulatedMode) ? "Audio / Música Activa" : "Silencio (>2.0s)")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.secondary)
+                            Text(String(format: "%.1f dBFS", peakDecibels))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.primary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -104,10 +106,29 @@ public struct AudioSpectrumTestView: View {
                 
                 Divider()
                 
-                // MARK: - VISUALIZADOR DE 6 BARRAS EN VIVO (MEDIDAS EXACTAS)
+                // MARK: - VISUALIZADOR DE 6 BARRAS EN VIVO CON PEAK HOLD Y UMBRAL DE NOISE GATE
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("1. Espectro de 6 Bandas Logarítmicas (En Vivo)")
-                        .font(.system(size: 13, weight: .semibold))
+                    HStack {
+                        Text("1. Espectro de 6 Bandas Logarítmicas (Con Retención de Picos)")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Text("Presets:")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            ForEach(SpectrumResponsePreset.allCases) { preset in
+                                Button(preset.title) {
+                                    SpectrumMetrics.applyPreset(preset)
+                                    attack = SpectrumMetrics.attackMs
+                                    release = SpectrumMetrics.releaseMs
+                                    noiseGate = Double(SpectrumMetrics.noiseGateDB)
+                                    gain = Double(SpectrumMetrics.gainMultiplier)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
                     
                     HStack(alignment: .bottom, spacing: 18) {
                         ForEach(0..<6, id: \.self) { i in
@@ -117,13 +138,13 @@ public struct AudioSpectrumTestView: View {
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(.secondary)
                                 
-                                // Barra vertical con resorte balístico fluido
+                                // Barra vertical con resorte balístico fluido + indicador Peak Hold
                                 ZStack(alignment: .bottom) {
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: 5)
                                         .fill(Color.secondary.opacity(0.15))
-                                        .frame(width: 28, height: 110)
+                                        .frame(width: 30, height: 115)
                                     
-                                    RoundedRectangle(cornerRadius: 4)
+                                    RoundedRectangle(cornerRadius: 5)
                                         .fill(
                                             LinearGradient(
                                                 colors: [PlayerMetrics.visualizerTopGradient, PlayerMetrics.visualizerBottomGradient],
@@ -131,31 +152,37 @@ public struct AudioSpectrumTestView: View {
                                                 endPoint: .bottom
                                             )
                                         )
-                                        .frame(width: 28, height: max(6, CGFloat(liveLevels[i]) * 110))
-                                        .animation(.spring(response: 0.22, dampingFraction: 0.82), value: liveLevels[i])
+                                        .frame(width: 30, height: max(6, CGFloat(liveLevels[i]) * 115))
+                                        .animation(.spring(response: 0.18, dampingFraction: 0.80), value: liveLevels[i])
+                                    
+                                    // Línea de Peak Hold
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.85))
+                                        .frame(width: 24, height: 2.5)
+                                        .offset(y: -min(112, max(6, CGFloat(peakHolds[i]) * 115)))
                                 }
                                 
                                 // Etiqueta de frecuencia
                                 Text(SpectrumMetrics.bands[i].label)
-                                    .font(.system(size: 9.5, weight: .medium))
+                                    .font(.system(size: 9.5, weight: .semibold))
                                     .foregroundColor(.primary)
                                 Text("\(Int(SpectrumMetrics.bands[i].low))-\(Int(SpectrumMetrics.bands[i].high))Hz")
-                                    .font(.system(size: 8.5))
+                                    .font(.system(size: 8.5, design: .monospaced))
                                     .foregroundColor(.secondary)
                             }
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.black.opacity(0.18))
+                    .background(Color.black.opacity(0.22))
                     .cornerRadius(12)
                 }
                 
                 Divider()
                 
-                // MARK: - CONTROLES DEL AUDIO Y ENVELOPE
+                // MARK: - CONTROLES DEL AUDIO Y ENVELOPE (PERSISTENTES)
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("2. Parámetros del Análisis de Audio (SpectrumMetrics)")
+                    Text("2. Parámetros del Análisis de Audio (Guardados Automáticamente)")
                         .font(.system(size: 13, weight: .semibold))
                     
                     Group {
@@ -165,7 +192,7 @@ public struct AudioSpectrumTestView: View {
                         sliderRow(title: "Caída (Release)", value: $release, range: 40...350, unit: "ms") {
                             SpectrumMetrics.releaseMs = $0
                         }
-                        sliderRow(title: "Noise Gate", value: $noiseGate, range: -75...(-35), unit: "dB") {
+                        sliderRow(title: "Noise Gate (Umbral)", value: $noiseGate, range: -75...(-25), unit: "dB") {
                             SpectrumMetrics.noiseGateDB = Float($0)
                         }
                         sliderRow(title: "Ganancia Perceptual", value: $gain, range: 0.5...2.5, unit: "x") {
@@ -176,7 +203,10 @@ public struct AudioSpectrumTestView: View {
                         }
                     }
                     
-                    Toggle("Captura Acústica por Micrófono (Muestra el punto morado/naranja en macOS)", isOn: Binding(
+                    Toggle("Captura Digital del Sistema (CoreAudio Process Tap 64-bit)", isOn: $engine.enableSystemAudioTap)
+                        .font(.system(size: 12, weight: .medium))
+                    
+                    Toggle("Captura Acústica por Micrófono (Muestra el punto naranja en macOS)", isOn: Binding(
                         get: { engine.enableMicrophoneCapture },
                         set: { engine.toggleMicrophoneCapture($0) }
                     ))
@@ -286,20 +316,24 @@ public struct AudioSpectrumTestView: View {
         .frame(minWidth: 580, minHeight: 700)
         .onAppear {
             testTimer?.invalidate()
-            testTimer = Timer.scheduledTimer(withTimeInterval: 0.024, repeats: true) { _ in
+            testTimer = Timer.scheduledTimer(withTimeInterval: 0.032, repeats: true) { _ in
                 let levels = engine.getMagnitudes()
                 if levels.count == 6 {
                     liveLevels = levels
                     
-                    // Filtro exponencial (EMA) para una lectura numérica estable y profesional
                     for i in 0..<6 {
+                        if levels[i] > peakHolds[i] {
+                            peakHolds[i] = levels[i]
+                        } else {
+                            peakHolds[i] = max(0, peakHolds[i] - 0.008)
+                        }
                         smoothedPercentages[i] += (Double(levels[i] * 100.0) - smoothedPercentages[i]) * 0.24
                     }
                     
-                    // Actualización periódica controlada para evitar parpadeo y números ilegibles
                     if Date().timeIntervalSince(lastTextUpdate) > 0.20 {
                         lastTextUpdate = Date()
                         displayPercentages = smoothedPercentages.map { Int(round($0)) }
+                        peakDecibels = engine.getPeakDecibels()
                     }
                 }
             }
