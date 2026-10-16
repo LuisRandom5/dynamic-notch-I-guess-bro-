@@ -222,6 +222,7 @@ public final class AppState: ObservableObject {
     }
     
     public enum LockScreenRenderMode: String, CaseIterable, Identifiable {
+        case pureOLED = "pureOLED" // 0. 100% Negro Puro OLED (#000000 opaco absoluto)
         case nativeGlass = "nativeGlass" // 1. Liquid Glass nativo (.glassEffect macOS 26+)
         case visualEffect = "visualEffect" // 2. NSVisualEffectView behind-window
         case privateBlur = "privateBlur" // 3. CGSSetWindowBackgroundBlurRadius
@@ -230,6 +231,7 @@ public final class AppState: ObservableObject {
         
         public var displayName: String {
             switch self {
+            case .pureOLED: return "Negro Puro OLED 100% (#000000)"
             case .nativeGlass: return "Liquid Glass Nativo (macOS 26+)"
             case .visualEffect: return "NSVisualEffectView (Detrás de Ventana)"
             case .privateBlur: return "CoreGraphics Blur (CGSSetWindowBackgroundBlurRadius)"

@@ -110,7 +110,7 @@ public final class NotchWindowManager: ObservableObject {
             case .sliderPill:
                 updateHitArea(width: geom.width + 296, height: max(50, geom.height + 14))
             case .airpodsPill:
-                updateHitArea(width: 410, height: 215)
+                updateHitArea(width: geom.width + 150, height: max(50, geom.height + 14))
             case .card:
                 let w = ActivityCenter.shared.customCardWidth ?? 430
                 let h = ActivityCenter.shared.customCardHeight ?? 130
@@ -156,8 +156,8 @@ public final class NotchWindowManager: ObservableObject {
                 width = geom.width + 200
                 height = geom.height + 8
             case .airpodsPill:
-                width = 400
-                height = 196
+                width = geom.width + 132
+                height = geom.height + 4
             case .card:
                 width = ActivityCenter.shared.customCardWidth ?? 410
                 height = (ActivityCenter.shared.customCardHeight ?? 112) + 8

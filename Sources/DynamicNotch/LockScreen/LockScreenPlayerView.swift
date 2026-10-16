@@ -2,19 +2,16 @@ import SwiftUI
 import AppKit
 import AVKit
 
-/// Vista nativa Liquid Glass para el Reproductor en Pantalla de Bloqueo de macOS (macOS 15 Sequoia / macOS 26 Tahoe).
+/// Vista nativa Liquid Glass y OLED para el Reproductor en Pantalla de Bloqueo de macOS (Apple HIG / macOS Tahoe).
 /// Cumple estrictamente con las especificaciones y feedback del usuario:
-/// 1. Formato estirado horizontal estilo Apple Music / iOS Lockscreen (410 pt de ancho, ~120 pt de alto).
-/// 2. Carátula miniatura (54 x 54 pt) en la tarjeta con esquinas continuas (12 pt), rotación 3D estilo Apple Music al cambiar de canción,
-///    y animación fluida (.spring) que se expande a Carátula Hero (240 x 240 pt) con fondo ambiental dinámico (ambient glow).
-/// 3. Cadena de renderizado Liquid Glass en 4 niveles (Paso 3):
-///    - Tier 1: Liquid Glass nativo (.glassEffect en macOS 26+).
-///    - Tier 2: NSVisualEffectView detrás de ventana (macOS 15+).
-///    - Tier 3: CoreGraphics Private Window Blur (CGSSetWindowBackgroundBlurRadius de SkyLight).
-///    - Tier 4: Sólido oscuro translúcido (Accesibilidad / Reduce Transparency).
-/// 4. Selector nativo de salida de audio (NativeAudioRoutePicker / AVRoutePickerView).
-/// 5. Ubicación optimizada: justo por encima del cuadro de contraseña, sin tapar el avatar ni el campo de entrada.
-/// 6. Cero halo rectangular: ventana transparente, sin hasShadow de ventana, sombra exclusivamente en la silueta continua.
+/// 1. Formato dual adaptativo:
+///    - Vertical Hero (iPhone Lockscreen): Carátula 1:1 cuadrada prominente (220 x 220 pt) con sutil ambient glow + cápsula de controles (410 pt).
+///    - Horizontal Compacto (macOS): Carátula 1:1 cuadrada (108 x 108 pt), metadatos, barra interactiva y controles en una composición unificada.
+/// 2. Barras reactivas al sonido en tiempo real (AudioVisualizer) integradas en ambas presentaciones, respondiendo al audio real del sistema.
+/// 3. Modo OLED 100% Negro Puro (#000000 opaco absoluto, cero transparencias no deseadas) y Liquid Glass nativo (.hudWindow / .glassEffect).
+/// 4. Scrubber interactivo con cifras tabulares monoespaciadas ("1:24", "-2:36"), hover suave y búsqueda fluida.
+/// 5. Controles multimedia estilo Apple Control Center con respuesta de resorte y transiciones de símbolo.
+/// 6. Seguridad y privacidad: ventana no-key para jamás bloquear Touch ID o contraseña; modo privacidad configurable.
 public struct LockScreenPlayerView: View {
     @ObservedObject var musicService = MusicService.shared
     @ObservedObject var appState = AppState.shared
@@ -30,12 +27,8 @@ public struct LockScreenPlayerView: View {
     // Triggers para efectos SF Symbols
     @State private var previousButtonTrigger: Int = 0
     @State private var nextButtonTrigger: Int = 0
-    @State private var isPreviousHovered: Bool = false
-    @State private var isPlayPauseHovered: Bool = false
-    @State private var isNextHovered: Bool = false
     
-    // Animaciones de transición y ecualizador
-    @State private var eqPhase: Double = 0
+    // Animaciones de transición
     @State private var artworkRotationY: Double = 0
     @State private var heroArtworkRotationY: Double = 0
     
@@ -61,6 +54,10 @@ public struct LockScreenPlayerView: View {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
     
+    private var isOLED: Bool {
+        appState.lockScreenRenderMode == .pureOLED || appState.effectiveAppearanceMode == .pureOLED
+    }
+    
     private var progress: Double {
         if isSeeking { return seekProgress }
         guard track.duration > 0 else { return 0 }
@@ -71,7 +68,7 @@ public struct LockScreenPlayerView: View {
         isDraggingVolume ? dragVolume : audioService.currentVolume
     }
     
-    // Color dominante extraído de la carátula para el resplandor ambiental
+    // Color dominante extraído de la carátula para el resplandor ambiental (clamped y sutil)
     private var ambientGlowColor: Color {
         if let art = track.artwork {
             return ArtworkGradientCache.colors(for: art).top
@@ -108,59 +105,61 @@ public struct LockScreenPlayerView: View {
         return VStack(spacing: LockScreenPlayerMetrics.heroSpacing) {
             Spacer(minLength: 0)
             
-            // 1. Carátula Hero y Resplandor Ambiental (se muestra si está expandida)
+            // 1. Carátula Hero cuadrada 1:1 con sutil resplandor ambiental
             if appState.isLockScreenArtworkExpanded && !isPrivacyMode {
                 heroArtworkWithAmbientGlow
                     .transition(
                         isReduceMotion
                             ? .opacity
                             : .asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.88)).combined(with: .offset(y: 16)),
-                                removal: .opacity.combined(with: .scale(scale: 0.88)).combined(with: .offset(y: 16))
+                                insertion: .opacity.combined(with: .scale(scale: 0.90)).combined(with: .offset(y: 12)),
+                                removal: .opacity.combined(with: .scale(scale: 0.90)).combined(with: .offset(y: 12))
                             )
                     )
             }
             
-            // 2. Tarjeta Frosted Glass Estirada (Controles y miniatura condicional)
+            // 2. Tarjeta flotante con controles, scrubber y ecualizador
             heroFloatingCardView
         }
         .frame(width: LockScreenPlayerMetrics.heroPanelWidth, height: panelHeight)
-        .animation(.spring(response: 0.40, dampingFraction: 0.80), value: appState.isLockScreenArtworkExpanded)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: appState.isLockScreenArtworkExpanded)
     }
     
-    // MARK: - 1.1 Carátula Hero con Resplandor Ambiental Dinámico
+    // MARK: - 1.1 Carátula Hero Cuadrada 1:1 con Resplandor Ambiental Clamped
     
     private var heroArtworkWithAmbientGlow: some View {
-        let size = LockScreenPlayerMetrics.heroArtworkSize // 240 pt
-        let cornerRadius = LockScreenPlayerMetrics.heroArtworkCornerRadius // 24 pt
+        let size = LockScreenPlayerMetrics.heroArtworkSize // 220 pt
+        let cornerRadius = LockScreenPlayerMetrics.heroArtworkCornerRadius // 20 pt
         
         return ZStack {
-            // Resplandor ambiental difuso detrás de la carátula
-            RadialGradient(
-                colors: [
-                    ambientGlowColor.opacity(0.48),
-                    ambientGlowColor.opacity(0.18),
-                    Color.clear
-                ],
-                center: .center,
-                startRadius: 10,
-                endRadius: 160
-            )
-            .frame(width: size + 90, height: size + 90)
-            .blur(radius: 36)
-            .allowsHitTesting(false)
+            // Resplandor ambiental suave (luminosidad y dispersión controladas)
+            if appState.lockScreenShowArtworkHalo && !isOLED {
+                RadialGradient(
+                    colors: [
+                        ambientGlowColor.opacity(0.38),
+                        ambientGlowColor.opacity(0.12),
+                        Color.clear
+                    ],
+                    center: .center,
+                    startRadius: 8,
+                    endRadius: 140
+                )
+                .frame(width: size + 70, height: size + 70)
+                .blur(radius: 28)
+                .allowsHitTesting(false)
+            }
             
-            // Sombra suave exterior
+            // Sombra suave propia de la silueta continua
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.black.opacity(0.001))
                 .shadow(
-                    color: Color.black.opacity(0.40),
-                    radius: 24,
+                    color: Color.black.opacity(LockScreenPlayerMetrics.artworkShadowOpacity),
+                    radius: LockScreenPlayerMetrics.artworkShadowRadius,
                     x: 0,
-                    y: 12
+                    y: LockScreenPlayerMetrics.artworkShadowY
                 )
             
-            // Imagen de carátula hero
+            // Imagen de carátula cuadrada 1:1
             if let artwork = track.artwork {
                 Image(nsImage: artwork)
                     .resizable()
@@ -179,7 +178,7 @@ public struct LockScreenPlayerView: View {
                     .frame(width: size, height: size)
                     .overlay(
                         Image(systemName: "music.note")
-                            .font(.system(size: 64, weight: .light))
+                            .font(.system(size: 60, weight: .light))
                             .foregroundColor(.white.opacity(0.45))
                     )
             }
@@ -189,61 +188,60 @@ public struct LockScreenPlayerView: View {
                 .stroke(
                     isIncreaseContrast
                         ? Color.white.opacity(0.45)
-                        : Color.white.opacity(0.16),
+                        : Color.white.opacity(0.14),
                     lineWidth: isIncreaseContrast ? 1.5 : 0.8
                 )
                 .frame(width: size, height: size)
         }
         .frame(width: size, height: size)
         .rotation3DEffect(.degrees(heroArtworkRotationY), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(track.isPlaying ? 1.0 : 0.94)
+        .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .onTapGesture {
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.80)) {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                 appState.isLockScreenArtworkExpanded = false
             }
         }
-        .help("Haz clic para contraer carátula")
+        .help("Toca para contraer la carátula")
     }
     
-    // MARK: - 1.2 Tarjeta Flotante Horizontal Frosted Glass
+    // MARK: - 1.2 Tarjeta Flotante Hero (Controles + Miniatura Condicional)
     
     private var heroFloatingCardView: some View {
         let cardWidth = LockScreenPlayerMetrics.heroCardWidth // 410 pt
         let cardHeight = appState.lockScreenShowVolumeSlider
             ? LockScreenPlayerMetrics.heroCardHeightWithVolume
             : LockScreenPlayerMetrics.heroCardHeight
-        let cornerRadius = LockScreenPlayerMetrics.heroCardCornerRadius // 26 pt
+        let cornerRadius = LockScreenPlayerMetrics.heroCardCornerRadius // 24 pt
         
         return ZStack {
-            // Sombra exterior suave propia de la silueta continua (cero halo de ventana)
+            // Sombra exterior continua
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.black.opacity(0.001))
                 .shadow(
                     color: Color.black.opacity(LockScreenPlayerMetrics.cardShadowOpacity),
-                    radius: 20,
+                    radius: LockScreenPlayerMetrics.cardShadowRadius,
                     x: 0,
-                    y: 8
+                    y: LockScreenPlayerMetrics.cardShadowY
                 )
             
-            // Fondo Liquid Glass según la cadena de renderizado Paso 3
+            // Fondo Liquid Glass o Negro Puro OLED 100%
             cardGlassBackground(cornerRadius: cornerRadius)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             
-            // Borde sutil de definición especular
+            // Borde especular sutil
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     isIncreaseContrast
                         ? Color.white.opacity(0.48)
-                        : Color.white.opacity(0.18),
-                    lineWidth: isIncreaseContrast ? 1.5 : 0.8
+                        : (isOLED ? Color.white.opacity(0.14) : Color.white.opacity(0.16)),
+                    lineWidth: isIncreaseContrast ? 1.5 : 0.75
                 )
             
-            // Contenido en rejilla horizontal
+            // Contenido interior en rejilla armónica
             HStack(spacing: appState.isLockScreenArtworkExpanded ? 0 : 14) {
-                // 1. Miniatura interactiva de carátula a la izquierda (54 x 54 pt)
-                // Se oculta automáticamente cuando la carátula grande está desplegada
+                // Miniatura cuadrada si la carátula grande está contraída
                 if !appState.isLockScreenArtworkExpanded {
                     thumbnailArtworkView
                         .transition(
@@ -256,13 +254,13 @@ public struct LockScreenPlayerView: View {
                         )
                 }
                 
-                // 2. Columna de información, scrubber y controles
+                // Columna de información, visualizador de audio, scrubber y controles
                 VStack(spacing: 6) {
-                    // Fila 1: Título, Artista + Mini Ecualizador y Badge
+                    // Fila 1: Título, Artista + Mini Ecualizador Reactivo + Badge
                     HStack(alignment: .center, spacing: 8) {
                         VStack(alignment: .leading, spacing: 1.5) {
                             MarqueeText(
-                                isPrivacyMode ? "Reproduciendo audio" : (track.title.isEmpty ? "Sin reproducción" : track.title),
+                                isPrivacyMode ? "Reproduciendo" : (track.title.isEmpty ? "Sin reproducción" : track.title),
                                 fontSize: LockScreenPlayerMetrics.titleFontSize,
                                 fontWeight: LockScreenPlayerMetrics.titleFontWeight,
                                 color: .white
@@ -280,113 +278,29 @@ public struct LockScreenPlayerView: View {
                         
                         Spacer(minLength: 4)
                         
-                        // Mini ecualizador reactivo
+                        // Barras reactivas al sonido en tiempo real (Paso audio reactivo)
                         heroEqualizerView
+                            .padding(.trailing, 2)
                         
-                        // Badge con icono de la app nativa (Apple Music, Spotify, etc.)
+                        // Badge con icono nativo de la app fuente
                         if !isPrivacyMode {
-                            appIconBadge(size: 18, radius: 5)
+                            appIconBadge(size: LockScreenPlayerMetrics.appIconSize, radius: LockScreenPlayerMetrics.appIconCornerRadius)
                         }
                     }
                     
-                    // Fila 2: Scrubber timeline horizontal
-                    HStack(spacing: 8) {
-                        Text(formatTime(isSeeking ? seekProgress * track.duration : track.playbackPosition))
-                            .font(.system(size: LockScreenPlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(LockScreenPlayerMetrics.timeOpacity))
-                            .frame(width: 38, alignment: .leading)
-                        
-                        // Barra interactiva
-                        GeometryReader { geo in
-                            let w = geo.size.width
-                            let curProgress = progress
-                            let barHeight: CGFloat = (isHoveringProgressBar || isSeeking) ? 5.5 : 3.5
-                            
-                            ZStack(alignment: .leading) {
-                                Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.20))
-                                    .frame(height: barHeight)
-                                
-                                Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.95))
-                                    .frame(width: max(4, w * CGFloat(curProgress)), height: barHeight)
-                            }
-                            .frame(height: barHeight)
-                            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: curProgress)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        isSeeking = true
-                                        let ratio = max(0.0, min(1.0, value.location.x / w))
-                                        seekProgress = Double(ratio)
-                                    }
-                                    .onEnded { value in
-                                        let ratio = max(0.0, min(1.0, value.location.x / w))
-                                        let targetSec = Double(ratio) * track.duration
-                                        musicService.seek(to: targetSec)
-                                        isSeeking = false
-                                    }
-                            )
-                        }
-                        .frame(height: 10)
-                        .onHover { isHoveringProgressBar = $0 }
-                        
-                        let remaining = track.duration - (isSeeking ? seekProgress * track.duration : track.playbackPosition)
-                        Text("-" + formatTime(max(remaining, 0)))
-                            .font(.system(size: LockScreenPlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(LockScreenPlayerMetrics.timeOpacity))
-                            .frame(width: 38, alignment: .trailing)
-                    }
+                    // Fila 2: Scrubber timeline con cifras tabulares
+                    timelineScrubberSection
                     
-                    // Fila 3: Controles multimedia + Selector de salida de audio nativo (AVRoutePickerView)
+                    // Fila 3: Controles multimedia + Selector de audio nativo (AirPlay)
                     ZStack(alignment: .trailing) {
-                        // Controles multimedia centrados
-                        HStack(spacing: 28) {
-                            // Anterior
-                            Button(action: {
-                                previousButtonTrigger += 1
-                                musicService.previousTrack()
-                            }) {
-                                Image(systemName: "backward.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .symbolEffect(.bounce, value: previousButtonTrigger)
-                            }
-                            .buttonStyle(PressedScaleButtonStyle())
-                            
-                            // Play / Pause
-                            Button(action: {
-                                musicService.togglePlayPause()
-                            }) {
-                                Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .contentTransition(.symbolEffect(.replace))
-                            }
-                            .buttonStyle(PressedScaleButtonStyle())
-                            
-                            // Siguiente
-                            Button(action: {
-                                nextButtonTrigger += 1
-                                musicService.nextTrack()
-                            }) {
-                                Image(systemName: "forward.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .symbolEffect(.bounce, value: nextButtonTrigger)
-                            }
-                            .buttonStyle(PressedScaleButtonStyle())
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        mediaControlsCenter
                         
-                        // Selector de ruta de audio nativo (AVRoutePickerView / AirPlay)
                         NativeAudioRoutePicker()
                             .frame(width: 22, height: 22)
                             .padding(.trailing, 2)
                     }
                     
-                    // Fila 4 opcional: Deslizador de volumen si está habilitado
+                    // Fila 4 opcional: Deslizador de volumen
                     if appState.lockScreenShowVolumeSlider {
                         volumeSliderRow
                             .padding(.top, 2)
@@ -399,10 +313,10 @@ public struct LockScreenPlayerView: View {
         .frame(width: cardWidth, height: cardHeight)
     }
     
-    // MARK: - 1.3 Miniatura de Carátula (54 x 54 pt con rotación 3D y Tap para expandir)
+    // MARK: - 1.3 Miniatura de Carátula (52 x 52 pt)
     
     private var thumbnailArtworkView: some View {
-        let size = LockScreenPlayerMetrics.heroThumbnailSize // 54 pt
+        let size = LockScreenPlayerMetrics.heroThumbnailSize // 52 pt
         let cornerRadius = LockScreenPlayerMetrics.heroThumbnailCornerRadius // 12 pt
         
         return ZStack {
@@ -412,7 +326,7 @@ public struct LockScreenPlayerView: View {
                     .frame(width: size, height: size)
                     .overlay(
                         Image(systemName: "music.note")
-                            .font(.system(size: 24, weight: .light))
+                            .font(.system(size: 22, weight: .light))
                             .foregroundColor(.white.opacity(0.60))
                     )
             } else {
@@ -434,40 +348,41 @@ public struct LockScreenPlayerView: View {
                         .frame(width: size, height: size)
                         .overlay(
                             Image(systemName: "music.note")
-                                .font(.system(size: 24, weight: .light))
+                                .font(.system(size: 22, weight: .light))
                                 .foregroundColor(.white.opacity(0.40))
                         )
                 }
                 
-                // Borde de definición
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 0.6)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 0.6)
             }
         }
         .frame(width: size, height: size)
         .rotation3DEffect(.degrees(artworkRotationY), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(track.isPlaying ? 1.0 : 0.90)
+        .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
         .shadow(color: Color.black.opacity(0.24), radius: 6, x: 0, y: 3)
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .onTapGesture {
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.80)) {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                 appState.isLockScreenArtworkExpanded = true
             }
         }
         .help("Toca para expandir la carátula")
     }
     
-    // MARK: - 2. Estilo Tarjeta Horizontal Compacta (macOS Tahoe)
+    // MARK: - 2. Estilo Tarjeta Horizontal Compacta (macOS Nativo)
     
     private var compactCardView: some View {
-        let currentCardHeight = appState.lockScreenShowVolumeSlider
-            ? LockScreenPlayerMetrics.cardHeightWithVolume
-            : (isPrivacyMode ? 128 : LockScreenPlayerMetrics.cardHeightCompact)
-            
+        let cardWidth = LockScreenPlayerMetrics.compactCardWidth // 460 pt
+        let cardHeight = appState.lockScreenShowVolumeSlider
+            ? LockScreenPlayerMetrics.compactCardHeightWithVolume
+            : (isPrivacyMode ? 120 : LockScreenPlayerMetrics.compactCardHeight)
+        let cornerRadius = LockScreenPlayerMetrics.compactCardCornerRadius // 24 pt
+        
         return ZStack {
-            // Sombra externa
-            RoundedRectangle(cornerRadius: LockScreenPlayerMetrics.cardCornerRadius, style: .continuous)
+            // Sombra externa continua
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.black.opacity(0.001))
                 .shadow(
                     color: Color.black.opacity(LockScreenPlayerMetrics.cardShadowOpacity),
@@ -476,67 +391,66 @@ public struct LockScreenPlayerView: View {
                     y: LockScreenPlayerMetrics.cardShadowY
                 )
             
-            // Fondo Liquid Glass Paso 3
-            cardGlassBackground(cornerRadius: LockScreenPlayerMetrics.cardCornerRadius)
-                .clipShape(RoundedRectangle(cornerRadius: LockScreenPlayerMetrics.cardCornerRadius, style: .continuous))
+            // Fondo Liquid Glass o Negro Puro OLED 100%
+            cardGlassBackground(cornerRadius: cornerRadius)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             
             // Borde sutil
-            RoundedRectangle(cornerRadius: LockScreenPlayerMetrics.cardCornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     isIncreaseContrast
                         ? Color.white.opacity(0.50)
-                        : Color.white.opacity(0.18),
-                    lineWidth: isIncreaseContrast ? 1.5 : 0.8
+                        : (isOLED ? Color.white.opacity(0.14) : Color.white.opacity(0.16)),
+                    lineWidth: isIncreaseContrast ? 1.5 : 0.75
                 )
             
-            // Contenido en 2 columnas
-            HStack(spacing: 20) {
-                // Carátula a la izquierda
+            // Contenido en 2 columnas equilibradas
+            HStack(spacing: 16) {
+                // Carátula cuadrada 1:1 a la izquierda
                 compactArtworkSection
                 
-                // Columna derecha
+                // Columna derecha con metadatos, barras reactivas, scrubber y controles
                 VStack(alignment: .leading, spacing: 0) {
-                    trackInfoSection
+                    compactTrackInfoSection
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 6)
                     
-                    progressBarSection
+                    timelineScrubberSection
                     
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 6)
                     
-                    mediaControlsSection
+                    compactMediaControlsSection
                         .frame(maxWidth: .infinity, alignment: .center)
                     
                     if appState.lockScreenShowVolumeSlider {
-                        Spacer(minLength: 8)
+                        Spacer(minLength: 6)
                         volumeSliderRow
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(width: LockScreenPlayerMetrics.rightColumnWidth)
             }
-            .padding(LockScreenPlayerMetrics.cardPadding)
+            .padding(LockScreenPlayerMetrics.compactPadding)
         }
-        .frame(width: LockScreenPlayerMetrics.cardWidth, height: currentCardHeight)
+        .frame(width: cardWidth, height: cardHeight)
     }
     
-    // MARK: - 3. Cadena de Renderizado Liquid Glass (Paso 3)
+    // MARK: - 3. Cadena de Renderizado: OLED 100% Puro (#000000) o Liquid Glass
     
     @ViewBuilder
     private func cardGlassBackground(cornerRadius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         
         ZStack {
-            if appState.effectiveAppearanceMode == .pureOLED {
-                // Modo 100% Negro Puro OLED (#000000 opaco absoluto)
+            if isOLED {
+                // Modo 100% Negro Puro OLED (#000000 opaco absoluto, cero transparencia)
                 Color.black
             } else if isReduceTransparency || appState.lockScreenRenderMode == .solidDark {
                 // Tier 4: Sólido Oscuro
-                Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.88)
+                Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.92)
             } else if appState.lockScreenRenderMode == .privateBlur {
-                // Tier 3: CoreGraphics Private Window Blur (CGSSetWindowBackgroundBlurRadius)
-                Color.black.opacity(0.35)
+                // Tier 3: CoreGraphics SkyLight Blur
+                Color.black.opacity(0.40)
             } else if appState.lockScreenRenderMode == .visualEffect {
                 // Tier 2: NSVisualEffectView Detrás de Ventana
                 VisualEffectBackground(material: .hudWindow, blendingMode: .behindWindow, state: .active)
@@ -548,13 +462,12 @@ public struct LockScreenPlayerView: View {
                             .glassEffect(Glass.regular, in: shape)
                     }
                 } else {
-                    // Fallback a Tier 2 en sistemas previos
                     VisualEffectBackground(material: .hudWindow, blendingMode: .behindWindow, state: .active)
                 }
             }
             
-            // Capa de atenuación uniforme independiente (solo en modos translúcidos/vidrio)
-            if appState.effectiveAppearanceMode != .pureOLED {
+            // Atenuación uniforme adicional solo en modo vidrio para garantizar contraste sobre fondos claros
+            if !isOLED {
                 Color.black.opacity(appState.lockScreenDimmingOpacity)
             }
         }
@@ -569,13 +482,124 @@ public struct LockScreenPlayerView: View {
         )
     }
     
-    // MARK: - Fila de Volumen
+    // MARK: - Scrubber Timeline con Cifras Tabulares
+    
+    private var timelineScrubberSection: some View {
+        HStack(spacing: 8) {
+            // Tiempo transcurrido con cifras monoespaciadas para estabilidad visual
+            Text(formatTime(isSeeking ? seekProgress * track.duration : track.playbackPosition))
+                .font(.system(size: LockScreenPlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundColor(Color.white.opacity(LockScreenPlayerMetrics.timeOpacity))
+                .frame(width: 36, alignment: .leading)
+            
+            // Barra interactiva de búsqueda
+            GeometryReader { geo in
+                let w = geo.size.width
+                let curProgress = progress
+                let barHeight: CGFloat = (isHoveringProgressBar || isSeeking)
+                    ? LockScreenPlayerMetrics.progressBarHeightHovered
+                    : LockScreenPlayerMetrics.progressBarHeightResting
+                
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(LockScreenPlayerMetrics.progressTrackOpacity))
+                        .frame(height: barHeight)
+                    
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(LockScreenPlayerMetrics.progressFillOpacity))
+                        .frame(width: max(4, w * CGFloat(curProgress)), height: barHeight)
+                }
+                .frame(height: barHeight)
+                .animation(LockScreenPlayerMetrics.progressHoverSpring, value: curProgress)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isSeeking = true
+                            let ratio = max(0.0, min(1.0, value.location.x / w))
+                            seekProgress = Double(ratio)
+                        }
+                        .onEnded { value in
+                            let ratio = max(0.0, min(1.0, value.location.x / w))
+                            let targetSec = Double(ratio) * track.duration
+                            musicService.seek(to: targetSec)
+                            isSeeking = false
+                        }
+                )
+            }
+            .frame(height: 10)
+            .onHover { isHoveringProgressBar = $0 }
+            
+            // Tiempo restante con signo negativo
+            let remaining = track.duration - (isSeeking ? seekProgress * track.duration : track.playbackPosition)
+            Text("-" + formatTime(max(remaining, 0)))
+                .font(.system(size: LockScreenPlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundColor(Color.white.opacity(LockScreenPlayerMetrics.timeOpacity))
+                .frame(width: 36, alignment: .trailing)
+        }
+    }
+    
+    // MARK: - Controles Multimedia
+    
+    private var mediaControlsCenter: some View {
+        HStack(spacing: LockScreenPlayerMetrics.controlsSpacing) {
+            // Anterior
+            Button(action: {
+                previousButtonTrigger += 1
+                musicService.previousTrack()
+            }) {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .symbolEffect(.bounce, value: previousButtonTrigger)
+            }
+            .buttonStyle(PressedScaleButtonStyle())
+            
+            // Play / Pause con morfismo de icono
+            Button(action: {
+                musicService.togglePlayPause()
+            }) {
+                Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(PressedScaleButtonStyle())
+            
+            // Siguiente
+            Button(action: {
+                nextButtonTrigger += 1
+                musicService.nextTrack()
+            }) {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .symbolEffect(.bounce, value: nextButtonTrigger)
+            }
+            .buttonStyle(PressedScaleButtonStyle())
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+    
+    private var compactMediaControlsSection: some View {
+        ZStack(alignment: .trailing) {
+            mediaControlsCenter
+            
+            NativeAudioRoutePicker()
+                .frame(width: 22, height: 22)
+                .padding(.trailing, 2)
+        }
+    }
+    
+    // MARK: - Fila de Volumen Opcional
     
     private var volumeSliderRow: some View {
         HStack(spacing: 8) {
             Image(systemName: currentVolume == 0 ? "speaker.slash.fill" : "speaker.fill")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundColor(.white.opacity(0.60))
                 .frame(width: 14)
             
             GeometryReader { geo in
@@ -607,8 +631,8 @@ public struct LockScreenPlayerView: View {
             .frame(height: 8)
             
             Image(systemName: "speaker.wave.3.fill")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundColor(.white.opacity(0.60))
                 .frame(width: 16)
         }
     }
@@ -616,8 +640,8 @@ public struct LockScreenPlayerView: View {
     // MARK: - Secciones del Estilo Compacto
     
     private var compactArtworkSection: some View {
-        let size = isPrivacyMode ? 96 : LockScreenPlayerMetrics.artworkSize
-        let cornerRadius = LockScreenPlayerMetrics.artworkCornerRadius
+        let size = isPrivacyMode ? 86 : LockScreenPlayerMetrics.compactArtworkSize // 108 pt
+        let cornerRadius = LockScreenPlayerMetrics.compactArtworkCornerRadius // 16 pt
         
         return ZStack {
             if isPrivacyMode {
@@ -626,7 +650,7 @@ public struct LockScreenPlayerView: View {
                     .frame(width: size, height: size)
                     .overlay(
                         Image(systemName: "music.note")
-                            .font(.system(size: 38, weight: .light))
+                            .font(.system(size: 34, weight: .light))
                             .foregroundColor(.white.opacity(0.60))
                     )
             } else {
@@ -640,7 +664,7 @@ public struct LockScreenPlayerView: View {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color.gray.opacity(0.35), Color.black.opacity(0.60)],
+                                colors: [Color(red: 0.12, green: 0.28, blue: 0.85), Color(red: 0.05, green: 0.10, blue: 0.45)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -648,27 +672,27 @@ public struct LockScreenPlayerView: View {
                         .frame(width: size, height: size)
                         .overlay(
                             Image(systemName: "music.note")
-                                .font(.system(size: 42, weight: .light))
+                                .font(.system(size: 38, weight: .light))
                                 .foregroundColor(.white.opacity(0.45))
                         )
                 }
                 
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.6)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 0.6)
             }
         }
         .frame(width: size, height: size)
         .rotation3DEffect(.degrees(artworkRotationY), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(track.isPlaying ? 1.0 : 0.88)
+        .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
-        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 4)
     }
     
-    private var trackInfoSection: some View {
-        HStack(alignment: .top, spacing: 8) {
+    private var compactTrackInfoSection: some View {
+        HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 MarqueeText(
-                    isPrivacyMode ? "Reproduciendo audio" : (track.title.isEmpty ? "Sin reproducción" : track.title),
+                    isPrivacyMode ? "Reproduciendo" : (track.title.isEmpty ? "Sin reproducción" : track.title),
                     fontSize: LockScreenPlayerMetrics.titleFontSize,
                     fontWeight: LockScreenPlayerMetrics.titleFontWeight,
                     color: .white
@@ -686,114 +710,13 @@ public struct LockScreenPlayerView: View {
             
             Spacer(minLength: 4)
             
+            // Barras reactivas al sonido en tiempo real en la pantalla de bloqueo
+            heroEqualizerView
+                .padding(.trailing, 2)
+            
             if !isPrivacyMode {
                 appIconBadge(size: LockScreenPlayerMetrics.appIconSize, radius: LockScreenPlayerMetrics.appIconCornerRadius)
             }
-        }
-    }
-    
-    private var progressBarSection: some View {
-        VStack(spacing: 5) {
-            let barHeight = (isHoveringProgressBar || isSeeking)
-                ? LockScreenPlayerMetrics.progressBarHeightHovered
-                : LockScreenPlayerMetrics.progressBarHeightResting
-            
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(LockScreenPlayerMetrics.progressTrackOpacity))
-                        .frame(height: barHeight)
-                    
-                    Capsule()
-                        .fill(Color.white.opacity(LockScreenPlayerMetrics.progressFillOpacity))
-                        .frame(width: max(geo.size.width * progress, 0), height: barHeight)
-                }
-                .frame(height: barHeight)
-                .animation(LockScreenPlayerMetrics.progressHoverSpring, value: barHeight)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            isSeeking = true
-                            let newProg = max(0, min(1, value.location.x / geo.size.width))
-                            seekProgress = newProg
-                        }
-                        .onEnded { value in
-                            let finalProg = max(0, min(1, value.location.x / geo.size.width))
-                            let targetTime = finalProg * track.duration
-                            musicService.seek(to: targetTime)
-                            seekProgress = finalProg
-                            isSeeking = false
-                        }
-                )
-                .onHover { hovering in
-                    withAnimation(LockScreenPlayerMetrics.progressHoverSpring) {
-                        isHoveringProgressBar = hovering
-                    }
-                }
-            }
-            .frame(height: 8)
-            
-            HStack {
-                Text(formatTime(isSeeking ? seekProgress * track.duration : track.playbackPosition))
-                    .font(.system(size: LockScreenPlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundColor(Color.white.opacity(LockScreenPlayerMetrics.timeOpacity))
-                
-                Spacer()
-                
-                let remaining = track.duration - (isSeeking ? seekProgress * track.duration : track.playbackPosition)
-                Text("-" + formatTime(max(remaining, 0)))
-                    .font(.system(size: LockScreenPlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundColor(Color.white.opacity(LockScreenPlayerMetrics.timeOpacity))
-            }
-        }
-    }
-    
-    private var mediaControlsSection: some View {
-        HStack(spacing: LockScreenPlayerMetrics.controlsSpacing) {
-            Button(action: {
-                previousButtonTrigger += 1
-                musicService.previousTrack()
-            }) {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.primary)
-                    .frame(width: LockScreenPlayerMetrics.skipButtonWidth, height: 32)
-                    .contentShape(Rectangle())
-                    .symbolEffect(.bounce, value: previousButtonTrigger)
-            }
-            .buttonStyle(PressedScaleButtonStyle())
-            
-            Button(action: {
-                musicService.togglePlayPause()
-            }) {
-                Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundColor(.primary)
-                    .frame(width: LockScreenPlayerMetrics.playPauseButtonWidth, height: 36)
-                    .contentShape(Rectangle())
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(PressedScaleButtonStyle())
-            
-            Button(action: {
-                nextButtonTrigger += 1
-                musicService.nextTrack()
-            }) {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.primary)
-                    .frame(width: LockScreenPlayerMetrics.skipButtonWidth, height: 32)
-                    .contentShape(Rectangle())
-                    .symbolEffect(.bounce, value: nextButtonTrigger)
-            }
-            .buttonStyle(PressedScaleButtonStyle())
-            
-            // Selector de audio nativo
-            NativeAudioRoutePicker()
-                .frame(width: 24, height: 24)
         }
     }
     
@@ -848,15 +771,23 @@ public struct LockScreenPlayerView: View {
                 }) {
                     Text("🎨 Render: \(appState.lockScreenRenderMode.displayName)")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(.cyan)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.75))
-                        .clipShape(Capsule())
+                        .foregroundColor(.yellow)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.black.opacity(0.85))
+                        .cornerRadius(5)
                 }
                 .buttonStyle(.plain)
                 
                 Spacer()
+                
+                Text(appState.lockScreenStyle == .heroWidget ? "Hero Widget" : "Compact Card")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(.cyan)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(5)
             }
             .padding(6)
             
@@ -873,46 +804,46 @@ public struct LockScreenPlayerView: View {
         }
     }
     
-    private func resolveAppIcon(for sourceName: String) -> NSImage? {
-        let name = sourceName.lowercased()
-        let bundleID: String
-        if name.contains("music") {
-            bundleID = "com.apple.Music"
-        } else if name.contains("spotify") {
-            bundleID = "com.spotify.client"
-        } else if name.contains("safari") {
-            bundleID = "com.apple.Safari"
-        } else if name.contains("chrome") {
-            bundleID = "com.google.Chrome"
-        } else if name.contains("arc") {
-            bundleID = "company.thebrowser.Browser"
-        } else if name.contains("podcasts") {
-            bundleID = "com.apple.podcasts"
-        } else {
-            bundleID = "com.apple.Music"
-        }
-        
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            return NSWorkspace.shared.icon(forFile: url.path)
-        }
-        return nil
-    }
-    
-    private func formatTime(_ seconds: TimeInterval) -> String {
+    private func formatTime(_ seconds: Double) -> String {
         guard !seconds.isNaN && !seconds.isInfinite else { return "0:00" }
-        let total = Int(max(seconds, 0))
+        let total = max(0, Int(seconds))
         let mins = total / 60
         let secs = total % 60
         return String(format: "%d:%02d", mins, secs)
     }
+    
+    private func resolveAppIcon(for sourceName: String) -> NSImage? {
+        let lower = sourceName.lowercased()
+        var bundleId: String? = nil
+        if lower.contains("spotify") {
+            bundleId = "com.spotify.client"
+        } else if lower.contains("music") || lower.contains("música") {
+            bundleId = "com.apple.Music"
+        } else if lower.contains("safari") {
+            bundleId = "com.apple.Safari"
+        } else if lower.contains("chrome") {
+            bundleId = "com.google.Chrome"
+        } else if lower.contains("brave") {
+            bundleId = "com.brave.Browser"
+        } else if lower.contains("arc") {
+            bundleId = "company.thebrowser.Browser"
+        } else if lower.contains("youtube") {
+            bundleId = "com.google.Chrome"
+        }
+        
+        if let bid = bundleId, let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid) {
+            return NSWorkspace.shared.icon(forFile: appUrl.path)
+        }
+        return nil
+    }
 }
 
-/// Estilo de botón que aplica la micro-escala elástica y resorte dinámico con snap tipo notch
 public struct PressedScaleButtonStyle: ButtonStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
-            .animation(.spring(response: 0.18, dampingFraction: 0.65), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? LockScreenPlayerMetrics.buttonPressedScale : 1.0)
+            .animation(.spring(response: 0.20, dampingFraction: 0.70), value: configuration.isPressed)
     }
 }
+

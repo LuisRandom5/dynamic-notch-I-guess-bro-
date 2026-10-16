@@ -93,6 +93,14 @@ public struct ActivityAirPodsPillView: View {
         return nil
     }
     
+    private var batteryColor: Color {
+        if batteryLevel >= 30 {
+            return appleBatteryGreen
+        } else {
+            return Color(red: 1.0, green: 0.27, blue: 0.23) // Apple Red (#FF453A)
+        }
+    }
+    
     public var body: some View {
         HStack(spacing: 0) {
             // Ala Izquierda (Leading): Animación de los AirPods girando en bucle
@@ -127,7 +135,7 @@ public struct ActivityAirPodsPillView: View {
                     Circle()
                         .trim(from: 0, to: (CGFloat(batteryLevel) / 100.0) * batteryRingProgress)
                         .stroke(
-                            batteryLevel > 20 ? appleBatteryGreen : Color.orange,
+                            batteryColor,
                             style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
@@ -135,7 +143,7 @@ public struct ActivityAirPodsPillView: View {
                     
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 7, weight: .bold))
-                        .foregroundColor(batteryLevel > 20 ? appleBatteryGreen : Color.orange)
+                        .foregroundColor(batteryColor)
                 }
                 
                 Text("\(batteryLevel)%")

@@ -221,7 +221,8 @@ public final class LockScreenManager: ObservableObject {
             topRatio = LockScreenPlayerMetrics.defaultTopPositionRatio
         }
         
-        let applyPrivateBlur = AppState.shared.lockScreenRenderMode == .privateBlur
+        let isOLED = AppState.shared.lockScreenRenderMode == .pureOLED || AppState.shared.effectiveAppearanceMode == .pureOLED
+        let applyPrivateBlur = !isOLED && (AppState.shared.lockScreenRenderMode == .privateBlur)
         
         // Si ya teníamos paneles, actualizar frames
         if !lockScreenPanels.isEmpty && lockScreenPanels.count == targetScreens.count {
