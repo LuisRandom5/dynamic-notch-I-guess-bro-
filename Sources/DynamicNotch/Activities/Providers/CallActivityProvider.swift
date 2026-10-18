@@ -382,7 +382,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 60, // Prioridad de sesión continua en curso (permite que alertas transitorias como WhatsApp o volumen se muestren temporalmente)
+            priority: 900, // Prioridad de llamada activa (prevalece sobre temporizadores y medios en la cápsula)
             style: .pill,
             leading: leading,
             center: nil,
@@ -523,7 +523,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 60,
+            priority: 900,
             style: .card,
             leading: leading,
             center: center,
@@ -651,7 +651,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 100,
+            priority: 950,
             style: .card,
             leading: leading,
             center: center,

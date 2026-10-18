@@ -28,7 +28,8 @@ public struct ActivityCardView: View {
                 // Acompaña la contracción del borde izquierdo desplazándose hacia el centro
                 if let leading = activity.leading {
                     leading
-                        .frame(width: 48, height: 48)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .fixedSize(horizontal: true, vertical: false)
                         .scaleEffect(isDismissing ? 0.82 : (isRevealed ? 1.0 : 0.84))
                         .opacity(isDismissing ? 0.0 : (isRevealed ? 1.0 : 0.0))
                         .offset(x: isDismissing ? 18 : 0)
@@ -46,6 +47,17 @@ public struct ActivityCardView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     if let centerView = activity.center {
                         centerView
+                    } else if let title = activity.title {
+                        Text(title)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        if let subtitle = activity.subtitle {
+                            Text(subtitle)
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundColor(Color.white.opacity(0.65))
+                                .lineLimit(1)
+                        }
                     }
                 }
                 .offset(y: isDismissing ? -6 : (isRevealed ? 0 : 6))

@@ -165,6 +165,14 @@ public final class CallDetectorService: ObservableObject {
         var incoming: NSObject? = center.value(forKey: "incomingCall") as? NSObject
         
         if incoming == nil {
+            incoming = center.value(forKey: "incomingVideoCall") as? NSObject
+        }
+        
+        if incoming == nil {
+            incoming = center.value(forKey: "resolvedIncomingCall") as? NSObject
+        }
+        
+        if incoming == nil {
             if let incomingList = center.value(forKey: "incomingCalls") as? [NSObject], let first = incomingList.first {
                 incoming = first
             }
@@ -398,14 +406,24 @@ public final class CallDetectorService: ObservableObject {
     // MARK: - Detección de Llamadas Entrantes en FaceTime
     private func checkFaceTimeState() {
         guard !isScanningFaceTime, !isCallDismissedByUser else { return }
-        guard let ftApp = NSWorkspace.shared.runningApplications.first(where: {
-            let b = $0.bundleIdentifier?.lowercased() ?? ""
-            let n = $0.localizedName?.lowercased() ?? ""
-            return b.contains("facetime") || b.contains("callservices") || n.contains("facetime")
-        }) else { return }
+        
+        let runningApps = NSWorkspace.shared.runningApplications
+        // Candidatos que pueden mostrar el banner o ventana de llamada FaceTime:
+        // 1. App FaceTime nativa
+        // 2. Servicios de notificación de FaceTime (FaceTimeNotificationCenterService, etc.)
+        // 3. Centro de notificaciones de macOS (com.apple.notificationcenterui)
+        let candidateApps = runningApps.filter { app in
+            let b = app.bundleIdentifier?.lowercased() ?? ""
+            let n = app.localizedName?.lowercased() ?? ""
+            if b == "com.apple.telephonyutilities" && n.contains("callservices") {
+                return false // callservicesd es un demonio sin ventanas
+            }
+            return b.contains("facetime") || n.contains("facetime") || b == "com.apple.notificationcenterui"
+        }
+        
+        guard !candidateApps.isEmpty else { return }
         
         isScanningFaceTime = true
-        let pid = ftApp.processIdentifier
         
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             defer {
@@ -414,63 +432,111 @@ public final class CallDetectorService: ObservableObject {
                 }
             }
             guard let self = self else { return }
-            let appRef = AXUIElementCreateApplication(pid)
-            var winListRef: AnyObject?
-            AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winListRef)
-            guard let windows = winListRef as? [AXUIElement] else { return }
             
             var foundIncoming = false
             var callerName = "FaceTime"
+            var isVideoCall = false
             var acceptBtn: AXUIElement?
             var declineBtn: AXUIElement?
             
-            for win in windows.prefix(4) {
-                var titleRef: AnyObject?
-                AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef)
-                let title = (titleRef as? String ?? "")
+            for app in candidateApps {
+                let pid = app.processIdentifier
+                let appRef = AXUIElementCreateApplication(pid)
+                var winListRef: AnyObject?
+                AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winListRef)
+                guard let windows = winListRef as? [AXUIElement] else { continue }
                 
-                var localAccept: AXUIElement?
-                var localDecline: AXUIElement?
-                var visited = 0
-                
-                func search(elem: AXUIElement, depth: Int) {
-                    if depth > 12 || visited > 100 { return }
-                    visited += 1
-                    var tRef: AnyObject?
-                    var dRef: AnyObject?
-                    AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &tRef)
-                    AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &dRef)
-                    let t = (tRef as? String ?? "").lowercased()
-                    let d = (dRef as? String ?? "").lowercased()
+                for win in windows.prefix(6) {
+                    var titleRef: AnyObject?
+                    AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef)
+                    let title = (titleRef as? String ?? "")
                     
-                    if t.contains("aceptar") || t.contains("contestar") || t.contains("unirse") || t.contains("accept") || t.contains("answer") ||
-                       d.contains("aceptar") || d.contains("contestar") || d.contains("unirse") || d.contains("accept") || d.contains("answer") {
-                        localAccept = elem
-                    }
-                    if t.contains("rechazar") || t.contains("decline") || t.contains("colgar") ||
-                       d.contains("rechazar") || d.contains("decline") || d.contains("colgar") {
-                        localDecline = elem
-                    }
+                    // Omitir widgets estándar de centro de notificaciones
+                    if title == "Estado" || title == "Previsión" { continue }
                     
-                    var childrenRef: AnyObject?
-                    AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef)
-                    if let children = childrenRef as? [AXUIElement] {
-                        for c in children.prefix(20) {
-                            search(elem: c, depth: depth + 1)
+                    var localAccept: AXUIElement?
+                    var localDecline: AXUIElement?
+                    var detectedName: String?
+                    var mentionsFaceTime = (app.bundleIdentifier?.lowercased().contains("facetime") ?? false) ||
+                                           (app.localizedName?.lowercased().contains("facetime") ?? false)
+                    var visited = 0
+                    
+                    func search(elem: AXUIElement, depth: Int) {
+                        if depth > 12 || visited > 120 { return }
+                        visited += 1
+                        
+                        var tRef: AnyObject?
+                        var dRef: AnyObject?
+                        var vRef: AnyObject?
+                        AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &tRef)
+                        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &dRef)
+                        AXUIElementCopyAttributeValue(elem, kAXValueAttribute as CFString, &vRef)
+                        
+                        let t = (tRef as? String ?? "").lowercased()
+                        let d = (dRef as? String ?? "").lowercased()
+                        let v = (vRef as? String ?? "").lowercased()
+                        
+                        if t.contains("facetime") || d.contains("facetime") || v.contains("facetime") {
+                            mentionsFaceTime = true
+                        }
+                        if t.contains("video") || d.contains("video") || v.contains("video") {
+                            isVideoCall = true
+                        }
+                        
+                        // Botón Aceptar / Contestar / Unirse
+                        let isAccept = t.contains("aceptar") || t.contains("contestar") || t.contains("unirse") ||
+                                       t.contains("accept") || t.contains("answer") || t.contains("join") ||
+                                       d.contains("aceptar") || d.contains("contestar") || d.contains("unirse") ||
+                                       d.contains("accept") || d.contains("answer") || d.contains("join")
+                        if isAccept && localAccept == nil {
+                            localAccept = elem
+                        }
+                        
+                        // Botón Rechazar / Colgar / Decline
+                        let isDecline = t.contains("rechazar") || t.contains("decline") || t.contains("colgar") ||
+                                        d.contains("rechazar") || d.contains("decline") || d.contains("colgar")
+                        if isDecline && localDecline == nil {
+                            localDecline = elem
+                        }
+                        
+                        // Extracción de posible nombre del remitente si no es una acción o label genérico
+                        if detectedName == nil {
+                            let rawVal = (vRef as? String) ?? (tRef as? String) ?? ""
+                            let clean = rawVal.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let l = clean.lowercased()
+                            if !clean.isEmpty && l != "facetime" && l != "facetime audio" && l != "facetime video" &&
+                               !l.contains("aceptar") && !l.contains("rechazar") && !l.contains("notification center") &&
+                               !l.contains("centro de notificaciones") && clean.count < 60 {
+                                detectedName = clean
+                            }
+                        }
+                        
+                        var childrenRef: AnyObject?
+                        AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef)
+                        if let children = childrenRef as? [AXUIElement] {
+                            for c in children.prefix(20) {
+                                search(elem: c, depth: depth + 1)
+                            }
                         }
                     }
-                }
-                search(elem: win, depth: 0)
-                
-                if localAccept != nil && localDecline != nil {
-                    foundIncoming = true
-                    acceptBtn = localAccept
-                    declineBtn = localDecline
-                    if !title.isEmpty && !title.lowercased().contains("facetime") {
-                        callerName = title
+                    
+                    search(elem: win, depth: 0)
+                    
+                    if localAccept != nil && localDecline != nil && mentionsFaceTime {
+                        foundIncoming = true
+                        acceptBtn = localAccept
+                        declineBtn = localDecline
+                        
+                        if let name = detectedName, !name.isEmpty {
+                            callerName = name
+                        } else if !title.isEmpty && !title.lowercased().contains("facetime") && !title.lowercased().contains("notification") {
+                            callerName = title
+                        }
+                        break
                     }
-                    break
                 }
+                
+                if foundIncoming { break }
             }
             
             DispatchQueue.main.async {
@@ -480,9 +546,12 @@ public final class CallDetectorService: ObservableObject {
                 if foundIncoming && !CallActivityProvider.shared.isIncomingCall && !CallActivityProvider.shared.isCallActive {
                     self.isFaceTimeIncomingCall = true
                     let info = ContactLookupService.shared.lookupContact(name: callerName)
+                    let callType = isVideoCall ? "FaceTime Video" : "FaceTime Audio"
+                    
+                    print("[CallDetectorService] 📞 Llamada entrante FaceTime detectada: '\(callerName)' (\(callType))")
                     CallActivityProvider.shared.startIncomingCall(
-                        name: "FaceTime Audio",
-                        handle: callerName,
+                        name: callType,
+                        handle: info?.name ?? callerName,
                         avatar: info?.avatar,
                         isSimulation: false
                     )

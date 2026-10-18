@@ -12,7 +12,7 @@ public final class AirPodsActivityProvider: ObservableObject {
         leftPercent: Int? = nil,
         rightPercent: Int? = nil,
         casePercent: Int? = nil,
-        duration: TimeInterval = 8.0
+        duration: TimeInterval = 13.0
     ) {
         guard AppState.shared.enableAirPodsAnimation else { return }
         
@@ -26,11 +26,12 @@ public final class AirPodsActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: providerId,
-            priority: 100, // Máxima prioridad de evento hardware (supera llamadas y volumen)
+            priority: 1000, // Máxima prioridad de evento hardware (supera llamadas y volumen)
             style: .airpodsPill,
             tint: DesignTokens.green,
             duration: duration,
-            airpodsState: state
+            airpodsState: state,
+            isUrgent: true
         )
         
         DispatchQueue.main.async {

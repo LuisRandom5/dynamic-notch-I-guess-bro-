@@ -300,11 +300,17 @@ public final class TimerActivityProvider: ObservableObject {
             let centerView = AnyView(TimerCardView())
             let activity = LiveActivity(
                 id: activityId,
+                kind: .timer,
                 priority: 88,
                 style: .card,
+                title: timerTitle,
+                subtitle: formattedDuration,
+                progress: progressRatio,
                 leading: nil,
                 center: centerView,
                 trailing: nil,
+                bolitaVariant: .progressRing(progress: progressRatio, strokeColor: .orange, iconName: "timer", shortText: nil),
+                expandedView: AnyView(TimerCardView()),
                 tint: .orange,
                 duration: nil,
                 onTap: nil
@@ -315,11 +321,17 @@ public final class TimerActivityProvider: ObservableObject {
             let trailing = AnyView(TimerPillTrailingView())
             let activity = LiveActivity(
                 id: activityId,
+                kind: .timer,
                 priority: 88,
                 style: .pill,
+                title: timerTitle,
+                subtitle: formattedDuration,
+                progress: progressRatio,
                 leading: leading,
                 center: nil,
                 trailing: trailing,
+                bolitaVariant: .progressRing(progress: progressRatio, strokeColor: .orange, iconName: "timer", shortText: nil),
+                expandedView: AnyView(TimerCardView()),
                 tint: .orange,
                 duration: nil,
                 onTap: { [weak self] in

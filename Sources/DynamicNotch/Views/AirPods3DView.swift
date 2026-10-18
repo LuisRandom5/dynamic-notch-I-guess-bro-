@@ -21,12 +21,8 @@ public struct AirPods3DView: View {
         self.casePercent = casePercent
     }
     
-    private var isAirPodsMax: Bool {
-        name.localizedCaseInsensitiveContains("Max")
-    }
-    
-    private var isAirPodsPro: Bool {
-        name.localizedCaseInsensitiveContains("Pro") || (!isAirPodsMax && !name.localizedCaseInsensitiveContains("3"))
+    private var model: AirPodsModel {
+        AirPodsModel.detect(from: name)
     }
     
     public var body: some View {
@@ -77,23 +73,23 @@ public struct AirPods3DView: View {
                         .clipShape(Capsule())
                 }
                 
-                // Anillos de batería individuales
+                // Anillos de batería individuales con SF Symbols exactos del modelo detectado
                 HStack(spacing: 14) {
                     batteryGauge(
-                        icon: "airpodpro.left",
+                        icon: model.leftEarbudSymbol,
                         percent: leftPercent,
                         label: "I"
                     )
                     
                     batteryGauge(
-                        icon: "airpodpro.right",
+                        icon: model.rightEarbudSymbol,
                         percent: rightPercent,
                         label: "D"
                     )
                     
                     if casePercent > 0 {
                         batteryGauge(
-                            icon: "airpodspro.chargingcase.wireless",
+                            icon: model.caseSymbolName,
                             percent: casePercent,
                             label: "Estuche"
                         )
@@ -154,7 +150,7 @@ public struct AirPods3DView: View {
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: 5.5, height: isAirPodsPro ? 16 : 22)
+                    .frame(width: 5.5, height: (model.isAirPods4 || model.isPro || model == .airPods3) ? 16 : 22)
                     .overlay(
                         // Punta plateada de carga
                         VStack {

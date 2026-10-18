@@ -27,53 +27,53 @@ public enum SpectrumResponsePreset: String, CaseIterable, Identifiable {
     
     public var subtitle: String {
         switch self {
-        case .island: return "14ms / 130ms • AGC Global"
-        case .smooth: return "24ms / 240ms"
-        case .balanced: return "12ms / 150ms"
-        case .punchy: return "6ms / 95ms"
+        case .island: return "22ms / 180ms • AGC Global"
+        case .smooth: return "30ms / 240ms"
+        case .balanced: return "20ms / 170ms"
+        case .punchy: return "14ms / 130ms"
         }
     }
 }
 
 // MARK: - Spectrum Analysis & Envelope Metrics
 public struct SpectrumMetrics {
-    public static var activePreset: SpectrumResponsePreset = UserDefaults.standard.string(forKey: "spectrumActivePreset") != nil
-        ? (SpectrumResponsePreset(rawValue: UserDefaults.standard.string(forKey: "spectrumActivePreset")!) ?? .island)
+    public static var activePreset: SpectrumResponsePreset = UserDefaults.standard.string(forKey: "spectrumActivePresetV2") != nil
+        ? (SpectrumResponsePreset(rawValue: UserDefaults.standard.string(forKey: "spectrumActivePresetV2")!) ?? .island)
         : .island {
-        didSet { UserDefaults.standard.set(activePreset.rawValue, forKey: "spectrumActivePreset") }
+        didSet { UserDefaults.standard.set(activePreset.rawValue, forKey: "spectrumActivePresetV2") }
     }
     
-    public static var attackMs: Double = UserDefaults.standard.object(forKey: "spectrumAttackMs") != nil
-        ? UserDefaults.standard.double(forKey: "spectrumAttackMs")
-        : 14.0 {
-        didSet { UserDefaults.standard.set(attackMs, forKey: "spectrumAttackMs") }
+    public static var attackMs: Double = UserDefaults.standard.object(forKey: "spectrumAttackMsV2") != nil
+        ? UserDefaults.standard.double(forKey: "spectrumAttackMsV2")
+        : 22.0 {
+        didSet { UserDefaults.standard.set(attackMs, forKey: "spectrumAttackMsV2") }
     }
     
-    public static var releaseMs: Double = UserDefaults.standard.object(forKey: "spectrumReleaseMs") != nil
-        ? UserDefaults.standard.double(forKey: "spectrumReleaseMs")
-        : 130.0 {
-        didSet { UserDefaults.standard.set(releaseMs, forKey: "spectrumReleaseMs") }
+    public static var releaseMs: Double = UserDefaults.standard.object(forKey: "spectrumReleaseMsV2") != nil
+        ? UserDefaults.standard.double(forKey: "spectrumReleaseMsV2")
+        : 180.0 {
+        didSet { UserDefaults.standard.set(releaseMs, forKey: "spectrumReleaseMsV2") }
     }
     
     public static var noiseGateDB: Float = UserDefaults.standard.object(forKey: "spectrumNoiseGateDB") != nil
         ? UserDefaults.standard.float(forKey: "spectrumNoiseGateDB")
-        : -45.0 {
+        : -50.0 {
         didSet { UserDefaults.standard.set(noiseGateDB, forKey: "spectrumNoiseGateDB") }
     }
     
-    public static var noiseGateCloseDB: Float = -52.0
-    public static var noiseGateHoldMs: Double = 200.0
+    public static var noiseGateCloseDB: Float = -56.0
+    public static var noiseGateHoldMs: Double = 140.0
     
-    public static var agcAttackMs: Double = 15.0
-    public static var agcReleaseSec: Double = 3.0
-    public static var agcDecayDBPerSec: Float = 4.0
+    public static var agcAttackMs: Double = 16.0
+    public static var agcReleaseSec: Double = 2.5
+    public static var agcDecayDBPerSec: Float = 4.5
     
-    public static var spatialDiffusion: Float = 0.16 // Difusión espacial entre barras contiguas (16%)
-    public static var fluxThreshold: Float = 0.25    // Umbral de transitorios para Spectral Flux
-    public static var fluxPulseBoost: Float = 0.12   // Pulso compartido en transitorios (+12%)
+    public static var spatialDiffusion: Float = 0.12 // Difusión espacial armónica (12%) para movimiento suave y cohesionado
+    public static var fluxThreshold: Float = 0.24    // Umbral de transitorios para Spectral Flux por banda
+    public static var fluxPulseBoost: Float = 0.08   // Impulso rítmico balanceado y controlado en transitorios
     
-    public static var minActiveHeight: Float = 0.12  // Altura mínima activa mientras suena (~12%)
-    public static var maxActiveHeight: Float = 0.92  // Altura máxima activa (~92%, evita recorte duro)
+    public static var minActiveHeight: Float = 0.04  // Sin elevación artificial en bandas silenciosas
+    public static var maxActiveHeight: Float = 0.88  // Techo seguro (~88%) para evitar saturación en el monitor
     
     public static var organicAmount: Double = UserDefaults.standard.object(forKey: "spectrumOrganicAmount") != nil
         ? UserDefaults.standard.double(forKey: "spectrumOrganicAmount")
@@ -81,11 +81,11 @@ public struct SpectrumMetrics {
         didSet { UserDefaults.standard.set(organicAmount, forKey: "spectrumOrganicAmount") }
     }
     
-    public static var includeAppAudioInTap: Bool = false // Interruptor para pruebas del generador de señales
+    public static var includeAppAudioInTap: Bool = true // Incluye por defecto el generador de calibración en el Process Tap
     
     public static var gainMultiplier: Float = UserDefaults.standard.object(forKey: "spectrumGainMultiplier") != nil
         ? UserDefaults.standard.float(forKey: "spectrumGainMultiplier")
-        : 1.20 {
+        : 1.08 {
         didSet { UserDefaults.standard.set(gainMultiplier, forKey: "spectrumGainMultiplier") }
     }
     
@@ -99,37 +99,37 @@ public struct SpectrumMetrics {
         activePreset = preset
         switch preset {
         case .island:
+            attackMs = 22.0
+            releaseMs = 180.0
+            noiseGateDB = -50.0
+            noiseGateCloseDB = -56.0
+            gainMultiplier = 1.10
+            spatialDiffusion = 0.12
+            fluxPulseBoost = 0.08
+        case .smooth:
+            attackMs = 30.0
+            releaseMs = 240.0
+            noiseGateDB = -50.0
+            noiseGateCloseDB = -56.0
+            gainMultiplier = 1.05
+            spatialDiffusion = 0.15
+            fluxPulseBoost = 0.05
+        case .balanced:
+            attackMs = 20.0
+            releaseMs = 170.0
+            noiseGateDB = -48.0
+            noiseGateCloseDB = -54.0
+            gainMultiplier = 1.12
+            spatialDiffusion = 0.10
+            fluxPulseBoost = 0.08
+        case .punchy:
             attackMs = 14.0
             releaseMs = 130.0
-            noiseGateDB = -45.0
+            noiseGateDB = -46.0
             noiseGateCloseDB = -52.0
             gainMultiplier = 1.20
-            spatialDiffusion = 0.16
-            fluxPulseBoost = 0.12
-        case .smooth:
-            attackMs = 24.0
-            releaseMs = 240.0
-            noiseGateDB = -46.0
-            noiseGateCloseDB = -54.0
-            gainMultiplier = 1.10
-            spatialDiffusion = 0.22
-            fluxPulseBoost = 0.08
-        case .balanced:
-            attackMs = 12.0
-            releaseMs = 150.0
-            noiseGateDB = -42.0
-            noiseGateCloseDB = -49.0
-            gainMultiplier = 1.25
-            spatialDiffusion = 0.14
-            fluxPulseBoost = 0.10
-        case .punchy:
-            attackMs = 6.0
-            releaseMs = 95.0
-            noiseGateDB = -38.0
-            noiseGateCloseDB = -46.0
-            gainMultiplier = 1.45
             spatialDiffusion = 0.08
-            fluxPulseBoost = 0.16
+            fluxPulseBoost = 0.12
         }
     }
     

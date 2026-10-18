@@ -110,9 +110,17 @@ public final class StatusItemManager: NSObject {
         magSafeTest.target = self
         testMenu.addItem(magSafeTest)
         
+        let airPods4Test = NSMenuItem(title: "Animación AirPods 4 (88% / 90% / 100%)", action: #selector(testAirPods4), keyEquivalent: "")
+        airPods4Test.target = self
+        testMenu.addItem(airPods4Test)
+        
         let airPodsTest = NSMenuItem(title: "Animación AirPods Pro (95% / 90% / 100%)", action: #selector(testAirPods), keyEquivalent: "")
         airPodsTest.target = self
         testMenu.addItem(airPodsTest)
+        
+        let lockScreenTest = NSMenuItem(title: "Previsualizar Reproductor Lock Screen (10s)", action: #selector(testLockScreenPreview), keyEquivalent: "")
+        lockScreenTest.target = self
+        testMenu.addItem(lockScreenTest)
         
         let batteryLowTest = NSMenuItem(title: "Alerta Batería Baja (12%)", action: #selector(testBatteryLow), keyEquivalent: "")
         batteryLowTest.target = self
@@ -236,8 +244,27 @@ public final class StatusItemManager: NSObject {
             leftPercent: 100,
             rightPercent: 100,
             casePercent: 100,
-            duration: 4.8
+            duration: 13.0
         )
+    }
+    
+    @objc private func testAirPods4() {
+        if AppState.shared.mode == .expanded || AppState.shared.mode == .shelf {
+            AppState.shared.collapse()
+        }
+        AppState.shared.enableAirPodsAnimation = true
+        AirPodsActivityProvider.shared.publishAirPodsActivity(
+            name: "AirPods 4",
+            batteryLevel: 90,
+            leftPercent: 88,
+            rightPercent: 90,
+            casePercent: 100,
+            duration: 13.0
+        )
+    }
+    
+    @objc private func testLockScreenPreview() {
+        LockScreenManager.shared.showPlayerPanelPreview(duration: 10)
     }
     
     @objc private func testBatteryLow() {

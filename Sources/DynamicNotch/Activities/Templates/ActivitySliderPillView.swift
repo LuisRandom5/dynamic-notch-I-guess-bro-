@@ -56,7 +56,7 @@ public struct ActivitySliderPillView: View {
             case .brightness(let lvl):
                 Image(systemName: "sun.max.fill", variableValue: Double(max(0.12, lvl)))
                     .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(Color(red: 1.0, green: 0.84, blue: 0.04))
                     .contentTransition(.symbolEffect(.replace))
                     
             case .volume(let lvl, let muted):
@@ -95,7 +95,7 @@ public struct ActivitySliderPillView: View {
         if let state = sliderState {
             switch state {
             case .brightness:
-                return .white
+                return Color(red: 1.0, green: 0.84, blue: 0.04)
             case .volume(_, let muted):
                 // Verde brillante idéntico a la referencia (#30D158) o Rojo en mute
                 return muted ? DesignTokens.red : Color(red: 0x30 / 255.0, green: 0xD1 / 255.0, blue: 0x58 / 255.0)
@@ -109,7 +109,7 @@ public struct ActivitySliderPillView: View {
         if let state = sliderState {
             switch state {
             case .brightness:
-                return Color.white.opacity(0.18)
+                return Color(red: 1.0, green: 0.84, blue: 0.04).opacity(0.22)
             case .volume(_, let muted):
                 return muted ? DesignTokens.red.opacity(0.25) : Color(red: 0x14 / 255.0, green: 0x5E / 255.0, blue: 0x28 / 255.0)
             }

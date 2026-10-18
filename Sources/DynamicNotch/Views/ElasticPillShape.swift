@@ -19,11 +19,18 @@ public struct ElasticPillShape: Shape {
         self.verticalStretch = verticalStretch
     }
     
-    public var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(stretch, verticalStretch) }
+    public var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get {
+            AnimatablePair(
+                AnimatablePair(topRadius, bottomRadius),
+                AnimatablePair(stretch, verticalStretch)
+            )
+        }
         set {
-            stretch = newValue.first
-            verticalStretch = newValue.second
+            topRadius = newValue.first.first
+            bottomRadius = newValue.first.second
+            stretch = newValue.second.first
+            verticalStretch = newValue.second.second
         }
     }
     
@@ -46,8 +53,8 @@ public struct ElasticPillShape: Shape {
         
         guard width > 0, activeHeight > 0 else { return path }
         
-        let topR = min(topRadius, width / 2.0, activeHeight / 2.0)
-        let botR = min(bottomRadius, width / 2.0, activeHeight / 2.0)
+        let topR = max(0, min(topRadius, width / 2.0, activeHeight / 2.0))
+        let botR = max(0, min(bottomRadius, width / 2.0, activeHeight / 2.0))
         
         // 1. Inicia en borde superior tras esquina superior izquierda
         path.move(to: CGPoint(x: minX + topR, y: minY))

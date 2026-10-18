@@ -98,10 +98,11 @@ public final class LockScreenManager: ObservableObject {
         let hasContent = !track.title.isEmpty
         let isPlaying = track.isPlaying
         
-        if isPlaying && hasContent {
-            // Reproduciendo activamente
+        if (isPlaying && hasContent) || AppState.shared.isLockScreenTestArmed {
+            // Reproduciendo activamente o prueba de pantalla bloqueada armada
             pauseTimer?.invalidate()
             pauseTimer = nil
+            AppState.shared.isLockScreenTestArmed = false
             transitionToPlaying()
         } else if hasContent {
             // En pausa con contenido activo
@@ -196,12 +197,13 @@ public final class LockScreenManager: ObservableObject {
             targetScreens = [mainScrn]
         }
         
+        let isAmbient = AppState.shared.lockScreenStyle == .ambientCanvas
         let isHero = AppState.shared.lockScreenStyle == .heroWidget
         let hasVolume = AppState.shared.lockScreenShowVolumeSlider
         
-        let panelWidth: CGFloat = isHero
-            ? LockScreenPlayerMetrics.heroPanelWidth
-            : LockScreenPlayerMetrics.cardWidth
+        let panelWidth: CGFloat = isAmbient
+            ? 0
+            : (isHero ? LockScreenPlayerMetrics.heroPanelWidth : LockScreenPlayerMetrics.cardWidth)
             
         let panelHeight: CGFloat
         let topRatio: CGFloat
@@ -209,7 +211,10 @@ public final class LockScreenManager: ObservableObject {
             ? LockScreenPlayerMetrics.heroCardHeightWithVolume
             : LockScreenPlayerMetrics.heroCardHeight
         
-        if isHero {
+        if isAmbient {
+            panelHeight = 0
+            topRatio = 0.5
+        } else if isHero {
             panelHeight = hasVolume
                 ? LockScreenPlayerMetrics.heroPanelHeightWithVolume
                 : LockScreenPlayerMetrics.heroPanelHeight
@@ -228,10 +233,12 @@ public final class LockScreenManager: ObservableObject {
         if !lockScreenPanels.isEmpty && lockScreenPanels.count == targetScreens.count {
             for (idx, panel) in lockScreenPanels.enumerated() {
                 let screenFrame = targetScreens[idx].frame
-                let posX = screenFrame.origin.x + (screenFrame.width - panelWidth) / 2
                 let targetCardTopY = screenFrame.maxY - (screenFrame.height * topRatio) + AppState.shared.lockScreenVerticalOffset
-                let posY = targetCardTopY - (isHero ? heroCardHeight : panelHeight)
-                panel.setFrame(NSRect(x: posX, y: posY, width: panelWidth, height: panelHeight), display: true)
+                let curWidth = isAmbient ? screenFrame.width : panelWidth
+                let curHeight = isAmbient ? screenFrame.height : panelHeight
+                let posX = isAmbient ? screenFrame.origin.x : (screenFrame.origin.x + (screenFrame.width - panelWidth) / 2)
+                let posY = isAmbient ? screenFrame.origin.y : (targetCardTopY - (isHero ? heroCardHeight : panelHeight))
+                panel.setFrame(NSRect(x: posX, y: posY, width: curWidth, height: curHeight), display: true)
                 panel.alphaValue = 1.0
                 panel.orderFrontRegardless()
                 
@@ -251,10 +258,12 @@ public final class LockScreenManager: ObservableObject {
         var newPanels: [LockScreenPanel] = []
         for screen in targetScreens {
             let screenFrame = screen.frame
-            let posX = screenFrame.origin.x + (screenFrame.width - panelWidth) / 2
             let targetCardTopY = screenFrame.maxY - (screenFrame.height * topRatio) + AppState.shared.lockScreenVerticalOffset
-            let posY = targetCardTopY - (isHero ? heroCardHeight : panelHeight)
-            let panelRect = NSRect(x: posX, y: posY, width: panelWidth, height: panelHeight)
+            let curWidth = isAmbient ? screenFrame.width : panelWidth
+            let curHeight = isAmbient ? screenFrame.height : panelHeight
+            let posX = isAmbient ? screenFrame.origin.x : (screenFrame.origin.x + (screenFrame.width - panelWidth) / 2)
+            let posY = isAmbient ? screenFrame.origin.y : (targetCardTopY - (isHero ? heroCardHeight : panelHeight))
+            let panelRect = NSRect(x: posX, y: posY, width: curWidth, height: curHeight)
             
             let panel = LockScreenPanel(contentRect: panelRect)
             let rootView = LockScreenPlayerView()
@@ -304,14 +313,50 @@ public final class LockScreenManager: ObservableObject {
         print("🎵 [LockScreenManager] Reproductor de pantalla de bloqueo desplegado en \(newPanels.count) pantalla(s) (preview: \(isPreviewMode)).")
     }
     
-    public func showPlayerPanelPreview() {
+    private var previewTimer: Timer?
+    @Published public private(set) var testCountdownSeconds: Int = 0
+    private var testCountdownTimer: Timer?
+    
+    public func showPlayerPanelPreview(duration: TimeInterval = 10.0) {
         isPreviewMode = true
         showPlayerPanel()
+        
+        previewTimer?.invalidate()
+        previewTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+            self?.hidePlayerPanelPreview()
+        }
     }
     
     public func hidePlayerPanelPreview() {
+        previewTimer?.invalidate()
+        previewTimer = nil
         isPreviewMode = false
         hidePlayerPanel(smooth: true)
+    }
+    
+    public func startCountdownAndArmLockScreenTest(seconds: Int = 5) {
+        testCountdownSeconds = seconds
+        testCountdownTimer?.invalidate()
+        
+        testCountdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            self.testCountdownSeconds -= 1
+            if self.testCountdownSeconds <= 0 {
+                timer.invalidate()
+                self.testCountdownTimer = nil
+                AppState.shared.isLockScreenTestArmed = true
+            }
+        }
+    }
+    
+    public func cancelArmedTest() {
+        testCountdownTimer?.invalidate()
+        testCountdownTimer = nil
+        testCountdownSeconds = 0
+        AppState.shared.isLockScreenTestArmed = false
     }
     
     private func hidePlayerPanel(smooth: Bool) {

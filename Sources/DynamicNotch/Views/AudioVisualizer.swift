@@ -186,11 +186,21 @@ public struct AudioVisualizer: View {
         // HStack centrado verticalmente: las barras crecen simétricamente hacia arriba y hacia abajo
         HStack(alignment: .center, spacing: PlayerMetrics.visualizerBarSpacing) {
             ForEach(0..<PlayerMetrics.visualizerBarCount, id: \.self) { index in
+                let h = max(PlayerMetrics.visualizerPausedDotSize, barHeights[safe: index] ?? PlayerMetrics.visualizerPausedDotSize)
+                let normH = Double((h - PlayerMetrics.visualizerMinHeight) / (PlayerMetrics.visualizerMaxHeight - PlayerMetrics.visualizerMinHeight))
+                let glowAlpha = min(0.42, max(0.0, normH * 0.42))
+                
                 Capsule(style: .continuous)
                     .fill(resolvedGradient)
                     .frame(
                         width: PlayerMetrics.visualizerBarWidth,
-                        height: max(PlayerMetrics.visualizerPausedDotSize, barHeights[safe: index] ?? PlayerMetrics.visualizerPausedDotSize)
+                        height: h
+                    )
+                    .shadow(
+                        color: (gradientColors.first ?? Color.white).opacity(glowAlpha),
+                        radius: 1.6,
+                        x: 0,
+                        y: 0
                     )
             }
         }
@@ -216,46 +226,46 @@ public struct AudioVisualizer: View {
     
     @State private var animPhase: Double = 0.0
     
-    // Simulación rítmica armónica basada en frecuencias (Bass, Mids, Highs)
+    // Renderizado reactivo a 60 fps sincronizado al espectro real por banda (Sub-Bass a Brilliance)
     private func updateAnimation() {
         timer?.invalidate()
         timer = nil
         
         let restingDot = PlayerMetrics.visualizerPausedDotSize
-        let minH = PlayerMetrics.visualizerMinHeight
         let maxH = PlayerMetrics.visualizerMaxHeight
+        let bandMultipliers: [CGFloat] = [1.05, 1.02, 1.04, 1.00, 0.98, 0.95]
         
         if isPlaying {
-            // Animación reactiva ultra-suave sincronizada al espectro dinámico
-            let t = Timer(timeInterval: 0.033, repeats: true) { _ in
+            let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { _ in
                 let engine = AudioSpectrumEngine.shared
                 let levels = engine.getMagnitudes()
                 
-                let maxLevel = levels.max() ?? 0.0
-                let isAudible = maxLevel > 0.015
-                
                 var newHeights: [CGFloat] = []
+                newHeights.reserveCapacity(PlayerMetrics.visualizerBarCount)
+                
                 for i in 0..<PlayerMetrics.visualizerBarCount {
-                    let currentH = self.barHeights[safe: i] ?? restingDot
-                    let lvl = CGFloat(levels[safe: i] ?? 0.0)
-                    let targetH: CGFloat = isAudible ? (minH + lvl * (maxH - minH)) : restingDot
-                    
-                    // Suavizado asimétrico: ataque rápido para transitorios y caída orgánica
-                    let speed: CGFloat = targetH > currentH ? 0.85 : 0.42
-                    let interpolated = currentH + (targetH - currentH) * speed
-                    newHeights.append(max(restingDot, min(maxH, interpolated)))
+                    let rawLvl = CGFloat(levels[safe: i] ?? 0.0)
+                    let targetH: CGFloat
+                    if rawLvl <= 0.015 {
+                        // Banda en silencio real -> punto de reposo exacto (sin elevar bandas vacías)
+                        targetH = restingDot
+                    } else {
+                        let scaled = min(1.0, rawLvl * (bandMultipliers[safe: i] ?? 1.0))
+                        targetH = restingDot + scaled * (maxH - restingDot)
+                    }
+                    newHeights.append(max(restingDot, min(maxH, targetH)))
                 }
                 
-                withAnimation(.spring(response: 0.09, dampingFraction: 0.78)) {
+                withAnimation(.linear(duration: 0.022)) {
                     self.barHeights = newHeights
                 }
             }
-            t.tolerance = 0.005
+            t.tolerance = 0.003
             RunLoop.main.add(t, forMode: .common)
             timer = t
         } else {
-            // EN PAUSA: Transición de "dormirse" suave a reposo circular
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.82)) {
+            // EN PAUSA: Transición suave a reposo circular
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
                 self.barHeights = Array(repeating: restingDot, count: PlayerMetrics.visualizerBarCount)
             }
         }

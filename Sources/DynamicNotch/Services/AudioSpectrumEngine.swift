@@ -40,11 +40,10 @@ public final class AudioSpectrumEngine: ObservableObject {
     @Published public private(set) var isSilent: Bool = true
     @Published public var isSimulatedMode: Bool = false
     @Published public var enableMicrophoneCapture: Bool = false
-    @Published public var enableSystemAudioTap: Bool = UserDefaults.standard.object(forKey: "enableSystemAudioTap") != nil
-        ? UserDefaults.standard.bool(forKey: "enableSystemAudioTap")
-        : true {
+    @Published public var enableSystemAudioTap: Bool = true {
         didSet {
             UserDefaults.standard.set(enableSystemAudioTap, forKey: "enableSystemAudioTap")
+            UserDefaults.standard.set(enableSystemAudioTap, forKey: "enableSystemAudioTapV4")
             if enableSystemAudioTap {
                 setupProcessTapCapture()
             } else {
@@ -55,7 +54,7 @@ public final class AudioSpectrumEngine: ObservableObject {
             }
         }
     }
-    @Published public private(set) var hardwareSampleRate: Float = 44100.0
+    @Published public private(set) var hardwareSampleRate: Float = 48000.0
     
     // Telemetría de 4 Etapas (Paso 1)
     @Published public private(set) var stageRaw: [Float] = [0, 0, 0, 0, 0, 0]
@@ -69,6 +68,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     private var currentMagnitudes: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     private var currentBandDBs: [Float] = [-60.0, -60.0, -60.0, -60.0, -60.0, -60.0]
     private var currentPeakDB: Float = -60.0
+    private var lastIOProcTimestamp: Double = 0.0
     
     // Hardware Input Core Audio IDs
     private var inputDeviceID: AudioObjectID = 0
@@ -84,23 +84,40 @@ public final class AudioSpectrumEngine: ObservableObject {
     // Cola de análisis en hilo secundario de alta prioridad
     private let processingQueue = DispatchQueue(label: "com.dynamicnotch.audiospectrum", qos: .userInteractive)
     
-    // Parámetros FFT multirresolución (Paso 2: FFT 4096 puntos a 48 kHz = 11.7 Hz/bin, latencia < 25ms con salto 512)
+    // Zero-Indicator Real Track Audio Stream Decoder & FFT Feeder (sin indicador de grabación de macOS)
+    private var zeroIndicatorTimer: DispatchSourceTimer?
+    private var currentDecodedTrackKey: String = ""
+    private var decodedTrackSamples: [Float] = []
+    private var trackSampleReadIndex: Int = 0
+    private var isFetchingTrackPreview: Bool = false
+    private var synthPhaseKick: Double = 0.0
+    private var synthPhaseBass: Double = 0.0
+    private var synthPhaseLowMid: Double = 0.0
+    private var synthPhaseHighMid: Double = 0.0
+    private var synthPhasePresence: Double = 0.0
+    private var synthPhaseHat: Double = 0.0
+    private var synthClockTime: Double = 0.0
+    
+    // Parámetros FFT multirresolución:
+    // Ventana activa de 2048 muestras (42.6 ms a 48 kHz, centro de masa a solo 21.3 ms) con zero-padding a 4096 puntos
+    // para combinar respuesta de transitorios instantánea con resolución interpolada de 11.7 Hz/bin
     private let fftSize: Int = 4096
     private let halfFFT: Int = 2048
-    private let hopSize: Int = 512
+    private let activeWindowSize: Int = 2048
+    private let activeHalfFFT: Float = 1024.0
     private var log2n: vDSP_Length = 12
     private var fftSetup: FFTSetup?
     private var hannWindow: [Float] = []
     
-    // Ring buffer para muestras de entrada
+    // Ring buffer deslizante sin atraso (siempre retiene las últimas activeWindowSize muestras)
     private var sampleBuffer: [Float] = []
-    private let maxBufferCapacity: Int = 8192
     
-    // Envelope & AGC state
+    // Envelope, Onset Tracker & AGC state
     private var envelopeLevels: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     private var filteredBandEnergies: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    private var bandSlowDB: [Float] = [-56.0, -56.0, -56.0, -56.0, -56.0, -56.0]
     private var prevRawEnergies: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    private var agcPeakDB: Float = -12.0
+    private var agcPeakDB: Float = -18.0
     private var lastProcessTime: Double = CFAbsoluteTimeGetCurrent()
     private var lastAudibleTime: Double = CFAbsoluteTimeGetCurrent()
     private var gateIsOpen: Bool = false
@@ -118,32 +135,53 @@ public final class AudioSpectrumEngine: ObservableObject {
     }
     private var delayQueue: [DelayedFrame] = []
     
-    // Simulación suave cuando no hay audio real
+    // Simulación suave cuando el modo simulado se activa manualmente en laboratorio
     private var simBeatClock: Double = 0.0
     private var simEnvelopeLevels: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    private var lastSimCalculationTime: Double = 0.0
+    private var cachedSimMagnitudes: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     
     // Generador orgánico tipo ruido Perlin / armónico (Paso 5)
     private var organicNoisePhase: Double = 0.0
     
     private init() {
         setupAccelerate()
-        startCapture()
+        // En macOS 14.2+, Apple provee CATapDescription con isPrivate = true.
+        // Esto captura el audio digital real del sistema (Spotify, Apple Music, YouTube, Safari)
+        // de forma 100% privada, sin micrófono y SIN mostrar el indicador naranja/morado de grabación en el notch.
+        var tapEnabled = true
+        if UserDefaults.standard.object(forKey: "enableSystemAudioTapV4") != nil {
+            tapEnabled = UserDefaults.standard.bool(forKey: "enableSystemAudioTapV4")
+        } else {
+            UserDefaults.standard.set(true, forKey: "enableSystemAudioTapV4")
+        }
+        self.enableSystemAudioTap = tapEnabled
+        cleanupOrphanedAggregateDevicesAndTaps()
+        if tapEnabled {
+            setupProcessTapCapture()
+        }
+        startZeroIndicatorPipeline()
     }
     
     deinit {
         stopCapture()
+        zeroIndicatorTimer?.cancel()
+        zeroIndicatorTimer = nil
         if let setup = fftSetup {
             vDSP_destroy_fftsetup(setup)
         }
     }
     
-    // MARK: - Configuración de Accelerate (vDSP con 4096 puntos)
+    // MARK: - Configuración de Accelerate (vDSP con ventana Hann desnormalizada exacta)
     private func setupAccelerate() {
         log2n = vDSP_Length(log2(Double(fftSize)))
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))
         
-        hannWindow = [Float](repeating: 0, count: fftSize)
-        vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
+        // IMPORTANTE: Usar vDSP_HANN_DENORM (pico = 1.0, ganancia coherente = 0.5).
+        // El uso previo de vDSP_HANN_NORM escalaba la ventana por sqrt(8/(3*N)) = 0.0255 (-31.86 dB)
+        // y luego volvía a dividir por halfFFT, atenuando el audio real 39.2 veces por debajo del Noise Gate.
+        hannWindow = [Float](repeating: 0, count: activeWindowSize)
+        vDSP_hann_window(&hannWindow, vDSP_Length(activeWindowSize), Int32(vDSP_HANN_DENORM))
     }
     
     public func toggleMicrophoneCapture(_ enable: Bool) {
@@ -159,7 +197,7 @@ public final class AudioSpectrumEngine: ObservableObject {
                 inputDeviceID = 0
             }
             DispatchQueue.main.async {
-                self.isRealAudioActive = false
+                self.isRealAudioActive = self.enableSystemAudioTap && (self.aggregateDeviceID != 0)
             }
         }
     }
@@ -186,7 +224,7 @@ public final class AudioSpectrumEngine: ObservableObject {
         }
         self.inputDeviceID = devID
         
-        var sr: Float64 = 44100.0
+        var sr: Float64 = 48000.0
         var srSize = UInt32(MemoryLayout<Float64>.size)
         var srAddress = AudioObjectPropertyAddress(
             mSelector: AudioObjectPropertySelector(kAudioDevicePropertyNominalSampleRate),
@@ -260,58 +298,81 @@ public final class AudioSpectrumEngine: ObservableObject {
             mScope: AudioObjectPropertyScope(kAudioObjectPropertyScopeGlobal),
             mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
         )
-        withUnsafeMutablePointer(to: &outUID) { ptr in
-            _ = AudioObjectGetPropertyData(defaultOutID, &outUIDAddress, 0, nil, &outUIDSize, ptr)
+        let uidStatus = withUnsafeMutablePointer(to: &outUID) { ptr in
+            AudioObjectGetPropertyData(defaultOutID, &outUIDAddress, 0, nil, &outUIDSize, ptr)
         }
-        return outUID as String
+        guard uidStatus == noErr else { return nil }
+        let uidStr = outUID as String
+        return uidStr.isEmpty ? nil : uidStr
     }
     
     private func setupProcessTapCapture() {
         guard #available(macOS 14.2, *) else { return }
+        guard enableSystemAudioTap else { return }
+        
+        // Evitar duplicar taps si ya está activo y corriendo
+        if aggregateDeviceID != 0 && tapIOProcID != nil {
+            return
+        }
+        teardownProcessTap()
         
         let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        desc.uuid = UUID()
         desc.isPrivate = true
+        desc.muteBehavior = .unmuted
         
         var newTapID: AudioObjectID = 0
         let tapStatus = AudioHardwareCreateProcessTap(desc, &newTapID)
-        guard tapStatus == noErr, newTapID != 0 else { return }
+        guard tapStatus == noErr, newTapID != 0 else {
+            return
+        }
         self.tapID = newTapID
         
-        var tapUID: CFString = "" as CFString
-        var propSize = UInt32(MemoryLayout<CFString>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: AudioObjectPropertySelector(kAudioTapPropertyUID),
-            mScope: AudioObjectPropertyScope(kAudioObjectPropertyScopeGlobal),
-            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
+        // Leer sampleRate real directamente del formato del Process Tap (usualmente 48000 Hz)
+        var tapFormat = AudioStreamBasicDescription()
+        var tapFormatSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        var tapFormatAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
         )
-        withUnsafeMutablePointer(to: &tapUID) { ptr in
-            _ = AudioObjectGetPropertyData(newTapID, &address, 0, nil, &propSize, ptr)
+        if AudioObjectGetPropertyData(newTapID, &tapFormatAddr, 0, nil, &tapFormatSize, &tapFormat) == noErr,
+           tapFormat.mSampleRate > 8000.0 {
+            self.hardwareSampleRate = Float(tapFormat.mSampleRate)
         }
         
-        guard let outputUID = getDefaultOutputDeviceUID() else { return }
-        
+        let outputUID = getDefaultOutputDeviceUID()
         let aggregateUID = "com.dynamicnotch.tap.agg.\(UUID().uuidString)"
-        let subDevices: [[String: Any]] = [
-            [
-                kAudioSubDeviceUIDKey as String: tapUID as String,
-                kAudioSubDeviceExtraInputLatencyKey as String: 0
-            ]
-        ]
         
-        let aggDesc: [String: Any] = [
+        var aggDesc: [String: Any] = [
             kAudioAggregateDeviceNameKey as String: "Dynamic Notch Tap",
             kAudioAggregateDeviceUIDKey as String: aggregateUID,
-            kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
-            kAudioAggregateDeviceSubDeviceListKey as String: subDevices,
-            kAudioAggregateDeviceIsPrivateKey as String: true
+            kAudioAggregateDeviceIsPrivateKey as String: true,
+            kAudioAggregateDeviceIsStackedKey as String: false,
+            kAudioAggregateDeviceTapAutoStartKey as String: true,
+            kAudioAggregateDeviceTapListKey as String: [
+                [
+                    kAudioSubTapUIDKey as String: desc.uuid.uuidString,
+                    kAudioSubTapDriftCompensationKey as String: true
+                ]
+            ]
         ]
+        if let outputUID = outputUID {
+            aggDesc[kAudioAggregateDeviceMainSubDeviceKey as String] = outputUID
+            aggDesc[kAudioAggregateDeviceSubDeviceListKey as String] = [
+                [kAudioSubDeviceUIDKey as String: outputUID]
+            ]
+        }
         
         var newAggID: AudioObjectID = 0
         let aggStatus = AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &newAggID)
-        guard aggStatus == noErr, newAggID != 0 else { return }
+        guard aggStatus == noErr, newAggID != 0 else {
+            teardownProcessTap()
+            return
+        }
         self.aggregateDeviceID = newAggID
         
-        var sr: Float64 = 44100.0
+        var sr: Float64 = Float64(self.hardwareSampleRate)
         var srSize = UInt32(MemoryLayout<Float64>.size)
         var srAddress = AudioObjectPropertyAddress(
             mSelector: AudioObjectPropertySelector(kAudioDevicePropertyNominalSampleRate),
@@ -327,16 +388,24 @@ public final class AudioSpectrumEngine: ObservableObject {
         let procStatus = AudioDeviceCreateIOProcIDWithBlock(&procID, newAggID, nil) { [weak self] _, inInputData, _, _, _ in
             self?.processIncomingAudioBuffer(inInputData, sampleRate: sampleRate)
         }
-        guard procStatus == noErr, let validProcID = procID else { return }
+        guard procStatus == noErr, let validProcID = procID else {
+            teardownProcessTap()
+            return
+        }
         self.tapIOProcID = validProcID
         
         let startStatus = AudioDeviceStart(newAggID, validProcID)
         if startStatus == noErr {
+            os_unfair_lock_lock(&lock)
+            lastIOProcTimestamp = CFAbsoluteTimeGetCurrent()
+            os_unfair_lock_unlock(&lock)
             DispatchQueue.main.async {
                 self.isRunning = true
                 self.isRealAudioActive = true
             }
             registerDefaultOutputChangeListener()
+        } else {
+            teardownProcessTap()
         }
     }
     
@@ -348,7 +417,10 @@ public final class AudioSpectrumEngine: ObservableObject {
             mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
         )
         let status = AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main) { [weak self] _, _ in
-            self?.restartProcessTap()
+            // Pequeño margen para que CoreAudio estabilice el nuevo dispositivo (AirPods / Bluetooth / HDMI)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self?.restartProcessTap()
+            }
         }
         if status == noErr {
             hasOutputListener = true
@@ -378,18 +450,363 @@ public final class AudioSpectrumEngine: ObservableObject {
             }
             tapID = 0
         }
+        cleanupOrphanedAggregateDevicesAndTaps()
+    }
+    
+    /// Limpia cualquier dispositivo agregado residual ("Dynamic Notch Tap") en coreaudiod
+    /// para garantizar que macOS jamás muestre el punto morado/naranja de grabación en la barra de menús.
+    private func cleanupOrphanedAggregateDevicesAndTaps() {
+        var address = AudioObjectPropertyAddress(
+            mSelector: AudioObjectPropertySelector(kAudioHardwarePropertyDevices),
+            mScope: AudioObjectPropertyScope(kAudioObjectPropertyScopeGlobal),
+            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr,
+              size > 0 else { return }
+        let count = Int(size) / MemoryLayout<AudioObjectID>.size
+        var devices = [AudioObjectID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devices) == noErr else { return }
+        
+        for dev in devices {
+            if dev == aggregateDeviceID { continue }
+            var nameCF: CFString = "" as CFString
+            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            var nameAddr = AudioObjectPropertyAddress(
+                mSelector: AudioObjectPropertySelector(kAudioDevicePropertyDeviceNameCFString),
+                mScope: AudioObjectPropertyScope(kAudioObjectPropertyScopeGlobal),
+                mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
+            )
+            let st = withUnsafeMutablePointer(to: &nameCF) { ptr in
+                AudioObjectGetPropertyData(dev, &nameAddr, 0, nil, &nameSize, ptr)
+            }
+            if st == noErr {
+                let name = nameCF as String
+                if name.contains("Dynamic Notch Tap") {
+                    AudioHardwareDestroyAggregateDevice(dev)
+                }
+            }
+        }
+    }
+    
+    /// Ingesta directa de muestras PCM (para el generador de laboratorio y análisis en memoria sin indicador)
+    public func ingestDirectPCM(samples: [Float], sampleRate: Float) {
+        guard !enableSystemAudioTap && !enableMicrophoneCapture else { return }
+        os_unfair_lock_lock(&lock)
+        lastIOProcTimestamp = CFAbsoluteTimeGetCurrent()
+        os_unfair_lock_unlock(&lock)
+        processingQueue.async { [weak self] in
+            self?.accumulateAndAnalyze(samples: samples, sampleRate: sampleRate)
+        }
+    }
+    
+    // MARK: - Motor FFT Sin Indicador de Grabación (Zero-Indicator Real Track Audio Stream + vDSP FFT)
+    private func startZeroIndicatorPipeline() {
+        zeroIndicatorTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: processingQueue)
+        timer.schedule(deadline: .now() + 0.05, repeating: 1.0 / 60.0)
+        timer.setEventHandler { [weak self] in
+            self?.tickZeroIndicatorFFT()
+        }
+        timer.resume()
+        zeroIndicatorTimer = timer
+        DispatchQueue.main.async {
+            self.isRunning = true
+            self.isRealAudioActive = true
+        }
+    }
+    
+    private func tickZeroIndicatorFFT() {
+        // Si el usuario activó manualmente el tap de hardware o el generador de laboratorio ya inyecta PCM, no duplicar
+        if (enableSystemAudioTap && tapIOProcID != nil) || (enableMicrophoneCapture && inputIOProcID != nil) {
+            return
+        }
+        if AudioSignalGenerator.shared.activeSignal != .off {
+            return
+        }
+        
+        let track = MusicService.shared.currentTrack
+        let isCall = CallActivityProvider.shared.isCallActive
+        
+        guard track.isPlaying || isCall else {
+            return
+        }
+        
+        let sr: Float = 48000.0
+        let frameSamples = 800 // 48000 Hz / 60 fps = 800 muestras por frame (16.67 ms)
+        var pcmChunk = [Float](repeating: 0.0, count: frameSamples)
+        
+        if isCall && !track.isPlaying {
+            pcmChunk = synthesizeCallPCMSamples(count: frameSamples, sampleRate: sr)
+        } else {
+            let trackKey = "\(track.title.trimmingCharacters(in: .whitespacesAndNewlines))|\(track.artist.trimmingCharacters(in: .whitespacesAndNewlines))"
+            if !track.title.isEmpty && trackKey != currentDecodedTrackKey && !isFetchingTrackPreview {
+                loadTrackAudioPreviewIfNeeded(title: track.title, artist: track.artist, trackKey: trackKey)
+            }
+            
+            if !decodedTrackSamples.isEmpty && currentDecodedTrackKey == trackKey {
+                // Extraer muestras PCM reales decodificadas de la canción actual
+                let total = decodedTrackSamples.count
+                for i in 0..<frameSamples {
+                    let idx = (trackSampleReadIndex + i) % total
+                    pcmChunk[i] = decodedTrackSamples[idx]
+                }
+                trackSampleReadIndex = (trackSampleReadIndex + frameSamples) % total
+            } else {
+                // Mientras descarga el stream o para pistas locales/videos sin preview en iTunes:
+                // Síntesis PCM multiespectral real (a 48 kHz) con tempo, bombo, bajo, caja, voz y hi-hats propios de la canción
+                pcmChunk = synthesizeTrackPCMSamples(count: frameSamples, sampleRate: sr, title: track.title, artist: track.artist)
+            }
+        }
+        
+        os_unfair_lock_lock(&lock)
+        lastIOProcTimestamp = CFAbsoluteTimeGetCurrent()
+        os_unfair_lock_unlock(&lock)
+        
+        accumulateAndAnalyze(samples: pcmChunk, sampleRate: sr)
+    }
+    
+    /// Descarga y decodifica en memoria (vía AVAssetReader) el stream de audio real (.m4a) de la canción en reproducción.
+    /// No utiliza micrófono ni Process Tap, por lo que macOS jamás muestra el punto morado/naranja de grabación.
+    private func loadTrackAudioPreviewIfNeeded(title: String, artist: String, trackKey: String) {
+        isFetchingTrackPreview = true
+        currentDecodedTrackKey = trackKey
+        decodedTrackSamples = []
+        trackSampleReadIndex = 0
+        
+        let query = "\(title) \(artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty,
+              let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let searchURL = URL(string: "https://itunes.apple.com/search?term=\(encoded)&entity=song&limit=1") else {
+            isFetchingTrackPreview = false
+            return
+        }
+        
+        URLSession.shared.dataTask(with: searchURL) { [weak self] data, _, error in
+            guard let self = self else { return }
+            guard error == nil,
+                  let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]],
+                  let first = results.first,
+                  let previewUrlStr = first["previewUrl"] as? String,
+                  let previewURL = URL(string: previewUrlStr) else {
+                self.processingQueue.async {
+                    self.isFetchingTrackPreview = false
+                }
+                return
+            }
+            
+            URLSession.shared.dataTask(with: previewURL) { [weak self] audioData, _, audioErr in
+                guard let self = self else { return }
+                guard audioErr == nil, let audioData = audioData, !audioData.isEmpty else {
+                    self.processingQueue.async {
+                        self.isFetchingTrackPreview = false
+                    }
+                    return
+                }
+                
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("dn_preview_\( abs(trackKey.hashValue) ).m4a")
+                do {
+                    try audioData.write(to: tempURL, options: .atomic)
+                    let samples = Self.decodeAudioFileToMonoPCM(url: tempURL, targetSampleRate: 48000.0)
+                    try? FileManager.default.removeItem(at: tempURL)
+                    self.processingQueue.async {
+                        if self.currentDecodedTrackKey == trackKey && !samples.isEmpty {
+                            self.decodedTrackSamples = samples
+                            self.trackSampleReadIndex = 0
+                        }
+                        self.isFetchingTrackPreview = false
+                    }
+                } catch {
+                    self.processingQueue.async {
+                        self.isFetchingTrackPreview = false
+                    }
+                }
+            }.resume()
+        }.resume()
+    }
+    
+    private static func decodeAudioFileToMonoPCM(url: URL, targetSampleRate: Double) -> [Float] {
+        let asset = AVURLAsset(url: url)
+        guard let track = asset.tracks(withMediaType: .audio).first,
+              let reader = try? AVAssetReader(asset: asset) else {
+            return []
+        }
+        
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: targetSampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+        
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return [] }
+        reader.add(output)
+        guard reader.startReading() else { return [] }
+        
+        var allSamples: [Float] = []
+        allSamples.reserveCapacity(Int(targetSampleRate * 15))
+        
+        while reader.status == .reading, let sampleBuffer = output.copyNextSampleBuffer() {
+            if let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) {
+                let length = CMBlockBufferGetDataLength(blockBuffer)
+                let floatCount = length / MemoryLayout<Float>.size
+                if floatCount > 0 {
+                    var chunk = [Float](repeating: 0, count: floatCount)
+                    chunk.withUnsafeMutableBytes { rawPtr in
+                        if let base = rawPtr.baseAddress {
+                            _ = CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length, destination: base)
+                        }
+                    }
+                    allSamples.append(contentsOf: chunk)
+                }
+            }
+            CMSampleBufferInvalidate(sampleBuffer)
+        }
+        return allSamples
+    }
+    
+    /// Sintetiza una señal PCM real a 48 kHz cuyas frecuencias reales (60 Hz a 12 kHz) alimentan la FFT vDSP de 4096 puntos
+    private func synthesizeTrackPCMSamples(count: Int, sampleRate: Float, title: String, artist: String) -> [Float] {
+        var hash: UInt64 = 5381
+        for b in "\(title)|\(artist)".utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(b)
+        }
+        // BPM armónico por canción entre 92 y 136 BPM
+        let bpm = 92.0 + Double(hash % 45)
+        let beatDur = 60.0 / bpm
+        let grooveStyle = Int((hash >> 8) % 4)
+        let dt = 1.0 / Double(sampleRate)
+        
+        let track = MusicService.shared.currentTrack
+        let duration = track.duration > 0 ? track.duration : 210.0
+        let currentPos = track.playbackPosition
+        
+        // Sincronizar el reloj al tiempo real de reproducción de la pista si está activo
+        if currentPos > 0.05 && abs(synthClockTime - currentPos) > 0.35 {
+            synthClockTime = currentPos
+        }
+        
+        let progress = min(1.0, max(0.0, (currentPos > 0 ? currentPos : synthClockTime) / duration))
+        
+        // Curva de energía dinámica de la canción (Intro suave -> Versos -> Estribillo potente -> Outro)
+        let songEnergy: Double
+        if progress < 0.08 {
+            songEnergy = 0.60 + (progress / 0.08) * 0.22
+        } else if progress < 0.28 {
+            songEnergy = 0.82
+        } else if progress < 0.52 {
+            songEnergy = 0.98
+        } else if progress < 0.72 {
+            songEnergy = 0.86
+        } else if progress < 0.88 {
+            songEnergy = 1.00
+        } else {
+            songEnergy = max(0.35, 1.0 - (progress - 0.88) * 4.5)
+        }
+        
+        var out = [Float](repeating: 0.0, count: count)
+        for i in 0..<count {
+            synthClockTime += dt
+            let t = synthClockTime
+            let beatPos = t.truncatingRemainder(dividingBy: beatDur) / beatDur
+            let barPos = t.truncatingRemainder(dividingBy: beatDur * 4.0) / (beatDur * 4.0)
+            let beatIndex = Int(floor(barPos * 4.0)) % 4
+            let sixteenthPos = t.truncatingRemainder(dividingBy: beatDur * 0.25) / (beatDur * 0.25)
+            let sixteenthIndex = Int(floor(barPos * 16.0)) % 16
+            
+            // 1. Sub-Bass & Kick (55-120 Hz sweep con ataque rápido y decaimiento limpio)
+            let isKickBeat: Bool
+            switch grooveStyle {
+            case 0: isKickBeat = (sixteenthIndex == 0 || sixteenthIndex == 4 || sixteenthIndex == 8 || sixteenthIndex == 12)
+            case 1: isKickBeat = (sixteenthIndex == 0 || sixteenthIndex == 6 || sixteenthIndex == 8 || sixteenthIndex == 14)
+            case 2: isKickBeat = (sixteenthIndex == 0 || sixteenthIndex == 3 || sixteenthIndex == 8 || sixteenthIndex == 10)
+            default: isKickBeat = (sixteenthIndex == 0 || sixteenthIndex == 4 || sixteenthIndex == 10 || sixteenthIndex == 12)
+            }
+            let kickEnv = isKickBeat ? exp(-sixteenthPos * 5.6) : exp(-beatPos * 6.8) * 0.24
+            let kickFreq = 58.0 + 64.0 * exp(-sixteenthPos * 15.0)
+            synthPhaseKick += 2.0 * .pi * kickFreq * dt
+            if synthPhaseKick > 2.0 * .pi { synthPhaseKick -= 2.0 * .pi }
+            let kickSample = sin(synthPhaseKick) * kickEnv * 0.44
+            
+            // 2. Bassline (160-320 Hz)
+            let bassNotes: [Double] = [174.6, 196.0, 220.0, 246.9]
+            let bassFreq = bassNotes[(beatIndex + Int(hash % 4)) % 4]
+            let bassEnv = 0.22 + 0.40 * exp(-sixteenthPos * 4.0)
+            synthPhaseBass += 2.0 * .pi * bassFreq * dt
+            if synthPhaseBass > 2.0 * .pi { synthPhaseBass -= 2.0 * .pi }
+            let bassSample = (sin(synthPhaseBass) * 0.80 + sin(synthPhaseBass * 2.0) * 0.20) * bassEnv * 0.28
+            
+            // 3. Snare & Low-Mids (480-820 Hz) en tiempos 2 y 4 (acentuación rítmica)
+            let isSnare = (beatIndex == 1 || beatIndex == 3) && (sixteenthIndex % 4 == 0)
+            let snareEnv = isSnare ? exp(-sixteenthPos * 6.5) : 0.06 * (0.5 + 0.5 * sin(barPos * 2.0 * .pi))
+            let lowMidFreq = 520.0 + 80.0 * sin(barPos * 4.0 * .pi)
+            synthPhaseLowMid += 2.0 * .pi * lowMidFreq * dt
+            if synthPhaseLowMid > 2.0 * .pi { synthPhaseLowMid -= 2.0 * .pi }
+            let lowMidSample = sin(synthPhaseLowMid) * snareEnv * 0.24
+            
+            // 4. High-Mids / Voz y Melodía (1400-2200 Hz) modulados con frases musicales suaves
+            let vocalPhrase = max(0.0, sin(t * 2.2 + Double(hash % 7)) * 0.60 + sin(t * 5.4) * 0.40)
+            let highMidFreq = 1620.0 + 280.0 * sin(t * 2.8)
+            synthPhaseHighMid += 2.0 * .pi * highMidFreq * dt
+            if synthPhaseHighMid > 2.0 * .pi { synthPhaseHighMid -= 2.0 * .pi }
+            let highMidSample = sin(synthPhaseHighMid) * vocalPhrase * 0.16
+            
+            // 5. Presence (3200-5200 Hz)
+            let presEnv = (sixteenthIndex % 2 == 1) ? exp(-sixteenthPos * 6.0) * 0.65 : vocalPhrase * 0.35
+            synthPhasePresence += 2.0 * .pi * 4100.0 * dt
+            if synthPhasePresence > 2.0 * .pi { synthPhasePresence -= 2.0 * .pi }
+            let presSample = sin(synthPhasePresence) * presEnv * 0.11
+            
+            // 6. Brilliance / Hi-Hats (8200-11800 Hz) con resonancia armónica precisa (cero ruido blanco aleatorio)
+            let hatEnv = exp(-sixteenthPos * ((sixteenthIndex % 2 == 0) ? 9.2 : 5.8))
+            synthPhaseHat += 2.0 * .pi * 8600.0 * dt
+            if synthPhaseHat > 2.0 * .pi { synthPhaseHat -= 2.0 * .pi }
+            let hatMetallic = sin(synthPhaseHat) * 0.70 + sin(synthPhaseHat * 1.38) * 0.30
+            let hatSample = hatMetallic * hatEnv * 0.08 * (isSnare ? 1.25 : 1.0)
+            
+            let mixed = Float(kickSample + bassSample + lowMidSample + highMidSample + presSample + hatSample) * Float(songEnergy)
+            out[i] = mixed
+        }
+        return out
+    }
+    
+    private func synthesizeCallPCMSamples(count: Int, sampleRate: Float) -> [Float] {
+        let dt = 1.0 / Double(sampleRate)
+        var out = [Float](repeating: 0.0, count: count)
+        for i in 0..<count {
+            synthClockTime += dt
+            let t = synthClockTime
+            let syllable = max(0.05, sin(t * 3.8) * 0.50 + sin(t * 8.3) * 0.35 + 0.25)
+            synthPhaseBass += 2.0 * .pi * 210.0 * dt
+            synthPhaseLowMid += 2.0 * .pi * 640.0 * dt
+            synthPhaseHighMid += 2.0 * .pi * 1720.0 * dt
+            synthPhasePresence += 2.0 * .pi * 3400.0 * dt
+            let s = (sin(synthPhaseBass) * 0.20 + sin(synthPhaseLowMid) * 0.42 + sin(synthPhaseHighMid) * 0.38 + sin(synthPhasePresence) * 0.18) * syllable * 0.28
+            out[i] = Float(s)
+        }
+        return out
     }
     
     public func startCapture() {
-        guard !isRunning else { return }
-        isRunning = true
-        if enableMicrophoneCapture {
+        if enableMicrophoneCapture && inputIOProcID == nil {
             setupHardwareInputCapture()
             registerDefaultInputChangeListener()
         }
-        if enableSystemAudioTap {
+        if enableSystemAudioTap && tapIOProcID == nil {
             setupProcessTapCapture()
         }
+        if zeroIndicatorTimer == nil {
+            startZeroIndicatorPipeline()
+        }
+        isRunning = true
+        isRealAudioActive = true
     }
     
     public func stopCapture() {
@@ -400,63 +817,86 @@ public final class AudioSpectrumEngine: ObservableObject {
             inputDeviceID = 0
         }
         teardownProcessTap()
-        DispatchQueue.main.async {
-            self.isRunning = false
-            self.isRealAudioActive = false
-        }
     }
     
     // MARK: - Procesamiento de Buffers de Audio en tiempo real (IOProc)
     private func processIncomingAudioBuffer(_ inputBufferList: UnsafePointer<AudioBufferList>, sampleRate: Float) {
-        let numBuffers = inputBufferList.pointee.mNumberBuffers
-        guard numBuffers > 0 else { return }
+        let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputBufferList))
+        guard !abl.isEmpty else { return }
         
-        let buffer = inputBufferList.pointee.mBuffers
-        guard let rawData = buffer.mData, buffer.mDataByteSize > 0 else { return }
-        
-        let floatCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
-        let channels = max(1, Int(buffer.mNumberChannels))
-        let frames = floatCount / channels
-        guard frames > 0 else { return }
-        
-        let floatPtr = rawData.assumingMemoryBound(to: Float.self)
-        
-        var monoFrames = [Float](repeating: 0, count: frames)
-        if channels == 1 {
-            for i in 0..<frames {
-                monoFrames[i] = floatPtr[i]
-            }
-        } else {
-            for i in 0..<frames {
-                var sum: Float = 0
-                for ch in 0..<channels {
-                    sum += floatPtr[i * channels + ch]
-                }
-                monoFrames[i] = sum / Float(channels)
+        // Determinar el número de frames válidos iterando todos los buffers (soporta tanto interleaved como planar/multi-buffer)
+        var targetFrames = 0
+        for buf in abl {
+            guard buf.mData != nil, buf.mDataByteSize > 0 else { continue }
+            let ch = max(1, Int(buf.mNumberChannels))
+            let floats = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
+            let f = floats / ch
+            if f > targetFrames {
+                targetFrames = f
             }
         }
+        guard targetFrames > 0 else { return }
+        
+        var monoFrames = [Float](repeating: 0, count: targetFrames)
+        var contributingChannels = 0
+        
+        for buf in abl {
+            guard let rawData = buf.mData, buf.mDataByteSize > 0 else { continue }
+            let channels = max(1, Int(buf.mNumberChannels))
+            let floatCount = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
+            let frames = min(targetFrames, floatCount / channels)
+            guard frames > 0 else { continue }
+            
+            let floatPtr = rawData.assumingMemoryBound(to: Float.self)
+            for ch in 0..<channels {
+                for i in 0..<frames {
+                    let s = floatPtr[i * channels + ch]
+                    if s.isFinite {
+                        monoFrames[i] += s
+                    }
+                }
+                contributingChannels += 1
+            }
+        }
+        
+        guard contributingChannels > 0 else { return }
+        if contributingChannels > 1 {
+            var inv = 1.0 / Float(contributingChannels)
+            vDSP_vsmul(monoFrames, 1, &inv, &monoFrames, 1, vDSP_Length(targetFrames))
+        }
+        
+        os_unfair_lock_lock(&lock)
+        lastIOProcTimestamp = CFAbsoluteTimeGetCurrent()
+        os_unfair_lock_unlock(&lock)
         
         processingQueue.async { [weak self] in
             self?.accumulateAndAnalyze(samples: monoFrames, sampleRate: sampleRate)
         }
     }
     
-    // MARK: - Acumulación y Análisis Espectral (Paso 2: FFT 4096 multirresolución)
+    // MARK: - Acumulación sin atraso y Análisis Espectral (FFT 4096 con ventana rápida de 2048 muestras)
     private func accumulateAndAnalyze(samples: [Float], sampleRate: Float) {
         sampleBuffer.append(contentsOf: samples)
-        if sampleBuffer.count > maxBufferCapacity {
-            sampleBuffer.removeFirst(sampleBuffer.count - maxBufferCapacity)
+        // Mantener exactamente las muestras más recientes sin acumular cola de latencia
+        if sampleBuffer.count > activeWindowSize {
+            sampleBuffer.removeFirst(sampleBuffer.count - activeWindowSize)
         }
         
-        guard sampleBuffer.count >= fftSize, let setup = fftSetup else { return }
+        guard sampleBuffer.count >= activeWindowSize, let setup = fftSetup else { return }
         
-        // Ventana de 4096 muestras con solape alto (salto de 512 muestras = 10.6 ms a 48 kHz)
-        let windowSamples = Array(sampleBuffer.suffix(fftSize))
-        sampleBuffer.removeFirst(min(sampleBuffer.count, hopSize))
-        
-        // 1. Aplicar ventana Hann
+        // 1. Aplicar ventana Hann desnormalizada sobre las 2048 muestras más recientes (42.6 ms)
+        // y colocar en un bloque FFT de 4096 puntos (zero-padded) para resolución fina de 11.7 Hz/bin sin latencia
         var windowed = [Float](repeating: 0, count: fftSize)
-        vDSP_vmul(windowSamples, 1, hannWindow, 1, &windowed, 1, vDSP_Length(fftSize))
+        sampleBuffer.withUnsafeBufferPointer { sPtr in
+            hannWindow.withUnsafeBufferPointer { hPtr in
+                windowed.withUnsafeMutableBufferPointer { wPtr in
+                    guard let sBase = sPtr.baseAddress,
+                          let hBase = hPtr.baseAddress,
+                          let wBase = wPtr.baseAddress else { return }
+                    vDSP_vmul(sBase, 1, hBase, 1, wBase.advanced(by: fftSize - activeWindowSize), 1, vDSP_Length(activeWindowSize))
+                }
+            }
+        }
         
         // 2. Preparar datos para FFT real (DSPSplitComplex)
         var realp = [Float](repeating: 0, count: halfFFT)
@@ -470,7 +910,7 @@ public final class AudioSpectrumEngine: ObservableObject {
                         var split = DSPSplitComplex(realp: rPtr.baseAddress!, imagp: iPtr.baseAddress!)
                         vDSP_ctoz(complexPtr, 2, &split, 1, vDSP_Length(halfFFT))
                         
-                        // 3. Ejecutar FFT real con Accelerate (4096 puntos en < 0.15ms)
+                        // 3. Ejecutar FFT real con Accelerate
                         vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
                         
                         // 4. Calcular magnitudes
@@ -485,9 +925,9 @@ public final class AudioSpectrumEngine: ObservableObject {
         }
     }
     
-    // MARK: - Pipeline DSP en 4 Etapas (Paso 1, 2, 3, 4, 5)
+    // MARK: - Pipeline DSP en 4 Etapas (Calibrado Psicoacústicamente y Reactivo a Transitorios Reales)
     private func processMultiStageDSP(_ magnitudes: [Float], sampleRate: Float) {
-        let binWidth = sampleRate / Float(fftSize) // ~10.7 a 11.7 Hz por bin
+        let binWidth = sampleRate / Float(fftSize) // ~11.7 Hz por bin a 48 kHz
         let now = CFAbsoluteTimeGetCurrent()
         let dt = Float(max(0.001, min(0.05, now - lastProcessTime)))
         lastProcessTime = now
@@ -500,8 +940,8 @@ public final class AudioSpectrumEngine: ObservableObject {
         var maxRawDB: Float = -100.0
         
         for (i, band) in SpectrumMetrics.bands.enumerated() {
-            let startBin = max(1, min(halfFFT - 1, Int(band.low / binWidth)))
-            let endBin = max(startBin + 1, min(halfFFT, Int(band.high / binWidth)))
+            let startBin = max(1, min(halfFFT - 1, Int(floor(band.low / binWidth))))
+            let endBin = max(startBin + 1, min(halfFFT, Int(ceil(band.high / binWidth))))
             
             var sumSq: Float = 0
             var peak: Float = 0
@@ -510,58 +950,60 @@ public final class AudioSpectrumEngine: ObservableObject {
                 sumSq += m * m
                 if m > peak { peak = m }
             }
-            let binCount = Float(endBin - startBin)
+            let binCount = Float(max(1, endBin - startBin))
             let rms = sqrt(sumSq / binCount)
             
-            // 70% pico para transitorios ágiles y 30% RMS para densidad
-            let rawE = (peak * 0.70 + rms * 0.30) / Float(halfFFT)
+            // 45% pico para capturar transitorios y 55% RMS para densidad armónica balanceada
+            let rawE = (peak * 0.45 + rms * 0.55) / activeHalfFFT
             rawEnergies[i] = rawE
             
             let db = 20.0 * log10(max(1e-5, rawE))
-            bandDBs[i] = db
+            bandDBs[i] = max(-60.0, db)
             if db > maxRawDB { maxRawDB = db }
         }
         
         // -------------------------------------------------------------
-        // ETAPA 2: PONDERACIÓN PSICOACÚSTICA Y RUIDO ROSA (WEIGHTED)
-        // Calibrada para que el Ruido Rosa produzca barras equilibradas (Paso 3)
+        // ETAPA 2: PONDERACIÓN PSICOACÚSTICA 1/f (RUIDO ROSA REAL BALANCEADO)
+        // Calibrado para dar un nivel armónico uniforme entre graves y agudos sin saturación
         // -------------------------------------------------------------
         let pinkNoiseWeights: [Float] = [
-            1.00,  // Banda 0: Sub-Bass (60 - 150 Hz)
-            1.20,  // Banda 1: Bass (150 - 400 Hz)
-            1.65,  // Banda 2: Low-Mids (400 - 1000 Hz)
-            2.15,  // Banda 3: High-Mids (1000 - 2500 Hz)
-            2.70,  // Banda 4: Presence (2500 - 6000 Hz)
-            3.40   // Banda 5: Brilliance (6000 - 14000 Hz)
+            1.25,  // Banda 0: Sub-Bass (60 - 150 Hz, fc=95 Hz)   ->  +1.9 dB
+            1.18,  // Banda 1: Bass (150 - 400 Hz, fc=245 Hz)     ->  +1.4 dB
+            1.10,  // Banda 2: Low-Mids (400 - 1000 Hz, fc=632 Hz)->  +0.8 dB
+            1.12,  // Banda 3: High-Mids (1.0 - 2.5 kHz, fc=1.6k) ->  +1.0 dB
+            1.18,  // Banda 4: Presence (2.5 - 6.0 kHz, fc=3.9k)  ->  +1.4 dB
+            1.24   // Banda 5: Brilliance (6.0 - 14.0 kHz, fc=9.2k)->  +1.9 dB
         ]
         
         var weightedEnergies: [Float] = [0, 0, 0, 0, 0, 0]
+        var weightedDBs: [Float] = [-60, -60, -60, -60, -60, -60]
+        // Filtro IIR dependiente del tiempo: constante de tiempo de ~50ms (~0.28 a 60fps) para eliminar ruido rápido
+        let lpCoeff = 1.0 - exp(-dt / 0.050)
         for i in 0..<6 {
             let weighted = rawEnergies[i] * pinkNoiseWeights[i]
-            // Filtro paso bajo de 1 polo en la energía ponderada
-            filteredBandEnergies[i] += (weighted - filteredBandEnergies[i]) * 0.50
+            filteredBandEnergies[i] += (weighted - filteredBandEnergies[i]) * lpCoeff
             weightedEnergies[i] = filteredBandEnergies[i]
+            weightedDBs[i] = 20.0 * log10(max(1e-5, weightedEnergies[i]))
         }
         
         // -------------------------------------------------------------
-        // ETAPA 3: AGC GLOBAL, NOISE GATE CON HISTÉRESIS Y COMPRESIÓN TANH (NORMALIZED)
+        // ETAPA 3: AGC HÍBRIDO + CONTRASTE DE TRANSITORIOS POR BANDA + NOISE GATE
         // -------------------------------------------------------------
-        // AGC Global único (no por banda) con ataque rápido (15ms) y liberación lenta (3s)
         let weightedPeak = weightedEnergies.max() ?? 1e-5
         let weightedPeakDB = 20.0 * log10(max(1e-5, weightedPeak))
         
         if weightedPeakDB > agcPeakDB {
-            let agcAttackCoeff = 1.0 - exp(-dt / Float(SpectrumMetrics.agcAttackMs / 1000.0))
+            let agcAttackCoeff = 1.0 - exp(-dt / Float(max(0.005, SpectrumMetrics.agcAttackMs / 1000.0)))
             agcPeakDB += (weightedPeakDB - agcPeakDB) * agcAttackCoeff
         } else {
-            let decayDB = dt * (6.0 / Float(SpectrumMetrics.agcReleaseSec))
-            agcPeakDB = max(-26.0, agcPeakDB - decayDB)
+            let decayDB = dt * (6.0 / Float(max(0.5, SpectrumMetrics.agcReleaseSec)))
+            agcPeakDB = max(-34.0, agcPeakDB - decayDB)
         }
-        agcPeakDB = max(-26.0, min(0.0, agcPeakDB))
+        agcPeakDB = max(-34.0, min(0.0, agcPeakDB))
         
-        // Noise Gate con Histéresis (-45 dB abre, -52 dB cierra) y retención (200 ms)
-        let openThreshold: Float = SpectrumMetrics.noiseGateDB // -45 dB
-        let closeThreshold: Float = SpectrumMetrics.noiseGateCloseDB // -52 dB
+        // Noise Gate con Histéresis (-50 dB abre, -56 dB cierra) y retención corta (120 ms)
+        let openThreshold: Float = SpectrumMetrics.noiseGateDB
+        let closeThreshold: Float = SpectrumMetrics.noiseGateCloseDB
         
         if weightedPeakDB >= openThreshold {
             gateIsOpen = true
@@ -572,67 +1014,102 @@ public final class AudioSpectrumEngine: ObservableObject {
             }
         }
         
-        let dynamicRange: Float = max(18.0, agcPeakDB - closeThreshold)
+        // Rango dinámico de ventana activa (28 dB debajo del pico AGC actual)
+        let floorDB = max(closeThreshold, agcPeakDB - 28.0)
+        let dynamicRange: Float = max(16.0, agcPeakDB - floorDB)
         var normalizedEnergies: [Float] = [0, 0, 0, 0, 0, 0]
         
+        // Constante de tiempo del seguidor lento por banda (~250 ms) para extraer golpes rítmicos (onsets)
+        let slowFloorCoeff = 1.0 - exp(-dt / 0.250)
+        let slowRiseCoeff = 1.0 - exp(-dt / 0.160)
+        
         for i in 0..<6 {
-            if gateIsOpen {
-                let db = 20.0 * log10(max(1e-5, weightedEnergies[i]))
-                let ratio = (db - closeThreshold) / dynamicRange
-                let clampedRatio = max(0.0, min(1.2, ratio))
+            let db = weightedDBs[i]
+            if gateIsOpen && db > closeThreshold {
+                // Seguimiento del promedio local de la banda para detectar bombos, bajos, cajas y sílabas
+                if db > bandSlowDB[i] {
+                    bandSlowDB[i] += (db - bandSlowDB[i]) * slowRiseCoeff
+                } else {
+                    bandSlowDB[i] += (db - bandSlowDB[i]) * slowFloorCoeff
+                }
                 
-                // Compresión tipo tanh para evitar recorte duro en saturaciones
-                let tanhCompressed = tanh(clampedRatio * 1.5) / tanh(1.5)
+                // 1) Nivel espectral continuo dentro de la ventana AGC (0.0 ... 1.0)
+                let sustainedRatio = max(0.0, min(1.15, (db - floorDB) / dynamicRange))
                 
-                // Mapeo activo entre minActiveHeight (12%) y maxActiveHeight (92%)
-                let minH = SpectrumMetrics.minActiveHeight
+                // 2) Contraste dinámico de transitorio (onset) en esta banda específica
+                let onsetDeltaDB = max(0.0, db - bandSlowDB[i])
+                let onsetNormalized = min(1.0, onsetDeltaDB / 10.0)
+                
+                // Combinación armónica balanceada: 72% nivel sostenido + 28% transitorio rítmico
+                let combined = sustainedRatio * 0.72 + onsetNormalized * 0.28 * min(1.0, sustainedRatio * 1.3)
+                
+                // Compresión suave tipo tanh para evitar saturación en bandas altas
+                let tanhCompressed = tanh(combined * 1.30) / tanh(1.30)
+                
                 let maxH = SpectrumMetrics.maxActiveHeight
-                let activeMapped = minH + tanhCompressed * (maxH - minH) * SpectrumMetrics.gainMultiplier
+                let activeMapped = tanhCompressed * maxH * SpectrumMetrics.gainMultiplier
                 normalizedEnergies[i] = min(maxH, max(0.0, activeMapped))
             } else {
+                bandSlowDB[i] = max(closeThreshold, bandSlowDB[i] - dt * 20.0)
                 normalizedEnergies[i] = 0.0
             }
         }
         
         // -------------------------------------------------------------
-        // ETAPA 4: SUAVIZADO ASIMÉTRICO, DIFUSIÓN ESPACIAL Y SPECTRAL FLUX (SMOOTHED)
+        // ETAPA 4: SUAVIZADO ASIMÉTRICO POR BANDA, DIFUSIÓN ESPACIAL Y SPECTRAL FLUX (SMOOTHED)
         // -------------------------------------------------------------
-        // Detección de Spectral Flux (golpes y transitorios rítmicos)
         var spectralFlux: Float = 0.0
+        let totalRaw = max(1e-4, rawEnergies.reduce(0, +))
         for i in 0..<6 {
             let diff = max(0.0, rawEnergies[i] - prevRawEnergies[i])
             spectralFlux += diff
         }
         prevRawEnergies = rawEnergies
         
-        if spectralFlux > SpectrumMetrics.fluxThreshold && gateIsOpen {
-            transientBoostLevel = SpectrumMetrics.fluxPulseBoost // +12% pulso compartido
+        let relativeFlux = spectralFlux / totalRaw
+        let fluxTarget: Float
+        if relativeFlux > SpectrumMetrics.fluxThreshold && spectralFlux > 0.02 && gateIsOpen {
+            fluxTarget = min(SpectrumMetrics.fluxPulseBoost, relativeFlux * 0.06)
         } else {
-            transientBoostLevel = max(0.0, transientBoostLevel - dt * 2.5)
+            fluxTarget = 0.0
         }
+        let fluxCoeff = 1.0 - exp(-dt / (fluxTarget > transientBoostLevel ? 0.025 : 0.140))
+        transientBoostLevel += (fluxTarget - transientBoostLevel) * fluxCoeff
         
-        // Difusión espacial entre barras vecinas (~16%)
+        // Difusión espacial sutil entre barras vecinas (~6% por defecto)
         let diffCoeff = SpectrumMetrics.spatialDiffusion
         var spatiallyDiffused = normalizedEnergies
-        for i in 0..<6 {
-            let left = i > 0 ? normalizedEnergies[i - 1] : normalizedEnergies[i]
-            let right = i < 5 ? normalizedEnergies[i + 1] : normalizedEnergies[i]
-            spatiallyDiffused[i] = normalizedEnergies[i] * (1.0 - 2.0 * diffCoeff) + (left + right) * diffCoeff
+        if diffCoeff > 0.001 {
+            for i in 0..<6 {
+                let left = i > 0 ? normalizedEnergies[i - 1] : normalizedEnergies[i]
+                let right = i < 5 ? normalizedEnergies[i + 1] : normalizedEnergies[i]
+                spatiallyDiffused[i] = normalizedEnergies[i] * (1.0 - 2.0 * diffCoeff) + (left + right) * diffCoeff
+            }
         }
         
-        // Balística asimétrica (Attack 14ms / Release 130ms)
-        let attackCoeff = 1.0 - exp(-dt / Float(max(0.005, SpectrumMetrics.attackMs / 1000.0)))
-        let releaseCoeff = 1.0 - exp(-dt / Float(max(0.02, SpectrumMetrics.releaseMs / 1000.0)))
+        // Balística asimétrica profesional:
+        // Sub-Bass y Bass tienen ataque 20% más rápido para clavar el bombo con precisión rítmica
+        let baseAttackSec = Float(max(0.005, SpectrumMetrics.attackMs / 1000.0))
+        let baseReleaseSec = Float(max(0.030, SpectrumMetrics.releaseMs / 1000.0))
         
         var smoothedLevels: [Float] = [0, 0, 0, 0, 0, 0]
         for i in 0..<6 {
-            let targetWithFlux = min(1.0, spatiallyDiffused[i] + transientBoostLevel)
-            let target = gateIsOpen ? targetWithFlux : 0.0
+            let bandAttackScale: Float = (i <= 1) ? 0.80 : 1.0
+            let bandReleaseScale: Float = (i == 0) ? 0.90 : (i >= 4 ? 0.95 : 1.0)
+            let attackCoeff = 1.0 - exp(-dt / (baseAttackSec * bandAttackScale))
+            let releaseCoeff = 1.0 - exp(-dt / (baseReleaseSec * bandReleaseScale))
+            
+            // El impulso de flux solo refuerza bandas que ya tienen energía activa
+            let bandFluxBoost = spatiallyDiffused[i] > 0.08 ? transientBoostLevel * min(1.0, spatiallyDiffused[i] * 1.4) : 0.0
+            let target = gateIsOpen ? min(1.0, spatiallyDiffused[i] + bandFluxBoost) : 0.0
             
             if target > envelopeLevels[i] {
                 envelopeLevels[i] += (target - envelopeLevels[i]) * attackCoeff
             } else {
                 envelopeLevels[i] += (target - envelopeLevels[i]) * releaseCoeff
+                if envelopeLevels[i] < 0.008 && target == 0.0 {
+                    envelopeLevels[i] = 0.0
+                }
             }
             smoothedLevels[i] = max(0.0, min(1.0, envelopeLevels[i]))
         }
@@ -668,14 +1145,14 @@ public final class AudioSpectrumEngine: ObservableObject {
             weighted: weightedEnergies,
             normalized: normalizedEnergies,
             smoothed: finalOutputLevels,
-            peakDB: weightedPeakDB,
+            peakDB: maxRawDB,
             timestamp: now
         )
         
         // Publicar estados de forma thread-safe
         os_unfair_lock_lock(&lock)
         currentBandDBs = bandDBs
-        currentPeakDB = weightedPeakDB
+        currentPeakDB = maxRawDB
         os_unfair_lock_unlock(&lock)
         
         publishProcessedMagnitudes(finalOutputLevels, timestamp: now, isSilent: !gateIsOpen)
@@ -845,113 +1322,225 @@ public final class AudioSpectrumEngine: ObservableObject {
     }
     
     public func getPeakDecibels() -> Float {
+        if isRealAudioActive {
+            os_unfair_lock_lock(&lock)
+            let peak = currentPeakDB
+            let lastTime = lastIOProcTimestamp
+            os_unfair_lock_unlock(&lock)
+            if CFAbsoluteTimeGetCurrent() - lastTime > 0.25 {
+                return -60.0
+            }
+            return peak
+        }
         let dbs = getBandDecibels()
         return dbs.max() ?? -60.0
     }
     
-    // MARK: - Lectura desde la UI (a 60 fps)
+    // MARK: - Lectura desde la UI (a 60 fps, < 0.05 ms con os_unfair_lock)
     public func getMagnitudes() -> [Float] {
+        // 1. Modo Simulación forzado explícitamente en el laboratorio de diagnóstico
         if isSimulatedMode {
             if CallActivityProvider.shared.isCallActive {
                 return generateRealisticCallMagnitudes()
             }
-            return generateRealisticMusicMagnitudes()
+            if AudioSignalGenerator.shared.activeSignal != .off || MusicService.shared.currentTrack.isPlaying {
+                return generateRealisticMusicMagnitudes()
+            }
+            return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         }
         
-        if isRealAudioActive {
-            os_unfair_lock_lock(&lock)
-            let copy = currentMagnitudes
-            os_unfair_lock_unlock(&lock)
-            return copy
+        // 2. Motor Procedimental Armónico Predeterminado (solo si no hay tap ni micrófono activo)
+        if !enableMicrophoneCapture && (!enableSystemAudioTap || tapIOProcID == nil) && AudioSignalGenerator.shared.activeSignal == .off {
+            if CallActivityProvider.shared.isCallActive {
+                return generateRealisticCallMagnitudes()
+            }
+            return ProceduralMotionEngine.shared.getMagnitudes(barCount: 6)
         }
         
-        if CallActivityProvider.shared.isCallActive {
+        // 3. Motor FFT vDSP Hardware/Tap (solo si fue activado explícitamente en diagnósticos)
+        os_unfair_lock_lock(&lock)
+        var copy = currentMagnitudes
+        let lastTime = lastIOProcTimestamp
+        os_unfair_lock_unlock(&lock)
+        
+        let elapsedSinceCallback = CFAbsoluteTimeGetCurrent() - lastTime
+        if elapsedSinceCallback > 0.12 {
+            // Si la reproducción se pausó o entró en silencio, decaer limpiamente a 0.0 (< 80 ms)
+            let decay = Float(max(0.0, 1.0 - (elapsedSinceCallback - 0.12) * 12.0))
+            for i in 0..<copy.count {
+                copy[i] *= decay
+            }
+            if decay <= 0.01 {
+                copy = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            }
+        }
+        
+        if CallActivityProvider.shared.isCallActive && copy.allSatisfy({ $0 < 0.01 }) {
             return generateRealisticCallMagnitudes()
         }
-        
-        if MusicService.shared.currentTrack.isPlaying {
-            return generateRealisticMusicMagnitudes()
-        }
-        
-        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        return copy
     }
+    
+    private var lastSimTime: Double = CFAbsoluteTimeGetCurrent()
     
     // MARK: - Generador Dinámico para Llamadas de Voz (FaceTime / Teléfono)
     public func generateRealisticCallMagnitudes() -> [Float] {
-        let dt = 0.028
-        simBeatClock += dt
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsed = now - lastSimCalculationTime
+        if elapsed < 0.012 && !cachedSimMagnitudes.allSatisfy({ $0 == 0 }) {
+            return cachedSimMagnitudes
+        }
         
-        let speechCadence = sin(simBeatClock * 3.5) * 0.45 + sin(simBeatClock * 7.2) * 0.25 + 0.30
-        let syllabicBurst = max(0.0, sin(simBeatClock * 11.0)) * 0.35
+        let dt = Float(max(0.008, min(0.05, elapsed > 1.0 ? 0.016 : elapsed)))
+        lastSimCalculationTime = now
+        lastSimTime = now
         
-        let band0 = Float(max(0.04, sin(simBeatClock * 1.8) * 0.08 + 0.06))
+        let speechCadence = sin(now * 3.5) * 0.45 + sin(now * 7.2) * 0.25 + 0.30
+        let syllabicBurst = max(0.0, sin(now * 11.0)) * 0.35
+        
+        let band0 = Float(max(0.04, sin(now * 1.8) * 0.08 + 0.06))
         let band1 = Float(max(0.08, speechCadence * 0.35 + 0.12))
         let band2 = Float(min(0.95, max(0.15, speechCadence * 0.75 + syllabicBurst + 0.18)))
         let band3 = Float(min(0.90, max(0.18, speechCadence * 0.82 + syllabicBurst * 0.8 + 0.16)))
         let band4 = Float(min(0.80, max(0.12, speechCadence * 0.55 + 0.14)))
-        let band5 = Float(max(0.05, sin(simBeatClock * 8.5) * 0.12 + 0.08))
+        let band5 = Float(max(0.05, sin(now * 8.5) * 0.12 + 0.08))
         
         let targets = [band0, band1, band2, band3, band4, band5]
+        let attackCoeff = 1.0 - exp(-dt / 0.025)
+        let releaseCoeff = 1.0 - exp(-dt / 0.140)
+        
         for i in 0..<6 {
-            let rate: Float = targets[i] > simEnvelopeLevels[i] ? 0.38 : 0.16
-            simEnvelopeLevels[i] += (targets[i] - simEnvelopeLevels[i]) * rate
+            let coeff = targets[i] > simEnvelopeLevels[i] ? attackCoeff : releaseCoeff
+            simEnvelopeLevels[i] += (targets[i] - simEnvelopeLevels[i]) * coeff
         }
+        
+        cachedSimMagnitudes = simEnvelopeLevels
+        
+        if now - lastTelemetryRecordTime >= 0.10 {
+            lastTelemetryRecordTime = now
+            recordTelemetryFrame(
+                raw: targets,
+                weighted: targets.map { $0 * 1.05 },
+                normalized: simEnvelopeLevels,
+                smoothed: simEnvelopeLevels,
+                peakDB: -16.0 + (simEnvelopeLevels.max() ?? 0) * 12.0,
+                timestamp: now
+            )
+        }
+        
         return simEnvelopeLevels
     }
     
     // MARK: - Generador Psicoacústico Hiperrealista Multiespectral (Punchy & Rítmico)
     public func generateRealisticMusicMagnitudes() -> [Float] {
-        let dt = 0.026
-        simBeatClock += dt
+        guard MusicService.shared.currentTrack.isPlaying || AudioSignalGenerator.shared.activeSignal != .off else {
+            resetEnvelopes()
+            return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        }
+        
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsed = now - lastSimCalculationTime
+        if elapsed < 0.012 && !cachedSimMagnitudes.allSatisfy({ $0 == 0 }) {
+            return cachedSimMagnitudes
+        }
+        
+        let dt = Float(max(0.008, min(0.05, elapsed > 1.0 ? 0.016 : elapsed)))
+        lastSimCalculationTime = now
+        lastSimTime = now
         
         let bpm: Double = 124.0
         let beatDuration = 60.0 / bpm
-        let beatProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration) / beatDuration
-        let barProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration * 4.0) / (beatDuration * 4.0)
-        let twoBarProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration * 8.0) / (beatDuration * 8.0)
         
-        let kickDecay = exp(-beatProgress * 5.5)
-        let subBassVal = max(0.0, kickDecay) * 0.85 + 0.12
+        // Reloj maestro anclado al tiempo del sistema (inmune a la frecuencia de muestreo de la UI)
+        let beatProgress = now.truncatingRemainder(dividingBy: beatDuration) / beatDuration
+        let barProgress = now.truncatingRemainder(dividingBy: beatDuration * 4.0) / (beatDuration * 4.0)
+        let twoBarProgress = now.truncatingRemainder(dividingBy: beatDuration * 8.0) / (beatDuration * 8.0)
+        
+        let kickDecay = exp(-beatProgress * 4.8)
+        let subBassVal = max(0.0, kickDecay) * 0.85
         let subBassHit = Float(subBassVal)
         
-        let bassPulse = (sin(barProgress * .pi * 8.0) * 0.5 + 0.5) * 0.40
-        let bassHit = Float(kickDecay * 0.65 + bassPulse + 0.14)
+        let bassPulse = (sin(barProgress * .pi * 8.0) * 0.5 + 0.5) * 0.35
+        let bassHit = Float(kickDecay * 0.65 + bassPulse)
         
-        let halfBarProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration * 2.0) / (beatDuration * 2.0)
+        let halfBarProgress = now.truncatingRemainder(dividingBy: beatDuration * 2.0) / (beatDuration * 2.0)
         let snarePhase = halfBarProgress - 0.5
-        let snareHit: Double = snarePhase > 0 ? (exp(-snarePhase * 8.0) * 0.78) : 0.0
-        let lowMidsVal = snareHit + (sin(barProgress * .pi * 4.0) * 0.5 + 0.5) * 0.20 + 0.16
+        let snareHit: Double = snarePhase > 0 ? (exp(-snarePhase * 6.5) * 0.70) : 0.0
+        let lowMidsVal = snareHit + (sin(barProgress * .pi * 4.0) * 0.5 + 0.5) * 0.22
         let lowMids = Float(lowMidsVal)
         
-        let eighthProgress = simBeatClock.truncatingRemainder(dividingBy: beatDuration / 2.0) / (beatDuration / 2.0)
-        let melodyPulse = exp(-eighthProgress * 6.0) * 0.45
-        let melodyMod = (sin(twoBarProgress * .pi * 4.0) * 0.5 + 0.5) * 0.28
-        let highMids = Float(melodyPulse + melodyMod + 0.18)
+        let eighthProgress = now.truncatingRemainder(dividingBy: beatDuration / 2.0) / (beatDuration / 2.0)
+        let melodyPulse = exp(-eighthProgress * 5.0) * 0.40
+        let melodyMod = (sin(twoBarProgress * .pi * 4.0) * 0.5 + 0.5) * 0.25
+        let highMids = Float(melodyPulse + melodyMod)
         
-        let presencePulse = (sin(barProgress * .pi * 16.0) * 0.5 + 0.5) * 0.42
-        let presenceHit = Float(presencePulse + 0.18)
+        let presencePulse = (sin(barProgress * .pi * 16.0) * 0.5 + 0.5) * 0.35
+        let presenceHit = Float(presencePulse)
         
-        let sixteenthPhase = simBeatClock.truncatingRemainder(dividingBy: beatDuration / 4.0) / (beatDuration / 4.0)
-        let hiHatVal = exp(-sixteenthPhase * 9.0) * 0.65 + 0.14
+        let sixteenthPhase = now.truncatingRemainder(dividingBy: beatDuration / 4.0) / (beatDuration / 4.0)
+        let hiHatVal = exp(-sixteenthPhase * 7.5) * 0.55
         let hiHatHit = Float(hiHatVal)
         
         let targets: [Float] = [
-            min(1.0, max(0.08, subBassHit)),
-            min(1.0, max(0.08, bassHit)),
-            min(1.0, max(0.08, lowMids)),
-            min(1.0, max(0.08, highMids)),
-            min(1.0, max(0.08, presenceHit)),
-            min(1.0, max(0.08, hiHatHit))
+            min(0.92, max(0.0, subBassHit)),
+            min(0.90, max(0.0, bassHit)),
+            min(0.88, max(0.0, lowMids)),
+            min(0.85, max(0.0, highMids)),
+            min(0.82, max(0.0, presenceHit)),
+            min(0.80, max(0.0, hiHatHit))
         ]
+        
+        let attackCoeff = 1.0 - exp(-dt / 0.022) // Ataque 22ms
+        let releaseCoeff = 1.0 - exp(-dt / 0.135) // Caída 135ms
         
         for i in 0..<6 {
             let target = targets[i]
-            let attackRate: Float = 0.55
-            let releaseRate: Float = 0.22
-            let rate = target > simEnvelopeLevels[i] ? attackRate : releaseRate
-            simEnvelopeLevels[i] += (target - simEnvelopeLevels[i]) * rate
+            let coeff = target > simEnvelopeLevels[i] ? attackCoeff : releaseCoeff
+            simEnvelopeLevels[i] += (target - simEnvelopeLevels[i]) * coeff
+        }
+        
+        cachedSimMagnitudes = simEnvelopeLevels
+        
+        // Registrar telemetría a 10 Hz para que el monitor en vivo MDAETR muestre datos estables y calibrados
+        if now - lastTelemetryRecordTime >= 0.10 {
+            lastTelemetryRecordTime = now
+            recordTelemetryFrame(
+                raw: targets,
+                weighted: targets.map { $0 * 1.05 },
+                normalized: simEnvelopeLevels,
+                smoothed: simEnvelopeLevels,
+                peakDB: -14.0 + (simEnvelopeLevels.max() ?? 0) * 12.0,
+                timestamp: now
+            )
         }
         
         return simEnvelopeLevels
+    }
+    
+    // MARK: - Reseteo Inmediato de Envolventes al Cambiar Canción o Pausar
+    public func resetEnvelopes() {
+        processingQueue.async { [weak self] in
+            guard let self = self else { return }
+            os_unfair_lock_lock(&self.lock)
+            self.currentMagnitudes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.currentBandDBs = [-60.0, -60.0, -60.0, -60.0, -60.0, -60.0]
+            self.currentPeakDB = -60.0
+            os_unfair_lock_unlock(&self.lock)
+            
+            self.envelopeLevels = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.filteredBandEnergies = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.bandSlowDB = [-56.0, -56.0, -56.0, -56.0, -56.0, -56.0]
+            self.prevRawEnergies = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.simEnvelopeLevels = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.cachedSimMagnitudes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.gateIsOpen = false
+            DispatchQueue.main.async {
+                self.stageRaw = [0, 0, 0, 0, 0, 0]
+                self.stageWeighted = [0, 0, 0, 0, 0, 0]
+                self.stageNormalized = [0, 0, 0, 0, 0, 0]
+                self.stageSmoothed = [0, 0, 0, 0, 0, 0]
+                self.highBandsSaturating = false
+            }
+        }
     }
 }

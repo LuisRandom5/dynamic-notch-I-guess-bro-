@@ -97,6 +97,8 @@ public final class AudioSignalGenerator: ObservableObject {
             let currentVol = self.volume
             let signal = self.activeSignal
             
+            var monoBlock = [Float](repeating: 0.0, count: Int(frameCount))
+            
             for frame in 0..<Int(frameCount) {
                 var sample: Float = 0.0
                 
@@ -167,11 +169,14 @@ public final class AudioSignalGenerator: ObservableObject {
                     }
                 }
                 
+                monoBlock[frame] = sample
                 for buffer in ablPointer {
                     let ptr = buffer.mData?.assumingMemoryBound(to: Float.self)
                     ptr?[frame] = sample
                 }
             }
+            
+            AudioSpectrumEngine.shared.ingestDirectPCM(samples: monoBlock, sampleRate: Float(self.sampleRate))
             
             return noErr
         }

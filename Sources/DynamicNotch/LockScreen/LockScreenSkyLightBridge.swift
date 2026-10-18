@@ -177,12 +177,6 @@ public final class LockScreenSkyLightBridge: ObservableObject {
         isScreenLocked = true
         print("🔒 [LockScreenSkyLightBridge] Pantalla bloqueada detectada (com.apple.screenIsLocked).")
         
-        // Si el usuario tenía armada la prueba del Paso 0 o está activada:
-        if AppState.shared.isLockScreenTestArmed {
-            print("🧪 [LockScreenSkyLightBridge] Prueba armada: mostrando panel de prueba en pantalla bloqueada.")
-            showTestPanel()
-            AppState.shared.isLockScreenTestArmed = false
-        }
     }
     
     private func handleScreenUnlocked() {

@@ -5,9 +5,11 @@ import SceneKit
 // MARK: - AnimatedGIFView (Reproductor nativo de GIFs en bucle para AppKit/SwiftUI)
 public struct AnimatedGIFView: NSViewRepresentable {
     public let gifURL: URL
+    public let size: CGSize
     
-    public init(gifURL: URL) {
+    public init(gifURL: URL, size: CGSize = CGSize(width: 30, height: 26)) {
         self.gifURL = gifURL
+        self.size = size
     }
     
     public func makeNSView(context: Context) -> NSImageView {
@@ -15,6 +17,10 @@ public struct AnimatedGIFView: NSViewRepresentable {
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.animates = true
         imageView.canDrawSubviewsIntoLayer = true
+        imageView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         if let image = NSImage(contentsOf: gifURL) {
             imageView.image = image
         }
@@ -27,20 +33,24 @@ public struct AnimatedGIFView: NSViewRepresentable {
             nsView.animates = true
         }
     }
+    
+    public func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSImageView, context: Context) -> CGSize? {
+        return size
+    }
 }
 
 // MARK: - ActivityAirPodsPillView (Alas Compactas de Conexión de AirPods en el Notch)
 /// Diseño compacto en alas simétricas a los lados del Notch:
-/// - Ala izquierda: Animación de los AirPods girando en bucle (AirPods 3/4/5 o Pro 2).
+/// - Ala izquierda: Animación de los AirPods girando en bucle (AirPods 3/4/5 o Pro 2) ajustada a escala miniatura.
 /// - Espacio central: Sensor de cámara del MacBook.
-/// - Ala derecha: Círculo verde con la batería y porcentaje.
+/// - Ala derecha: Círculo de batería en verde (>30%) o rojo (<=29%), limpio sin números ni símbolo de rayo.
 public struct ActivityAirPodsPillView: View {
     public let activity: LiveActivity
     @EnvironmentObject var screenService: ScreenService
     @ObservedObject var center = ActivityCenter.shared
     
     @State private var batteryRingProgress: CGFloat = 0.0
-    private let wingWidth: CGFloat = 66
+    private let wingWidth: CGFloat = 52
     
     // Verde Apple (#30D158)
     private let appleBatteryGreen = Color(red: 0x30 / 255.0, green: 0xD1 / 255.0, blue: 0x58 / 255.0)
@@ -103,14 +113,14 @@ public struct ActivityAirPodsPillView: View {
     
     public var body: some View {
         HStack(spacing: 0) {
-            // Ala Izquierda (Leading): Animación de los AirPods girando en bucle
+            // Ala Izquierda (Leading): Animación de los AirPods girando en bucle ampliada a tamaño óptimo (30x26)
             ZStack {
                 if let url = animationURL {
-                    AnimatedGIFView(gifURL: url)
-                        .frame(width: 42, height: 26)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    AnimatedGIFView(gifURL: url, size: CGSize(width: 30, height: 26))
+                        .frame(width: 30, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 4.0, style: .continuous))
                 } else {
-                    Image(systemName: "airpodspro")
+                    Image(systemName: BluetoothAudioService.shared.currentAirPodsSymbol)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
                 }
@@ -125,31 +135,20 @@ public struct ActivityAirPodsPillView: View {
                     height: screenService.currentGeometry.height
                 )
             
-            // Ala Derecha (Trailing): Anillo de batería circular verde con porcentaje
-            HStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.18), lineWidth: 2.2)
-                        .frame(width: 17, height: 17)
-                    
-                    Circle()
-                        .trim(from: 0, to: (CGFloat(batteryLevel) / 100.0) * batteryRingProgress)
-                        .stroke(
-                            batteryColor,
-                            style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 17, height: 17)
-                    
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundColor(batteryColor)
-                }
+            // Ala Derecha (Trailing): Círculo de batería en verde (>30%) o rojo (<=29%), limpio sin números ni rayo
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 2.2)
+                    .frame(width: 15, height: 15)
                 
-                Text("\(batteryLevel)%")
-                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundColor(.white)
+                Circle()
+                    .trim(from: 0, to: (CGFloat(batteryLevel) / 100.0) * batteryRingProgress)
+                    .stroke(
+                        batteryColor,
+                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 15, height: 15)
             }
             .frame(width: wingWidth, height: screenService.currentGeometry.height)
             .contentShape(Rectangle())

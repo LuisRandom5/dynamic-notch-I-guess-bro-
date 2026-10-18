@@ -10,26 +10,32 @@ RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
 echo "🔨 Compilando Dynamic Notch en Swift..."
 cd "${PROJECT_DIR}"
+if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+fi
+export COPYFILE_DISABLE=1
 export CLANG_MODULE_CACHE_PATH="${PROJECT_DIR}/.build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="${PROJECT_DIR}/.build/ModuleCache"
 mkdir -p "${CLANG_MODULE_CACHE_PATH}"
 swift build --disable-sandbox -c release -Xcc -fmodules-cache-path="${CLANG_MODULE_CACHE_PATH}"
 
 echo "📦 Empaquetando DynamicNotch.app..."
-mkdir -p "${MACOS_DIR}"
-mkdir -p "${RESOURCES_DIR}"
+STAGE_BUNDLE="/tmp/DynamicNotch_stage.app"
+rm -rf "${STAGE_BUNDLE}"
+mkdir -p "${STAGE_BUNDLE}/Contents/MacOS"
+mkdir -p "${STAGE_BUNDLE}/Contents/Resources"
 
 # Copy binary
-cp -f "${PROJECT_DIR}/.build/release/DynamicNotch" "${MACOS_DIR}/DynamicNotch"
-chmod +x "${MACOS_DIR}/DynamicNotch"
+cp -X -f "${PROJECT_DIR}/.build/release/DynamicNotch" "${STAGE_BUNDLE}/Contents/MacOS/DynamicNotch"
+chmod +x "${STAGE_BUNDLE}/Contents/MacOS/DynamicNotch"
 
-# Copy resources
+# Copy resources without extended attributes
 if [ -d "${PROJECT_DIR}/Resources" ]; then
-    cp -rf "${PROJECT_DIR}/Resources/"* "${RESOURCES_DIR}/"
+    cp -X -rf "${PROJECT_DIR}/Resources/"* "${STAGE_BUNDLE}/Contents/Resources/"
 fi
 
 # Create Info.plist
-cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
+cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -73,8 +79,17 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
 EOF
 
 echo "✍️ Firmando app localmente con Designated Requirement estable..."
-dot_clean "${APP_BUNDLE}" 2>/dev/null || true
-xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
-codesign --force --deep -s - --entitlements "${PROJECT_DIR}/entitlements.plist" -r='designated => identifier "com.luisrandom.DynamicNotch"' "${APP_BUNDLE}"
+find "${STAGE_BUNDLE}" -name '._*' -delete 2>/dev/null || true
+xattr -cr "${STAGE_BUNDLE}" 2>/dev/null || true
+codesign --force --deep -s - --entitlements "${PROJECT_DIR}/entitlements.plist" -r='designated => identifier "com.luisrandom.DynamicNotch"' "${STAGE_BUNDLE}"
+
+rm -rf "${APP_BUNDLE}"
+cp -R "${STAGE_BUNDLE}" "${APP_BUNDLE}"
+rm -rf "${STAGE_BUNDLE}"
 
 echo "✅ DynamicNotch.app creada y firmada exitosamente en: ${APP_BUNDLE}"
+killall -9 DynamicNotch 2>/dev/null || true
+sleep 0.3
+nohup "${MACOS_DIR}/DynamicNotch" >/dev/null 2>&1 &
+disown 2>/dev/null || true
+echo "🚀 DynamicNotch iniciado en segundo plano (instancia única)."

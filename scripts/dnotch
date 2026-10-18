@@ -1,0 +1,297 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# dnotch — Dynamic Notch AI Assistant & CLI Bridge
+# Permite a herramientas de desarrollo, agentes (Antigravity) y terminales
+# interactuar con el Notch físico de macOS con permisos, respuestas y avisos.
+# ==============================================================================
+
+PORT="48123"
+BASE_URL="http://127.0.0.1:${PORT}"
+
+show_help() {
+    cat <<EOF
+Uso: dnotch <comando> [argumentos]
+
+Comandos disponibles:
+  notify <título> [mensaje] [duración_seg]
+      Muestra una notificación pasiva con orbe de IA que se auto-descarta.
+      Ej: dnotch notify "Build Finalizado" "Dynamic Notch compiló exitosamente" 5
+
+  perm <comando> [mensaje] [título]
+      Solicita permiso interactivo para ejecutar un comando de terminal.
+      Muestra la tarjeta de terminal monospace y botones [Rechazar] y [Permitir].
+      Retorna 0 si fue permitido, 1 si fue rechazado o descartado.
+      Ej: dnotch perm "git push origin main" "¿Subir cambios al remoto?"
+
+  ask <pregunta> [opciones_separadas_por_coma] [título]
+      Realiza una consulta con respuesta rápida de texto o selección múltiple.
+      Ej: dnotch ask "¿A qué entorno desplegamos?" "Staging,Producción"
+
+  canvas
+      Abre o cierra el Canvas Dinámico de Música en el escritorio con fondo ambiental y letras.
+      Ej: dnotch canvas
+
+  progress [paso_actual] [archivo] [nombre_ia] [tarea]
+      Despliega o actualiza el monitor HUD de trabajo de la IA en tiempo real (Imagen 2).
+      Ej: dnotch progress "Edit SyncEngine.swift" "Sources/.../SyncEngine.swift" "Claude" "Stale cart total"
+
+  finish
+      Marca la tarea de IA como completada (muestra ✓ Completado) y auto-colapsa el HUD.
+      Ej: dnotch finish
+
+  timer [duración_seg] [acción: start|pause|resume|cancel|stopwatch] [título] [card: true|false]
+      Inicia, pausa o cancela un temporizador dinámico real con anillo en la bolita.
+      Ej: dnotch timer 300 start "Temporizador" false
+
+  call [acción: start|incoming|end] [nombre] [contacto] [card: true|false]
+      Simula o controla llamadas (FaceTime / Celular) con botones circulares.
+      Ej: dnotch call start "FaceTime Audio" "Mamá" false
+
+  status
+      Verifica la conexión y el estado actual de Dynamic Notch.
+
+EOF
+}
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Verificar curl
+if ! command_exists curl; then
+    echo "Error: curl es requerido para comunicarse con Dynamic Notch." >&2
+    exit 2
+fi
+
+CMD="$1"
+shift || true
+
+case "$CMD" in
+    status)
+        RES=$(curl -s --connect-timeout 2 "${BASE_URL}/status" 2>/dev/null)
+        if [ $? -eq 0 ] && [ -n "$RES" ]; then
+            echo "🟢 Dynamic Notch IPC conectado en ${BASE_URL}"
+            echo "$RES"
+            exit 0
+        else
+            echo "🔴 Dynamic Notch IPC no está activo o la app no está en ejecución." >&2
+            exit 1
+        fi
+        ;;
+
+    canvas)
+        curl -s -X POST "${BASE_URL}/canvas" >/dev/null 2>&1
+        echo "🌌 Dynamic Music Canvas conmutado."
+        exit 0
+        ;;
+
+    progress)
+        STEP="${1:-"Edit SyncEngine.swift"}"
+        FILE="${2:-"Sources/.../SyncEngine.swift"}"
+        AGENT="${3:-"Claude"}"
+        TASK="${4:-"Stale cart total"}"
+        
+        PAYLOAD=$(cat <<EOF
+{
+  "event": "step",
+  "agent": "$AGENT",
+  "task": "$TASK",
+  "step": "$STEP",
+  "file": "$FILE",
+  "status": "Saving...",
+  "progress": 0.65,
+  "completedSteps": ["Read CartStore.swift", "Edit CartStore.swift"]
+}
+EOF
+)
+        curl -s -X POST "${BASE_URL}/progress" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
+        echo ""
+        exit 0
+        ;;
+
+    finish)
+        PAYLOAD='{"event":"finish","agent":"Claude","task":"Stale cart total","completed":true,"progress":1.0}'
+        curl -s -X POST "${BASE_URL}/progress" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
+        echo "✓ Progreso completado y notificado al Notch."
+        exit 0
+        ;;
+
+    hud)
+        ACTION="${1:-"toggle"}"
+        curl -s -X POST "${BASE_URL}/progress" \
+            -H "Content-Type: application/json" \
+            -d "{\"event\":\"${ACTION}\"}"
+        echo ""
+        exit 0
+        ;;
+
+    notify)
+        TITLE="${1:-"Antigravity"}"
+        MESSAGE="${2:-""}"
+        DURATION="${3:-"5.0"}"
+
+        # Escapar JSON básico
+        PAYLOAD=$(cat <<EOF
+{
+  "title": $(printf '%s' "$TITLE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+  "subtitle": "Notificación",
+  "message": $(printf '%s' "$MESSAGE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+  "duration": $DURATION
+}
+EOF
+)
+        curl -s -X POST "${BASE_URL}/notify" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
+        echo ""
+        exit 0
+        ;;
+
+    perm)
+        COMMAND_TEXT="${1:-""}"
+        MESSAGE="${2:-"¿Deseas autorizar la ejecución de este comando?"}"
+        TITLE="${3:-"Antigravity"}"
+
+        if [ -z "$COMMAND_TEXT" ]; then
+            echo "Error: Debes especificar el comando a autorizar." >&2
+            show_help
+            exit 2
+        fi
+
+        PAYLOAD=$(cat <<EOF
+{
+  "type": "permission",
+  "title": $(printf '%s' "$TITLE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+  "subtitle": "Permiso de Comando",
+  "message": $(printf '%s' "$MESSAGE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+  "command": $(printf '%s' "$COMMAND_TEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+  "enableTextReply": true,
+  "options": [
+    {"id": "deny", "label": "Rechazar", "isDestructive": true},
+    {"id": "allow", "label": "Permitir", "isPrimary": true}
+  ]
+}
+EOF
+)
+        RESPONSE=$(curl -s -X POST "${BASE_URL}/ask" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+        if [ -z "$RESPONSE" ]; then
+            echo "Error: No se recibió respuesta de Dynamic Notch." >&2
+            exit 1
+        fi
+
+        ACTION=$(echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("action", "unknown"))' 2>/dev/null)
+        REPLY=$(echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("reply", "") or "")' 2>/dev/null)
+
+        if [ "$ACTION" = "allow" ]; then
+            if [ -n "$REPLY" ]; then
+                echo "✅ Autorizado. Nota del usuario: $REPLY"
+            else
+                echo "✅ Autorizado por el usuario."
+            fi
+            exit 0
+        else
+            if [ -n "$REPLY" ]; then
+                echo "❌ Rechazado. Motivo del usuario: $REPLY"
+            else
+                echo "❌ Rechazado o descartado por el usuario ($ACTION)."
+            fi
+            exit 1
+        fi
+        ;;
+
+    ask)
+        QUESTION="${1:-""}"
+        RAW_OPTS="${2:-""}"
+        TITLE="${3:-"Antigravity"}"
+
+        if [ -z "$QUESTION" ]; then
+            echo "Error: Debes especificar la pregunta." >&2
+            show_help
+            exit 2
+        fi
+
+        PAYLOAD=$(python3 -c '
+import json, sys
+
+question = sys.argv[1]
+raw_opts = sys.argv[2]
+title = sys.argv[3]
+
+options = []
+if raw_opts:
+    items = [x.strip() for x in raw_opts.split(",") if x.strip()]
+    for i, it in enumerate(items):
+        options.append({
+            "id": it.lower().replace(" ", "_"),
+            "label": it,
+            "isPrimary": (i == len(items) - 1)
+        })
+else:
+    options = [
+        {"id": "submit", "label": "Enviar", "isPrimary": True}
+    ]
+
+payload = {
+    "type": "question",
+    "title": title,
+    "subtitle": "Consulta de IA",
+    "message": question,
+    "enableTextReply": True,
+    "options": options
+}
+print(json.dumps(payload))
+' "$QUESTION" "$RAW_OPTS" "$TITLE")
+
+        RESPONSE=$(curl -s -X POST "${BASE_URL}/ask" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+        if [ -z "$RESPONSE" ]; then
+            echo "Error: No se recibió respuesta de Dynamic Notch." >&2
+            exit 1
+        fi
+
+        ACTION=$(echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("action", "unknown"))' 2>/dev/null)
+        REPLY=$(echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("reply", "") or "")' 2>/dev/null)
+
+        echo "Opción seleccionada: $ACTION"
+        if [ -n "$REPLY" ]; then
+            echo "Respuesta del usuario: $REPLY"
+        fi
+        exit 0
+        ;;
+
+    timer)
+        DURATION="${1:-300}"
+        ACTION="${2:-start}"
+        TITLE="${3:-Temporizador}"
+        CARD="${4:-false}"
+        curl -s -X POST "${BASE_URL}/timer" \
+            -H "Content-Type: application/json" \
+            -d "{\"action\": \"$ACTION\", \"duration\": $DURATION, \"title\": \"$TITLE\", \"card\": $CARD}" | python3 -m json.tool 2>/dev/null || true
+        exit 0
+        ;;
+
+    call)
+        ACTION="${1:-start}"
+        NAME="${2:-FaceTime Audio}"
+        HANDLE="${3:-Mamá}"
+        CARD="${4:-false}"
+        curl -s -X POST "${BASE_URL}/call" \
+            -H "Content-Type: application/json" \
+            -d "{\"action\": \"$ACTION\", \"name\": \"$NAME\", \"handle\": \"$HANDLE\", \"card\": $CARD}" | python3 -m json.tool 2>/dev/null || true
+        exit 0
+        ;;
+
+    *)
+        show_help
+        exit 0
+        ;;
+esac

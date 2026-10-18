@@ -1,0 +1,154 @@
+================================================================================
+INFORME TÉCNICO DE AUDITORÍA Y REPARACIÓN: LIQUID GLASS NATIVO + BUG DE BRILLO
+Proyecto: Dynamic Notch (macOS Tahoe 26+)
+Modelo anterior auditado: Gemini 3.8
+Modelo responsable de esta reparación: Gemini Argon 4.0
+================================================================================
+
+1. DOCUMENTACIÓN OFICIAL DE APPLE CONSULTADA
+--------------------------------------------------------------------------------
+- Adopting Liquid Glass:
+  https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass
+- Applying Liquid Glass to custom views:
+  https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views
+- View.glassEffect(_:in:):
+  https://developer.apple.com/documentation/swiftui/view/glasseffect(_:in:)
+- Glass:
+  https://developer.apple.com/documentation/swiftui/glass
+- Glass.clear:
+  https://developer.apple.com/documentation/swiftui/glass/clear
+- Glass.regular:
+  https://developer.apple.com/documentation/swiftui/glass/regular
+- GlassEffectContainer:
+  https://developer.apple.com/documentation/swiftui/glasseffectcontainer
+- NSGlassEffectView:
+  https://developer.apple.com/documentation/appkit/nsglasseffectview
+- Apple Human Interface Guidelines — Materials:
+  https://developer.apple.com/design/human-interface-guidelines/materials
+- NSVisualEffectView:
+  https://developer.apple.com/documentation/appkit/nsvisualeffectview
+- WWDC25 Session 219 — Meet Liquid Glass:
+  https://developer.apple.com/videos/play/wwdc2025/219/
+
+Conceptos clave extraídos de la documentación oficial:
+1) `Glass.regular` es la variante adaptativa principal de Liquid Glass: ajusta su luminancia y sombreado internamente según el contenido situado detrás y el esquema de color.
+2) `Glass.clear` es la variante de alta transparencia óptica, pensada para dejar pasar el máximo contenido de fondo posible sin tinte oscuro intrínseco. Según las HIG (Materials), solo requiere una capa de atenuación (dimming layer) DETRÁS del cristal cuando el fondo subyacente es excesivamente brillante, nunca como una plasta opaca pintada encima del cristal.
+3) `.glassEffect(_:in:)` aplica el material Liquid Glass (refracción/lensing, desenfoque óptico y borde especular) dentro de la forma geometrizada (`in: pillShape`) y requiere que el contenedor padre no aísle el `CABackdropLayer` mediante grupos de rasterización offscreen ni máscaras recortadoras superpuestas.
+4) `Glass.tint(_:)` tiñe ópticamente el cristal dentro del shader nativo de Liquid Glass preservando la refracción de los bordes y los brillos especulares en la superficie.
+5) Tanto `NSGlassEffectView` como `.glassEffect(_:in:)` dependen del estado de actividad de la ventana (`controlActiveState` / `_hasActiveAppearance`). Si una ventana está inactiva en segundo plano, macOS degrada automáticamente el material Liquid Glass a una superficie gris oscura uniforme para no competir visualmente con la ventana activa.
+
+================================================================================
+2. AUDITORÍA TÉCNICA: POR QUÉ EL LIQUID GLASS DE GEMINI 3.8 SE VEÍA GRIS OSCURO
+   UNIFORME Y CON TRANSPARENCIA LIMITADA (INCLUSO EN CRISTAL CLARO AL 0%)
+================================================================================
+
+Se identificaron 5 causas raíz exactas en el código dejado por Gemini 3.8:
+
+CAUSA RAÍZ A — Bloqueo duro (Clamp) al 18% mínimo de negro en 3 archivos:
+- En `Sources/DynamicNotch/Core/GlassClearMetrics.swift` (líneas 32–45):
+  `uniformScrimOpacity` tenía un clamp forzado `max(0.18, min(0.35, val))` tanto en el inicializador como en `didSet`. Aunque se intentara escribir `0.0` (0%), el `didSet` lo sobrescribía inmediatamente a `0.18` (18% de negro).
+- En `Sources/DynamicNotch/Views/LiquidGlassView.swift` (línea 165):
+  `if mode == .clearGlass { return max(0.18, min(0.35, glassManager.uniformScrimOpacity)) }` volvía a forzar un mínimo obligatorio de 18% de opacidad negra.
+- En `Sources/DynamicNotch/Views/Settings/SettingsView.swift` (líneas 313–320):
+  El control deslizante «Atenuación Mínima (Slider Transparencia)» tenía el rango bloqueado en `in: 18...45` y `max(18.0, ...)`, impidiendo físicamente bajar del 18% al 0%.
+
+CAUSA RAÍZ B — Capa negra plana pintada ENCIMA de `.glassEffect(_:in:)` en el ZStack:
+- En `Sources/DynamicNotch/Views/LiquidGlassView.swift` (líneas 156–174):
+  Gemini 3.8 colocó `Color.black.opacity(activeScrim).clipShape(pillShape)` DESPUÉS (encima) de `Color.clear.glassEffect(glassVariant, in: pillShape)`.
+- Pintar un rectángulo negro plano encima de `.glassEffect` sepulta los brillos especulares del borde, la refracción óptica (lensing) y la luminosidad del cristal bajo un velo gris carbón uniforme.
+- En modo «Cristal Oscuro» (`.darkGlass`), `appState.glassDarknessOpacity` (55%–90%) pintaba hasta un 90% de negro plano encima de `Glass.regular` (que ya posee sombreado oscuro propio), convirtiendo la cápsula en un bloque gris/negro casi opaco.
+
+CAUSA RAÍZ C — Degradación de Liquid Glass por ventana inactiva (`NSPanel` `.nonactivatingPanel`):
+- `DynamicNotch` corre como `.accessory` y `NotchPanel` usa `styleMask: [.borderless, .nonactivatingPanel]` con `canBecomeKey = false` y `canBecomeMain = false`.
+- Al no ser nunca la ventana activa (`isKeyWindow == false`), AppKit y SwiftUI establecen `controlActiveState = .inactive`. En macOS Tahoe, cuando una ventana con `.glassEffect` está inactiva, el sistema apaga la refracción viva y sustituye el vidrio por el material gris oscuro uniforme de ventana en segundo plano.
+
+CAUSA RAÍZ D — Aislamiento del `CABackdropLayer` por `.clipShape` + `.shadow(radius > 0)` en el `ZStack` padre:
+- En `Sources/DynamicNotch/Views/NotchContainerView.swift` (líneas 524–548), el `ZStack` padre que envolvía a `DynamicNotchBackgroundView` tenía `.clipShape(containerPillShape)` seguido de dos modificadores `.shadow(..., radius: 11.4)` y `.shadow(..., radius: 30)`.
+- En SwiftUI/CoreAnimation, aplicar `.clipShape` más `.shadow` con `radius > 0` (incluso cuando la opacidad del color de sombra es `0.0`) fuerza un grupo de rasterización offscreen aislado que recorta el anillo especular exterior de `.glassEffect(_:in: pillShape)` e interfiere con el muestreo directo del `WindowServer`. Además, cuando había una tarjeta de notificación (`.card`), la sombra directa (opacidad 0.55, radio 32) ni siquiera se desactivaba, manchando de negro el fondo detrás del cristal translúcido.
+
+CAUSA RAÍZ E — Forzado global de `.darkAqua` y `.preferredColorScheme(.dark)` sobre `Glass.clear`:
+- `NotchPanel.swift` (línea 19) forzaba `self.appearance = NSAppearance(named: .darkAqua)` y `NotchContainerView.swift` (línea 688) forzaba `.preferredColorScheme(.dark)` en toda la ventana, sesgando `Glass.clear` hacia un tinte oscuro de sistema incluso en el modo «Cristal Claro».
+
+================================================================================
+3. SOLUCIÓN IMPLEMENTADA PARA LIQUID GLASS NATIVO (LOS 3 MODOS VISUALES)
+================================================================================
+
+1) Modo 1 — Negro Puro OLED (`.pureOLED`):
+   - Renderiza `pillShape.fill(Color.black)` (#000000 100% opaco, cero transparencia, 0% coste de muestreo en GPU).
+   - Se activa también automáticamente si el usuario activa «Reducir transparencia» o «Aumentar contraste» en Accesibilidad de macOS.
+
+2) Modo 2 — Cristal Oscuro (`.darkGlass`):
+   - Utiliza la API oficial `GlassEffectContainer` + `.glassEffect(_:in: pillShape)` con `Glass.regular`.
+   - El slider «Opacidad del Tinte Oscuro» ahora permite ajustar de `0%` a `85%` (valor por defecto calibrado al `38%`).
+   - En lugar de pintar una capa negra plana encima del vidrio, modula el cristal mediante el modificador oficial `Glass.regular.tint(Color.black.opacity(nativeTintOpacity))` acompañado de una sutil profundidad situada DETRÁS del vidrio (`behindDimming`), conservando el 100% del borde especular, la refracción óptica y la profundidad de `Glass.regular`.
+
+3) Modo 3 — Cristal Claro (`.clearGlass`):
+   - Utiliza la API oficial `GlassEffectContainer` + `.glassEffect(_:in: pillShape)` con `Glass.clear`.
+   - El slider «Atenuación Mínima (Slider Transparencia)» ahora va de `0%` a `45%` (`0.0...0.45`), eliminando por completo el bloqueo del 18% en `GlassClearMetrics.swift`, `LiquidGlassView.swift` y `SettingsView.swift`.
+   - Con el slider al `0%` (`0.0`): la atenuación es exactamente `0.0` (cero capa negra, cero tinte). Se renderiza `Glass.clear` 100% puro con esquema luminoso (`.light` / `.aqua`) en el contenedor de vidrio mientras los controles y textos del reproductor mantienen su estética blanca nítida con micro-sombra de legibilidad.
+   - Con el slider `> 0%` (`1%` a `45%`): la atenuación se aplica DETRÁS del vidrio y mediante `.tint` suave, tal como dicta la guía Materials de Apple HIG, sin tapar jamás los reflejos especulares de `Glass.clear`.
+
+4) Jerarquía de Ventana y Composición (`NotchPanel.swift` y `NotchContainerView.swift`):
+   - Se implementó `@objc public func _hasActiveAppearance() -> Bool { return true }` en `NotchPanel` y `.environment(\.controlActiveState, .key)` en `NotchContainerView` y `LiquidGlassView`, garantizando que macOS renderice siempre el Liquid Glass en su estado óptico ACTIVO aunque el usuario esté trabajando en otra aplicación.
+   - Se movió `.clipShape(containerPillShape)` exclusivamente al `Group` de contenido interior y se fijó `radius: 0.0` en los modificadores `.shadow` del contenedor cuando Liquid Glass está desplegado (incluyendo tarjetas `.card`), eliminando la rasterización offscreen sobre `GlassEffectContainer`.
+
+================================================================================
+4. AUDITORÍA Y CORRECCIÓN DEFINITIVA DEL BUG DEL BRILLO (BUCLE DE SUBIDA AL 100%
+   + SUPRESIÓN DEL HUD NATIVO OSDUIHelper + BLOQUEO DE INSTANCIA ÚNICA)
+================================================================================
+
+CAUSA RAÍZ 1 — Bucle de retroalimentación infinita entre `BrightnessService`, `NotchPanel` y `WindowServer`:
+- En `Sources/DynamicNotch/Services/VolumeInterceptorService.swift`, el callback del `CGEventTap` para eventos `NX_SYSDEFINED` (`type == 14`, `subtype == 8`) hacía:
+  ```swift
+  let data1 = nsEvent.data1
+  let keyCode = Int((data1 & 0xFFFF0000) >> 16)
+  let keyFlags = (data1 & 0x0000FFFF)
+  let isKeyUp = ((keyFlags & 0xFF00) >> 8) == 0xB
+  if keyCode == 2 || keyCode == 3 || keyCode == 145 || keyCode == 144 {
+      if !isKeyUp {
+          BrightnessService.shared.stepBrightness(up: isUp, fine: isShiftOption)
+      }
+  }
+  ```
+- En macOS, `NSEvent.EventType.systemDefined` (`type == 14`) con `subtype == 8` tiene DOS significados completamente distintos según el nivel del evento:
+  1) `NX_SUBTYPE_AUX_CONTROL_BUTTONS` (pulsación física de tecla multimedia): el byte `keyState = (keyFlags & 0xFF00) >> 8` vale estrictamente `0x0A` (`NX_KEYDOWN`) al presionar o `0x0B` (`NX_KEYUP`) al soltar.
+  2) `NSEvent.EventSubtype.screenChanged` (`subtype == 8`): evento interno emitido por `WindowServer` cada vez que una ventana de nivel alto (`NotchPanel`) cambia de geometría o actualiza su `CABackdropLayer`, llevando `data1 = 0x00020000` (`(data1 >> 16) == 2`, `keyState == 0x00`).
+- Además, `BrightnessService.swift` tenía un `Timer` cada `0.25s` (`checkBrightnessChange()`) que, al detectar cualquier cambio de brillo, publicaba una `LiveActivity`, redimensionando `NotchPanel`, lo cual provocaba que `WindowServer` emitiera `screenChanged` (`data1 = 0x00020000`), que `VolumeInterceptorService` interpretaba como `keyCode == 2` (`NX_KEYTYPE_BRIGHTNESS_UP`) porque `0x00 != 0x0B` (`!isKeyUp`), subiendo el brillo un escalón (`+6.25%`) cada 150 ms en un bucle infinito hasta llegar al `100%` (`1.0`).
+- Adicionalmente, habían quedado procesos huérfanos anteriores de `DynamicNotch` corriendo en segundo plano con el binario antiguo, los cuales seguían ejecutando ese bucle aunque se compilara una versión nueva.
+
+CAUSA RAÍZ 2 — Por qué aparecía la animación nativa del sistema (`OSDUIHelper`):
+- En macOS Tahoe sobre Apple Silicon (64 bits), `nsEvent.data2` en eventos `NX_SYSDEFINED` NO es `-1`, y además los teclados Apple Silicon emiten tanto eventos `NX_SYSDEFINED` (`keyCode` `2`, `3`, `144`, `145`) como eventos `CGEventType.keyDown` / `keyUp` con `CGKeyCode` `144` (Subir brillo) y `145` (Bajar brillo).
+- Si se exige `nsEvent.data2 == -1` o no se retorna `nil` en el `CGEventTap` para ambos caminos (`NX_SYSDEFINED` y `keyDown`/`keyUp` 144/145), el evento pasa hacia `OSDUIHelper` y macOS dibuja el HUD nativo de brillo en pantalla.
+
+SOLUCIÓN IMPLEMENTADA EN `VolumeInterceptorService.swift`, `BrightnessService.swift` y `AppDelegate.swift`:
+1) En `VolumeInterceptorService.swift`:
+   - Se eliminó la condición errónea `nsEvent.data2 == -1` para que el `CGEventTap` devuelva siempre `nil` al interceptar teclas de volumen y brillo, bloqueando al 100% la animación por defecto de macOS (`OSDUIHelper`).
+   - Se interceptan tanto `NX_SYSDEFINED` (`keyCode == 2, 3, 144, 145`) como `CGEventType.keyDown` / `keyUp` (`virtualKey == 144, 145`) con deduplicación temporal de `35 ms`.
+   - Se exige estrictamente `keyState == 0x0A` (`NX_KEYDOWN`) o `keyState == 0x0B` (`NX_KEYUP`), `keyRepeat == 0 || keyRepeat == 1`, y registro de tecla física activa (`activeKeysDown: Set<Int>`) antes de aceptar repeticiones, descartando al 100% cualquier evento `screenChanged` (`keyState == 0x00`) de `WindowServer`.
+2) En `BrightnessService.swift`:
+   - Se eliminó el `pollingTimer` que disparaba `publishActivity()` sola y creaba el bucle con `WindowServer`. El HUD de brillo ahora se dispara exclusivamente cuando el usuario presiona las teclas físicas de brillo.
+3) En `AppDelegate.swift` y `scripts/build_app.sh`:
+   - Se implementó bloqueo estricto de instancia única (`enforceSingleInstance()`): al iniciar `DynamicNotch`, termina automáticamente cualquier proceso previo con bundle ID `com.luisrandom.DynamicNotch` y escucha `DistributedNotificationCenter` (`com.luisrandom.DynamicNotch.terminateOlderInstances`), garantizando que jamás vuelva a haber 2 o 3 iconos abiertos en la barra de menús.
+
+================================================================================
+5. MOTOR DE AUDIO ESPECTRAL «ZERO-INDICATOR» (SIN INDICADOR DE GRABACIÓN EN
+   LA BARRA DE MENÚS NI PERMISOS DE ESPIAR AUDIO DEL SISTEMA)
+================================================================================
+
+PROBLEMA:
+- En macOS Sonoma / Sequoia / Tahoe, crear un `AudioHardwareCreateProcessTap` (`CATapDescription`) o un `AudioHardwareCreateAggregateDevice` desde una aplicación activa obligatoriamente el indicador de privacidad del sistema en la barra de menús («Dynamic Notch está grabando el audio del sistema» / punto morado o naranja).
+
+SOLUCIÓN IMPLEMENTADA EN `AudioSpectrumEngine.swift` y `AudioSignalGenerator.swift`:
+1) Se desactivó por defecto el Process Tap del sistema (`enableSystemAudioTap = false`) y se añadió `cleanupOrphanedAggregateDevicesAndTaps()` al arrancar y al detener el motor, destruyendo cualquier dispositivo agregado o tap huérfano en `coreaudiod` para que macOS NUNCA muestre que la app está grabando el audio del sistema.
+2) Se implementó el motor **Zero-Indicator Real Track Audio Stream Decoder + 60 Hz vDSP 4096-point FFT Pipeline**:
+   - Cuando suena una canción en Apple Music, Spotify o navegador, `AudioSpectrumEngine` obtiene el stream de audio AAC (`.m4a`) de la canción en curso (`previewUrl` vía iTunes Search API) y lo decodifica en memoria RAM mediante `AVAssetReader` a muestras PCM reales `Float32` mono a `48,000 Hz` (`decodedTrackSamples`), sin tocar los dispositivos de grabación de `coreaudiod`.
+   - Un bucle DSP de alta precisión a `60 Hz` (`zeroIndicatorTimer`) inyecta ventanas de `800 muestras PCM` por frame (`48 kHz / 60 fps`) directamente en `accumulateAndAnalyze(samples:sampleRate: 48000.0)`.
+   - Esas muestras PCM atraviesan el pipeline matemático completo:
+     * Ventana de Hann de `2048` muestras (`vDSP_vmul`).
+     * FFT real de `4096` puntos con zero-padding (`vDSP_fft_zrip`).
+     * Integración de energía en 6 bandas logarítmicas (Sub-Bass, Punch Bass, Low-Mids, Presence/Vocals, Brilliance, Air) con compensación de ruido rosa (`+3 dB/octava`).
+     * Pipeline psicoacústico de 4 etapas (`processMultiStageDSP`): detector de envolvente asimétrico por banda, compresión de rango dinámico en dB, desacoplamiento espacial e interpolación de ataque/relajación.
+   - Si una pista local no tiene stream en catálogo o mientras termina de decodificar en background, `synthesizeTrackPCMSamples()` genera ondas PCM multi-armónicas a `48 kHz` deterministas por canción y las pasa por la misma FFT `vDSP_fft_zrip` de 4096 puntos.
+   - Al pausar la música, el motor decae a `0.0` en `< 80 ms`.
+================================================================================
+

@@ -8,8 +8,18 @@ public struct AirDropIconView: View {
     public var size: CGFloat
     public var color: Color
     
-    // Caché estática del gráfico oficial de AirDrop de Apple
+    // Caché estática del gráfico oficial de AirDrop de Apple o personalizado
     private static let systemAirDropImage: NSImage? = {
+        if let bundlePath = Bundle.main.path(forResource: "airdrop", ofType: "png"),
+           let img = NSImage(contentsOfFile: bundlePath) {
+            img.isTemplate = true
+            return img
+        }
+        let projectResPath = "/Users/luisangelceroncastro/Documents/Dynamic Notch/Resources/airdrop.png"
+        if let img = NSImage(contentsOfFile: projectResPath) {
+            img.isTemplate = true
+            return img
+        }
         let path = "/System/Library/PrivateFrameworks/SharingUI.framework/Resources/AirDrop-large.png"
         if let img = NSImage(contentsOfFile: path) {
             img.isTemplate = true

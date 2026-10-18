@@ -16,6 +16,10 @@
 		<data>
 		TjkNi5GRBnkpL5XApF9rf/sIhkE=
 		</data>
+		<key>Resources/airdrop.png</key>
+		<data>
+		Mx/rRQQMu17aqf/5nfenJG+lRVI=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -38,6 +42,13 @@
 			<key>hash2</key>
 			<data>
 			ixYnmynsTa4DwtEjdPyRIyzmnWLYZ9JiKpaCdYKKWZc=
+			</data>
+		</dict>
+		<key>Resources/airdrop.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			8C0ExdYnLnW+3UACRL2umDEYLoGr/x+PopYi7Aw8Bwk=
 			</data>
 		</dict>
 	</dict>

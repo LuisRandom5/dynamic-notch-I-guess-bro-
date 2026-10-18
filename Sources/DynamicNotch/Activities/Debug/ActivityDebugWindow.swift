@@ -15,12 +15,13 @@ public final class ActivityDebugWindow {
         }
         
         let newWindow = NSWindow(
-            contentRect: NSRect(x: 200, y: 200, width: 440, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 200, y: 200, width: 680, height: 820),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         newWindow.title = "Panel de Pruebas: Live Activities"
+        newWindow.minSize = NSSize(width: 560, height: 520)
         newWindow.contentView = NSHostingView(rootView: ActivityDebugView())
         newWindow.center()
         newWindow.isReleasedWhenClosed = false

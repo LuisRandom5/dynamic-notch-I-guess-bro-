@@ -44,8 +44,18 @@ private final class BluetoothDeviceObserver: NSObject {
     }
 }
 
-public final class BluetoothAudioService {
+public final class BluetoothAudioService: ObservableObject {
     public static let shared = BluetoothAudioService()
+    
+    @Published public private(set) var currentModel: AirPodsModel = .airPods4
+    @Published public private(set) var currentDeviceName: String = "AirPods"
+    @Published public private(set) var isAirPodsConnected: Bool = false
+    
+    public var currentAirPodsModel: AirPodsModel { currentModel }
+    public var currentAirPodsSymbol: String { currentModel.symbolName }
+    public var currentAirPodsCaseSymbol: String { currentModel.caseSymbolName }
+    public var currentAirPodsLeftSymbol: String { currentModel.leftEarbudSymbol }
+    public var currentAirPodsRightSymbol: String { currentModel.rightEarbudSymbol }
     
     private var lastConnectedDevice: String = ""
     private var lastAlertTime: Date = Date.distantPast
@@ -53,11 +63,42 @@ public final class BluetoothAudioService {
     private let alertCooldown: TimeInterval = 60.0
     
     private init() {
+        checkConnectedHardware()
         startMonitoringAudioDevices()
         BluetoothDeviceObserver.shared.startObserving()
     }
     
+    private func checkConnectedHardware() {
+        if let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
+            for dev in paired where dev.isConnected() {
+                let devName = dev.name ?? dev.nameOrAddress ?? ""
+                if devName.localizedCaseInsensitiveContains("AirPods") || devName.localizedCaseInsensitiveContains("Beats") {
+                    let detected = AirPodsModel.detect(from: devName)
+                    self.currentModel = detected
+                    self.currentDeviceName = devName
+                    self.isAirPodsConnected = true
+                    self.lastConnectedDevice = devName
+                    self.lastAlertedDeviceName = devName
+                    DNDLogger.log("BluetoothAudioService: Hardware inicial detectado: '\(devName)' -> \(detected.rawValue) (symbol: \(detected.symbolName))")
+                    break
+                }
+            }
+        }
+    }
+    
+    public func symbolForDeviceName(_ name: String) -> String {
+        if isAirPodsConnected && (lastConnectedDevice == name || name.localizedCaseInsensitiveContains("AirPods")) {
+            return currentModel.symbolName
+        }
+        return AirPodsModel.detect(from: name).symbolName
+    }
+    
     public func handleAirPodsConnected(name: String, isInitialCheck: Bool = false) {
+        let detected = AirPodsModel.detect(from: name)
+        self.currentModel = detected
+        self.currentDeviceName = name
+        self.isAirPodsConnected = true
+        
         guard AppState.shared.enableAirPodsAnimation else { return }
         
         // Si es el escaneo de arranque o ya está conectado como salida actual, solo registrar sin alertar
@@ -82,7 +123,7 @@ public final class BluetoothAudioService {
             return
         }
         
-        DNDLogger.log("BluetoothAudioService.handleAirPodsConnected: Disparando alerta de conexión para '\(name)'")
+        DNDLogger.log("BluetoothAudioService.handleAirPodsConnected: Disparando alerta de conexión para '\(name)' (\(detected.rawValue))")
         self.lastConnectedDevice = name
         self.lastAlertedDeviceName = name
         self.lastAlertTime = now
@@ -93,6 +134,8 @@ public final class BluetoothAudioService {
         DNDLogger.log("BluetoothAudioService.handleAirPodsDisconnected: '\(name)'")
         if lastConnectedDevice == name || lastConnectedDevice.localizedCaseInsensitiveContains("AirPods") {
             self.lastConnectedDevice = ""
+            self.isAirPodsConnected = false
+            self.currentDeviceName = ""
         }
     }
     
@@ -290,7 +333,16 @@ public final class BluetoothAudioService {
         
         // Extraer Product ID para identificar el modelo exacto
         let productId = extractProductId(from: deviceBlock)
-        let model = modelName(for: productId, fallbackName: currentDevice)
+        let detectedModel = AirPodsModel.detect(from: currentDevice, productId: productId)
+        let model = detectedModel.rawValue
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.currentModel = detectedModel
+            self.currentDeviceName = currentDevice
+            self.isAirPodsConnected = true
+            DNDLogger.log("BluetoothAudioService: Modelo confirmado por ProductID (\(productId)) -> \(detectedModel.rawValue) (\(detectedModel.symbolName))")
+        }
         
         var primary = 100
         if let l = left, let r = right {
@@ -321,7 +373,7 @@ public final class BluetoothAudioService {
             AirPodsActivityProvider.shared.publishAirPodsActivity(
                 name: deviceName,
                 batteryLevel: 95,
-                duration: 8.0
+                duration: 13.0
             )
         }
         
@@ -345,35 +397,9 @@ public final class BluetoothAudioService {
                     leftPercent: leftBat,
                     rightPercent: rightBat,
                     casePercent: caseBat,
-                    duration: 8.0
+                    duration: 13.0
                 )
             }
-        }
-    }
-    
-    private func modelName(for productId: String, fallbackName: String) -> String {
-        switch productId.lowercased() {
-        case "0x2019", "0x201e":
-            return "AirPods 4"
-        case "0x200e":
-            return "AirPods Pro"
-        case "0x2024", "0x2027":
-            return "AirPods Pro 2"
-        case "0x200f":
-            return "AirPods 3"
-        case "0x200a", "0x201f":
-            return "AirPods Max"
-        case "0x2002":
-            return "AirPods 2"
-        case "0x2001":
-            return "AirPods"
-        default:
-            if fallbackName.localizedCaseInsensitiveContains("Pro") {
-                return "AirPods Pro"
-            } else if fallbackName.localizedCaseInsensitiveContains("Max") {
-                return "AirPods Max"
-            }
-            return fallbackName
         }
     }
     

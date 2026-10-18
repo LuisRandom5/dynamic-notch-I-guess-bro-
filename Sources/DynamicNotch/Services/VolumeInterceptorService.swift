@@ -55,10 +55,14 @@ public final class VolumeInterceptorService: ObservableObject {
         }
     }
     
+    private var activeKeysDown: Set<Int> = []
+    private var lastBrightnessStepTime: CFAbsoluteTime = 0
+    
     public func startInterception() {
         guard eventTap == nil else { return }
         
-        let eventMask = (1 << NX_SYSDEFINED)
+        let sysDefinedMask = CGEventMask(1 << NX_SYSDEFINED)
+        let fullMask = sysDefinedMask | CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.keyUp.rawValue)
         
         let callback: CGEventTapCallBack = { proxy, type, event, refcon in
             // Re-activar si macOS deshabilitó el tap temporalmente por timeout
@@ -70,29 +74,71 @@ public final class VolumeInterceptorService: ObservableObject {
                 return Unmanaged.passRetained(event)
             }
             
-            guard type.rawValue == UInt32(NX_SYSDEFINED) else {
-                return Unmanaged.passRetained(event)
-            }
-            
-            // Inspeccionar evento multimedia NX_SYSDEFINED (subtype 8 = teclas auxiliares del sistema)
-            let nsEvent = NSEvent(cgEvent: event)
-            guard let nsEvent = nsEvent, nsEvent.subtype.rawValue == 8 else {
-                return Unmanaged.passRetained(event)
-            }
-            
-            let data1 = nsEvent.data1
-            let keyCode = Int((data1 & 0xFFFF0000) >> 16)
-            let keyFlags = (data1 & 0x0000FFFF)
-            let isKeyUp = ((keyFlags & 0xFF00) >> 8) == 0xB
-            
             guard let refcon = refcon else {
                 return Unmanaged.passRetained(event)
             }
             let service = Unmanaged<VolumeInterceptorService>.fromOpaque(refcon).takeUnretainedValue()
             
+            // Captura de keyCodes virtuales especiales de brillo en teclados Apple Silicon (144 = Up, 145 = Down)
+            if type == .keyDown || type == .keyUp {
+                let vk = Int(event.getIntegerValueField(.keyboardEventKeycode))
+                guard vk == 144 || vk == 145 else {
+                    return Unmanaged.passRetained(event)
+                }
+                if type == .keyDown {
+                    let now = CFAbsoluteTimeGetCurrent()
+                    if now - service.lastBrightnessStepTime > 0.035 {
+                        service.lastBrightnessStepTime = now
+                        let flags = event.flags
+                        let isFine = flags.contains(.maskShift) && flags.contains(.maskAlternate)
+                        let isUp = (vk == 144)
+                        DispatchQueue.main.async {
+                            BrightnessService.shared.stepBrightness(up: isUp, fine: isFine)
+                        }
+                    }
+                }
+                return service.suppressNativeHUD ? nil : Unmanaged.passRetained(event)
+            }
+            
+            guard type.rawValue == UInt32(NX_SYSDEFINED) else {
+                return Unmanaged.passRetained(event)
+            }
+            
+            // Inspeccionar evento multimedia NX_SYSDEFINED (subtype 8 = NX_SUBTYPE_AUX_CONTROL_BUTTONS).
+            // NOTA CRÍTICA: En AppKit, `NSEvent.EventSubtype.screenChanged` también vale 8 y emite
+            // `data1 == 0x00020000` (`keyCode == 2`, `keyFlags == 0x0000`, `keyState == 0x00`).
+            // Por ello exigimos estrictamente `keyState == 0x0A` (NX_KEYDOWN) o `0x0B` (NX_KEYUP)
+            // y `keyRepeat == 0` o `1`, descartando cualquier evento de cambio de ventana/pantalla.
+            guard let nsEvent = NSEvent(cgEvent: event),
+                  nsEvent.subtype.rawValue == 8 else {
+                return Unmanaged.passRetained(event)
+            }
+            
+            let data1 = UInt32(truncatingIfNeeded: nsEvent.data1)
+            let keyCode = Int((data1 & 0xFFFF0000) >> 16)
+            let keyFlags = Int(data1 & 0x0000FFFF)
+            let keyState = (keyFlags & 0xFF00) >> 8
+            let keyRepeat = keyFlags & 0x00FF
+            
+            guard (keyState == 0x0A || keyState == 0x0B), (keyRepeat == 0 || keyRepeat == 1) else {
+                return Unmanaged.passRetained(event)
+            }
+            
+            let isKeyDown = (keyState == 0x0A)
+            if isKeyDown {
+                if keyRepeat == 0 {
+                    service.activeKeysDown.insert(keyCode)
+                } else if !service.activeKeysDown.contains(keyCode) {
+                    // Ignorar auto-repeat huérfano si nunca hubo un keyDown físico inicial
+                    return Unmanaged.passRetained(event)
+                }
+            } else {
+                service.activeKeysDown.remove(keyCode)
+            }
+            
             // MARK: 1) TECLAS DE VOLUMEN Y MUTE (0 = Up, 1 = Down, 7 = Mute)
             if keyCode == 0 || keyCode == 1 || keyCode == 7 {
-                if !isKeyUp {
+                if isKeyDown {
                     DispatchQueue.main.async {
                         if keyCode == 0 {
                             AudioDeviceService.shared.stepVolume(up: true)
@@ -104,7 +150,6 @@ public final class VolumeInterceptorService: ObservableObject {
                     }
                 }
                 
-                // Si el usuario eligió suprimir el HUD nativo, retornar nil para que macOS no pinte su HUD gris
                 if service.suppressNativeHUD {
                     return nil
                 } else {
@@ -114,15 +159,18 @@ public final class VolumeInterceptorService: ObservableObject {
             
             // MARK: 2) TECLAS DE BRILLO (2/145 = Brightness Up, 3/144 = Brightness Down)
             if keyCode == 2 || keyCode == 3 || keyCode == 145 || keyCode == 144 {
-                if !isKeyUp {
-                    let isShiftOption = (keyFlags & 0x0008) != 0 || (nsEvent.modifierFlags.contains(.shift) && nsEvent.modifierFlags.contains(.option))
-                    DispatchQueue.main.async {
+                if isKeyDown {
+                    let now = CFAbsoluteTimeGetCurrent()
+                    if now - service.lastBrightnessStepTime > 0.035 {
+                        service.lastBrightnessStepTime = now
+                        let isShiftOption = (keyFlags & 0x0008) != 0 || (nsEvent.modifierFlags.contains(.shift) && nsEvent.modifierFlags.contains(.option))
                         let isUp = (keyCode == 2 || keyCode == 145)
-                        BrightnessService.shared.stepBrightness(up: isUp, fine: isShiftOption)
+                        DispatchQueue.main.async {
+                            BrightnessService.shared.stepBrightness(up: isUp, fine: isShiftOption)
+                        }
                     }
                 }
                 
-                // Si el usuario eligió suprimir el HUD nativo, retornar nil
                 if service.suppressNativeHUD {
                     return nil
                 } else {
@@ -140,10 +188,21 @@ public final class VolumeInterceptorService: ObservableObject {
             tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
+            eventsOfInterest: fullMask,
             callback: callback,
             userInfo: observerSelf
         )
+        
+        if createdTap == nil {
+            createdTap = CGEvent.tapCreate(
+                tap: .cghidEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: sysDefinedMask,
+                callback: callback,
+                userInfo: observerSelf
+            )
+        }
         
         // Si .cghidEventTap no está disponible, intentar con .cgSessionEventTap
         if createdTap == nil {
@@ -151,7 +210,7 @@ public final class VolumeInterceptorService: ObservableObject {
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
                 options: .defaultTap,
-                eventsOfInterest: CGEventMask(eventMask),
+                eventsOfInterest: sysDefinedMask,
                 callback: callback,
                 userInfo: observerSelf
             )
@@ -169,7 +228,7 @@ public final class VolumeInterceptorService: ObservableObject {
         CGEvent.tapEnable(tap: tap, enable: true)
         self.isIntercepting = true
         self.hasAccessibilityPermission = true
-        print("✅ VolumeInterceptorService: Interceptor multimedia activo (.cghidEventTap / .cgSessionEventTap)")
+        DNDLogger.log("✅ VolumeInterceptorService: Interceptor multimedia activo")
     }
     
     public func reenableTap() {

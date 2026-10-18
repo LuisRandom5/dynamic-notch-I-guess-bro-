@@ -28,12 +28,25 @@ public final class GlassClearManager: ObservableObject {
     @Published public var showLocalTextScrim: Bool = true
     
     // MARK: - Parámetros Numéricos Calibrados (Paso 2)
-    /// 6. Atenuación mínima: slider "Transparencia" (0% totalmente claro a 35% legibilidad máxima, default ~10%)
-    @Published public var uniformScrimOpacity: Double = UserDefaults.standard.object(forKey: "glassClearScrimOpacity") != nil
-        ? UserDefaults.standard.double(forKey: "glassClearScrimOpacity")
-        : 0.10 {
-        didSet { UserDefaults.standard.set(uniformScrimOpacity, forKey: "glassClearScrimOpacity") }
+    /// Atenuación en modo Cristal Claro (Glass.clear): rango 0% (0.0, cristal puro sin velo) a 45% (0.45)
+    @Published public var uniformScrimOpacity: Double = {
+        let val = UserDefaults.standard.object(forKey: "glassClearScrimOpacityV2") != nil
+            ? UserDefaults.standard.double(forKey: "glassClearScrimOpacityV2")
+            : 0.0
+        return max(0.0, min(0.45, val))
+    }() {
+        didSet {
+            let clamped = max(0.0, min(0.45, uniformScrimOpacity))
+            if clamped != uniformScrimOpacity {
+                uniformScrimOpacity = clamped
+            }
+            UserDefaults.standard.set(clamped, forKey: "glassClearScrimOpacityV2")
+            UserDefaults.standard.set(clamped, forKey: "glassClearScrimOpacity")
+        }
     }
+    
+    /// Patrón de prueba de refracción detrás del notch para diagnóstico
+    @Published public var showRefractionTestPattern: Bool = false
     
     /// Tinte blanco sutil (0% a 4%, default 0%)
     @Published public var glassTintOpacity: Double = 0.00
@@ -116,8 +129,12 @@ public final class GlassClearManager: ObservableObject {
             let avg = totalLum / Double(pixels)
             DispatchQueue.main.async {
                 self.detectedWallpaperLuminance = avg
-                if self.enableAutoWallpaperLuminance && avg > 0.65 {
-                    self.uniformScrimOpacity = min(0.30, 0.10 + (avg - 0.65) * 0.4)
+                if self.enableAutoWallpaperLuminance {
+                    // Solo sube la atenuación proporcionalmente en fondos muy claros (> 0.65), sin piso artificial de 18%
+                    let autoVal = max(0.0, min(0.35, max(0.0, avg - 0.65) * 0.60))
+                    if autoVal > self.uniformScrimOpacity {
+                        self.uniformScrimOpacity = autoVal
+                    }
                 }
             }
         }

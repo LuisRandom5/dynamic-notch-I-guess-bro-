@@ -49,6 +49,43 @@ public struct NativeAudioRoutePicker: NSViewRepresentable {
     public func updateNSView(_ nsView: AVRoutePickerView, context: Context) {}
 }
 
+/// Patrón de prueba para diagnosticar refracción de borde y curvatura en Liquid Glass
+public struct StripedTestPatternView: View {
+    public init() {}
+    
+    public var body: some View {
+        ZStack {
+            Canvas { context, size in
+                let stripeWidth: CGFloat = 18.0
+                var x: CGFloat = 0
+                var isBlack = true
+                while x < size.width + size.height * 2 {
+                    let path = Path { p in
+                        p.move(to: CGPoint(x: x, y: 0))
+                        p.addLine(to: CGPoint(x: x - size.height, y: size.height))
+                        p.addLine(to: CGPoint(x: x - size.height + stripeWidth, y: size.height))
+                        p.addLine(to: CGPoint(x: x + stripeWidth, y: 0))
+                        p.closeSubpath()
+                    }
+                    context.fill(path, with: .color(isBlack ? .black : .white))
+                    x += stripeWidth
+                    isBlack.toggle()
+                }
+            }
+            
+            VStack(spacing: 4) {
+                Text("PATRÓN DE PRUEBA: REFRACCIÓN")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(.blue)
+                Text("1 2 3 4 5 6 7 8 9 0")
+                    .font(.system(size: 16, weight: .heavy))
+                    .foregroundColor(.red)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 /// Fondo reactivo del Notch (Liquid Glass macOS 26+ Tahoe HIG Compliant):
 /// - Variante base: `Glass.regular` sin tinte decorativo ni imitaciones.
 /// - Eliminados todos los blurs simulados, ultraThinMaterial, degradados y bordes manuales.
@@ -68,10 +105,6 @@ public struct DynamicNotchBackgroundView: View {
     public var stretch: CGFloat
     public var verticalStretch: CGFloat
     public var isExpanded: Bool
-
-    // Resplandor reactivo al cursor
-    @State private var hoverLocation: CGPoint = .zero
-    @State private var isCursorInside: Bool = false
 
     public init(
         topRadius: CGFloat,
@@ -99,106 +132,83 @@ public struct DynamicNotchBackgroundView: View {
             verticalStretch: verticalStretch
         )
         
-        // Accesibilidad: Si el usuario activó "Reducir transparencia", forzar Negro Puro OLED
-        let isReduceTransparencyActive = MotionTokens.isReduceTransparencyActive
-        let mode = isReduceTransparencyActive ? .pureOLED : appState.effectiveAppearanceMode
+        // Accesibilidad: Si el usuario activó "Reducir transparencia" o "Aumentar contraste", usar Negro Puro OLED
+        let mode = appState.effectiveAppearanceMode
         
         ZStack {
             if mode == .pureOLED {
-                // MODO A: Negro Puro OLED (#000000 sólido continuo, 0% GPU)
-                Color.black
+                // MODO 1: Negro Puro OLED (#000000 sólido continuo, 100% opaco, 0% GPU)
+                pillShape
+                    .fill(Color.black)
             } else {
-                // MODO B: Cristal Líquido (Liquid Glass) Real del Sistema
+                // MODO 2 (Cristal Oscuro) y MODO 3 (Cristal Claro): Liquid Glass Nativo de Apple (macOS 26+)
                 if #available(macOS 26.0, *) {
+                    // En Cristal Claro: slider 0% = 0.0 absoluto (Glass.clear 100% puro sin tinte ni velo).
+                    // En Cristal Oscuro: Glass.regular con profundidad oscura modulable mediante .tint() nativo
+                    // sin pintar jamás una plasta negra opaca encima de los reflejos especulares del vidrio.
+                    let rawAmount: Double = (mode == .clearGlass)
+                        ? max(0.0, min(0.45, glassManager.uniformScrimOpacity))
+                        : max(0.0, min(0.85, appState.glassDarknessOpacity))
+                    
+                    let behindDimming: Double = (mode == .clearGlass)
+                        ? (rawAmount * 0.45)
+                        : (rawAmount * 0.35)
+                    
+                    let nativeTintOpacity: Double = (mode == .clearGlass)
+                        ? (rawAmount * 0.55)
+                        : (rawAmount * 0.65)
+                    
                     ZStack {
-                        // Material real del sistema macOS Tahoe (sin imitaciones)
-                        Color.clear
-                            .glassEffect(Glass.regular, in: pillShape)
-                        
-                        // (a) Capa de atenuación negra uniforme calibrada
-                        let activeScrim = (mode == .darkGlass)
-                            ? appState.glassDarknessOpacity
-                            : min(0.35, max(0.0, glassManager.uniformScrimOpacity))
-                        Color.black.opacity(activeScrim)
-                        
-                        // (c) Resplandor reactivo al cursor
-                        if isCursorInside && !MotionTokens.isReduceMotionActive {
-                            GeometryReader { proxy in
-                                let size = proxy.size
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.08),
-                                        Color.white.opacity(0.0)
-                                    ],
-                                    center: UnitPoint(
-                                        x: size.width > 0 ? hoverLocation.x / size.width : 0.5,
-                                        y: size.height > 0 ? hoverLocation.y / size.height : 0.5
-                                    ),
-                                    startRadius: 0,
-                                    endRadius: 95
-                                )
-                                .blendMode(.plusLighter)
-                                .allowsHitTesting(false)
-                            }
+                        // Atenuación opcional situada DETRÁS del vidrio (Apple HIG: Materials),
+                        // nunca por encima de .glassEffect para no apagar la refracción ni el borde especular.
+                        if behindDimming > 0.001 {
+                            pillShape
+                                .fill(Color.black.opacity(behindDimming))
                         }
+                        
+                        GlassEffectContainer {
+                            let baseGlass: Glass = (mode == .clearGlass) ? Glass.clear : Glass.regular
+                            let configuredGlass: Glass = (nativeTintOpacity > 0.001)
+                                ? baseGlass.tint(Color.black.opacity(nativeTintOpacity))
+                                : baseGlass
+                            
+                            Color.clear
+                                .glassEffect(configuredGlass, in: pillShape)
+                                .allowsHitTesting(false)
+                        }
+                        .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
+                        .environment(\.controlActiveState, .key)
                     }
                     .opacity(isExpanded ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
                 } else {
-                    // Fallback para versiones anteriores
+                    // Fallback para versiones anteriores a macOS 26
+                    let activeScrim = (mode == .darkGlass)
+                        ? max(0.0, min(0.85, appState.glassDarknessOpacity))
+                        : max(0.0, min(0.45, glassManager.uniformScrimOpacity))
                     ZStack {
                         VisualEffectBackground(
                             material: (mode == .darkGlass) ? .hudWindow : .popover,
                             blendingMode: .behindWindow,
                             state: .active
                         )
-                        let activeScrim = (mode == .darkGlass)
-                            ? appState.glassDarknessOpacity
-                            : min(0.35, max(0.0, glassManager.uniformScrimOpacity))
-                        Color.black.opacity(activeScrim)
-                        
-                        if isCursorInside && !MotionTokens.isReduceMotionActive {
-                            GeometryReader { proxy in
-                                let size = proxy.size
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.08),
-                                        Color.white.opacity(0.0)
-                                    ],
-                                    center: UnitPoint(
-                                        x: size.width > 0 ? hoverLocation.x / size.width : 0.5,
-                                        y: size.height > 0 ? hoverLocation.y / size.height : 0.5
-                                    ),
-                                    startRadius: 0,
-                                    endRadius: 95
-                                )
-                                .blendMode(.plusLighter)
-                                .allowsHitTesting(false)
-                            }
+                        if activeScrim > 0.001 {
+                            Color.black.opacity(activeScrim)
                         }
                     }
+                    .clipShape(pillShape)
                     .opacity(isExpanded ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
                 }
                 
-                // En reposo (o transición): Negro puro para fundirse con la cámara del notch físico
-                Color.black
+                // En reposo absoluto (sin contenido desplegado): Negro puro para fundirse con la cámara física
+                pillShape
+                    .fill(Color.black)
                     .opacity(isExpanded ? 0.0 : 1.0)
+                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
             }
         }
-        .clipShape(pillShape)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location):
-                hoverLocation = location
-                if !isCursorInside {
-                    withAnimation(.easeIn(duration: 0.15)) {
-                        isCursorInside = true
-                    }
-                }
-            case .ended:
-                withAnimation(.easeOut(duration: 0.25)) {
-                    isCursorInside = false
-                }
-            }
-        }
+        .environment(\.controlActiveState, .key)
+        .allowsHitTesting(false)
     }
 }

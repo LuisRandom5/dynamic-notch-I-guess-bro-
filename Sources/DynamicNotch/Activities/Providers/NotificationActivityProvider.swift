@@ -12,6 +12,29 @@ public struct NotificationPayload: Equatable {
     public let appName: String
     public let appIcon: String
     public let tintColor: Color
+    public let enableQuickReply: Bool
+    
+    public init(
+        id: String,
+        title: String,
+        message: String,
+        handle: String,
+        avatar: NSImage?,
+        appName: String,
+        appIcon: String,
+        tintColor: Color,
+        enableQuickReply: Bool = true
+    ) {
+        self.id = id
+        self.title = title
+        self.message = message
+        self.handle = handle
+        self.avatar = avatar
+        self.appName = appName
+        self.appIcon = appIcon
+        self.tintColor = tintColor
+        self.enableQuickReply = enableQuickReply
+    }
     
     public static func == (lhs: NotificationPayload, rhs: NotificationPayload) -> Bool {
         lhs.id == rhs.id &&
@@ -19,7 +42,8 @@ public struct NotificationPayload: Equatable {
         lhs.message == rhs.message &&
         lhs.handle == rhs.handle &&
         lhs.appName == rhs.appName &&
-        lhs.appIcon == rhs.appIcon
+        lhs.appIcon == rhs.appIcon &&
+        lhs.enableQuickReply == rhs.enableQuickReply
     }
 }
 
@@ -42,6 +66,7 @@ public final class NotificationActivityProvider: ObservableObject {
     @Published public private(set) var currentNotificationId: String? = nil
     @Published public private(set) var currentPayload: NotificationPayload? = nil
     @Published public var dragPullOffset: CGFloat = 0
+    @Published public var dynamicReplyHeight: CGFloat = 186
     
     // Callbacks opcionales por compatibilidad
     public var onExpandRequested: (() -> Void)?
@@ -50,12 +75,24 @@ public final class NotificationActivityProvider: ObservableObject {
     
     private init() {}
     
+    public func updateReplyHeight(_ height: CGFloat) {
+        let clamped = max(NotificationActivityProvider.expandedHeight, min(height, 280))
+        if abs(dynamicReplyHeight - clamped) > 1.0 {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                self.dynamicReplyHeight = clamped
+            }
+        }
+    }
+    
     public func setNotificationState(active: Bool, expanded: Bool, id: String?) {
         self.isNotificationActive = active
         self.isQuickReplyExpanded = expanded
         self.currentNotificationId = id
         if !active {
             self.dragPullOffset = 0
+            self.dynamicReplyHeight = NotificationActivityProvider.expandedHeight
+        } else if !expanded {
+            self.dynamicReplyHeight = NotificationActivityProvider.expandedHeight
         }
     }
     
@@ -68,6 +105,24 @@ public final class NotificationActivityProvider: ObservableObject {
         currentPayload = nil
     }
     
+    /// Actualiza en caliente el título, mensaje y avatar de la notificación activa sin parpadeo
+    public func updateActiveNotification(title: String, message: String, handle: String? = nil, avatar: NSImage? = nil, enableQuickReply: Bool? = nil) {
+        guard let current = currentPayload else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            self.currentPayload = NotificationPayload(
+                id: current.id,
+                title: title,
+                message: message,
+                handle: handle ?? title,
+                avatar: avatar ?? current.avatar,
+                appName: current.appName,
+                appIcon: current.appIcon,
+                tintColor: current.tintColor,
+                enableQuickReply: enableQuickReply ?? current.enableQuickReply
+            )
+        }
+    }
+    
     /// Expande la notificación activa al modo Quick Reply actualizando directamente dimensiones, foco de teclado y timer
     public func expandQuickReply() {
         guard isNotificationActive else {
@@ -75,6 +130,17 @@ public final class NotificationActivityProvider: ObservableObject {
             return
         }
         guard !isQuickReplyExpanded else { return }
+        
+        // Si la notificación no admite Quick Reply (p. ej. "Tienes mensajes sin leer" genérico),
+        // abrir la app asociada en lugar de abrir un campo de texto inútil
+        guard currentPayload?.enableQuickReply ?? true else {
+            DNDLogger.log("NotificationActivityProvider.expandQuickReply -> Quick Reply deshabilitado para esta notificación, abriendo app asociada")
+            if currentPayload?.appName.lowercased().contains("whatsapp") == true {
+                WhatsAppWebObserverService.shared.activateWhatsAppWeb()
+            }
+            dismissNotification()
+            return
+        }
         
         DNDLogger.log("NotificationActivityProvider.expandQuickReply -> EXPANDIENDO Quick Reply (id=\(currentNotificationId ?? "nil"))")
         
@@ -151,12 +217,27 @@ public final class NotificationActivityProvider: ObservableObject {
         handle: String = "",
         avatar: NSImage? = nil,
         appIcon: String = "message.fill",
-        appName: String = "WhatsApp Web",
+        appName: String = "WhatsApp",
         tint: Color = Color(red: 0.15, green: 0.78, blue: 0.45),
         enableQuickReply: Bool = true,
         duration: TimeInterval? = 6.0
     ) {
-        DNDLogger.log("NotificationActivityProvider.showNotification CALLED: title='\(title)', handle='\(handle)'")
+        let lowerApp = appName.lowercased()
+        let isWhatsApp = lowerApp.contains("whatsapp")
+        let isDemoOrTest = title.lowercased().contains("demo") ||
+                           message.lowercased().contains("demo") ||
+                           handle.lowercased().contains("demo") ||
+                           lowerApp.contains("demo") ||
+                           lowerApp.contains("test")
+        
+        // REGLA: Los pop-ups en Dynamic Notch están restringidos exclusivamente a WhatsApp por ahora.
+        // Las notificaciones de Instagram o cualquier otra app no deben ser pop up.
+        guard isWhatsApp || isDemoOrTest else {
+            DNDLogger.log("NotificationActivityProvider.showNotification: 🚫 Pop-up omitido para '\(appName)'. Pop-ups reservados para WhatsApp por ahora.")
+            return
+        }
+        
+        DNDLogger.log("NotificationActivityProvider.showNotification CALLED: title='\(title)', message='\(message)', handle='\(handle)'")
         let activityId = "notification_\(UUID().uuidString)"
         let resolvedHandle = handle.isEmpty ? title : handle
         
@@ -202,109 +283,65 @@ public final class NotificationActivityProvider: ObservableObject {
             ActivityCenter.shared.remove(id: prevId)
         }
         
-        if enableQuickReply {
-            DNDLogger.log("NotificationActivityProvider: antes de payload y replyView")
-            let payload = NotificationPayload(
-                id: activityId,
-                title: title,
-                message: message,
-                handle: resolvedHandle,
-                avatar: contactAvatar,
-                appName: appName,
-                appIcon: appIcon,
-                tintColor: tint
-            )
-            self.currentPayload = payload
-            setNotificationState(active: true, expanded: false, id: activityId)
-            
-            // Pre-configurar dimensiones del contenedor ANTES de publicar para que el hit-test y la geometría sean inmediatos
-            ActivityCenter.shared.customCardWidth = Self.compactWidth
-            ActivityCenter.shared.customCardHeight = Self.compactHeight
-            ActivityCenter.shared.customTopRadius = Self.topRadius
-            ActivityCenter.shared.customBottomRadius = Self.compactBottomRadius
-            
-            let replyView = QuickReplyNotificationView(
-                id: activityId,
-                title: title,
-                message: message,
-                handle: resolvedHandle,
-                avatar: contactAvatar,
-                appName: appName,
-                appIcon: appIcon,
-                tintColor: tint
-            )
-            
-            let activity = LiveActivity(
-                id: activityId,
-                priority: 90,
-                style: .card,
-                customView: AnyView(replyView),
-                tint: tint,
-                duration: duration,
-                onTap: {
-                    NotificationActivityProvider.shared.expandQuickReply()
-                }
-            )
-            
-            DNDLogger.log("NotificationActivityProvider.showNotification -> publicada id=\(activityId), title='\(title)'")
-            ActivityCenter.shared.publish(activity)
-            NotchWindowManager.shared.updateHitAreaForCurrentState()
-            AppState.shared.hapticService.triggerSnap()
-            DNDLogger.log("NotificationActivityProvider.showNotification completado con éxito!")
-            return
-        }
-        
-        self.currentPayload = nil
-        setNotificationState(active: false, expanded: false, id: nil)
-        
-        // Fallback para notificaciones puramente informativas sin cuadro de texto
-        let leading = AnyView(
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.20))
-                    .frame(width: 44, height: 44)
-                
-                Image(systemName: appIcon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(tint)
-            }
+        let payload = NotificationPayload(
+            id: activityId,
+            title: title,
+            message: message,
+            handle: resolvedHandle,
+            avatar: contactAvatar,
+            appName: appName,
+            appIcon: appIcon,
+            tintColor: tint,
+            enableQuickReply: enableQuickReply
         )
+        self.currentPayload = payload
+        setNotificationState(active: true, expanded: false, id: activityId)
         
-        let center = AnyView(
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    Text("ahora")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
-                }
-                
-                Text(message)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(2)
-            }
+        // Pre-configurar dimensiones del contenedor ANTES de publicar para que el hit-test y la geometría sean inmediatos
+        ActivityCenter.shared.customCardWidth = Self.compactWidth
+        ActivityCenter.shared.customCardHeight = Self.compactHeight
+        ActivityCenter.shared.customTopRadius = Self.topRadius
+        ActivityCenter.shared.customBottomRadius = Self.compactBottomRadius
+        
+        let replyView = QuickReplyNotificationView(
+            id: activityId,
+            title: title,
+            message: message,
+            handle: resolvedHandle,
+            avatar: contactAvatar,
+            appName: appName,
+            appIcon: appIcon,
+            tintColor: tint,
+            enableQuickReply: enableQuickReply
         )
         
         let activity = LiveActivity(
             id: activityId,
-            priority: 85,
+            priority: 95,
             style: .card,
-            leading: leading,
-            center: center,
+            customView: AnyView(replyView),
             tint: tint,
             duration: duration,
             onTap: {
-                AppState.shared.hapticService.triggerSnap()
+                if enableQuickReply {
+                    NotificationActivityProvider.shared.expandQuickReply()
+                } else {
+                    if appName.lowercased().contains("whatsapp") {
+                        WhatsAppWebObserverService.shared.activateWhatsAppWeb()
+                    } else if appName.lowercased().contains("mensaje") || appName.lowercased().contains("messages") || appName.lowercased().contains("imessage") {
+                        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.MobileSMS") {
+                            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+                        }
+                    }
+                    NotificationActivityProvider.shared.dismissNotification()
+                }
             }
         )
         
+        DNDLogger.log("NotificationActivityProvider.showNotification -> publicada id=\(activityId), title='\(title)', enableQuickReply=\(enableQuickReply)")
         ActivityCenter.shared.publish(activity)
         NotchWindowManager.shared.updateHitAreaForCurrentState()
         AppState.shared.hapticService.triggerSnap()
+        DNDLogger.log("NotificationActivityProvider.showNotification completado con éxito!")
     }
 }

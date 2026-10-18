@@ -36,13 +36,13 @@ public struct PlayerMetrics {
     public static let artistOpacity: Double = 0.60
     public static let titleToArtistSpacing: CGFloat = 2.0
     
-    // Visualizador de Audio (AudioVisualizer - Barritas finas y delicadas)
+    // Visualizador de Audio (AudioVisualizer - Barritas finas, elegantes y perfectamente centradas)
     public static let visualizerBarCount: Int = 6
-    public static let visualizerBarWidth: CGFloat = 1.7
-    public static let visualizerBarSpacing: CGFloat = 1.4
+    public static let visualizerBarWidth: CGFloat = 2.0
+    public static let visualizerBarSpacing: CGFloat = 1.8
     public static let visualizerMinHeight: CGFloat = 2.4
-    public static let visualizerMaxHeight: CGFloat = 14.5
-    public static let visualizerPausedDotSize: CGFloat = 1.8
+    public static let visualizerMaxHeight: CGFloat = 13.0
+    public static let visualizerPausedDotSize: CGFloat = 2.4
     public static let visualizerTopGradient = Color(red: 0x8B / 255.0, green: 0x5C / 255.0, blue: 0xF6 / 255.0) // #8B5CF6 Violeta
     public static let visualizerBottomGradient = Color(red: 0xD9 / 255.0, green: 0x46 / 255.0, blue: 0xEF / 255.0) // #D946EF Magenta/Rosa
     

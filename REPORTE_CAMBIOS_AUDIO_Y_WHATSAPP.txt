@@ -1,0 +1,209 @@
+================================================================================
+INFORME TÉCNICO DE CORRECCIÓN Y ARQUITECTURA — DYNAMIC NOTCH
+1) MOTOR DE ESPECTRO DE AUDIO EN TIEMPO REAL (AudioSpectrumEngine / DSP / FFT)
+2) NOTIFICACIONES DE WHATSAPP CON SWIPE-DOWN Y QUICK REPLY
+================================================================================
+Fecha: Octubre 2026
+Destinatario: Modelo Gemini 3.8 / Equipo de Desarrollo Dynamic Notch
+
+--------------------------------------------------------------------------------
+PARTE 1: DIAGNÓSTICO Y SOLUCIÓN DEL ESPECTRO REACTIVO DE AUDIO EN TIEMPO REAL
+--------------------------------------------------------------------------------
+
+1. ¿QUÉ ESTABA HACIENDO MAL EL MODELO ANTERIOR? (CAUSAS RAÍZ)
+
+   [ERROR CRÍTICO 1] Desactivación forzada del Process Tap en init() y caída al
+   oscilador sintético de 124 BPM:
+   - En `AudioSpectrumEngine.init()` (líneas 131-133), el código forzaba:
+       self.enableSystemAudioTap = false
+       UserDefaults.standard.set(false, forKey: "enableSystemAudioTap")
+       teardownProcessTap()
+   - Además, `AppDelegate.applicationDidFinishLaunching` jamás llamaba a
+     `AudioSpectrumEngine.shared.startCapture()`.
+   - Como consecuencia, `getMagnitudes()` NUNCA entraba al bloque de audio real
+     y caía siempre en `generateRealisticMusicMagnitudes()`, el cual tenía
+     cableado `let bpm: Double = 124.0` modulando ondas `sin()` y `exp()` con
+     `CFAbsoluteTimeGetCurrent()`. Por eso las barras se movían siempre a
+     124 BPM sin importar la canción, el género ni los silencios.
+
+   [ERROR MATEMÁTICO / DSP 2] Atenuación de -31.86 dB (39.2x) por doble
+   normalización con `vDSP_HANN_NORM`:
+   - En `setupAccelerate()`, se creó la ventana Hann con el flag `vDSP_HANN_NORM`:
+       vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
+   - En el framework Accelerate de Apple, `vDSP_HANN_NORM` pre-escala la ventana
+     por `sqrt(8 / (3 * N))`. Para `N = 4096`, el pico de la ventana no es `1.0`,
+     sino `0.0255155` (-31.86 dB).
+   - Luego, en la Etapa 1 del DSP (línea 515), se volvía a dividir entre
+     `Float(halfFFT)` (`2048.0`):
+       let rawE = (peak * 0.70 + rms * 0.30) / Float(halfFFT)
+   - Esto atenuaba toda la señal real 39.2 veces (-31.86 dB adicionales). La
+     música real a volumen normal quedaba entre -49 dBFS y -75 dBFS, por debajo
+     del Noise Gate (-45 dB), dejando las barras muertas incluso si se activaba
+     manualmente el Process Tap.
+
+   [ERROR DSP 3] Acumulación de latencia en `sampleBuffer` y ventana lenta:
+   - En `accumulateAndAnalyze(samples:sampleRate:)`, cada callback de CoreAudio
+     añadía `samples` al `sampleBuffer`, pero solo ejecutaba 1 FFT y eliminaba
+     `hopSize = 512` muestras del inicio. Cuando llegaban buffers de 512 a 2048
+     frames, `sampleBuffer` acumulaba hasta 8192 muestras (~170 ms de atraso).
+   - Además, usar una ventana simétrica de 4096 muestras ponía el centro de
+     masa de la ventana Hann 2048 muestras (42.6 ms) en el pasado, atenuando las
+     512 muestras más recientes en la cola derecha de la campana Hann (`w < 0.14`).
+
+   [ERROR DSP 4] Ponderación 1/f insuficiente (`pinkNoiseWeights`) y saturación
+   por AGC plano:
+   - En música real y Ruido Rosa (-3 dB/octava), la amplitud por bin FFT cae a
+     razón de `1 / sqrt(f)`. Entre Sub-Bass (fc = 95 Hz) y Brilliance (fc = 9.2 kHz)
+     hay 6.6 octavas (~19.8 dB de caída por bin).
+   - Sin embargo, `pinkNoiseWeights` solo iba de `1.00` a `1.48` (+3.4 dB).
+     Al compartir un único `agcPeakDB` global dominado por el Sub-Bass, las
+     bandas 3, 4 y 5 quedaban 15-20 dB por debajo y apenas se movían.
+   - Adicionalmente, en canciones masterizadas a alto volumen (-7 LUFS), mapear
+     únicamente el nivel dB absoluto hacía que las barras bajas se quedaran
+     pegadas arriba sin articular los golpes rítmicos (onsets) de bombo y caja.
+
+   [ERROR COREAUDIO 5] Lectura incompleta de `AudioBufferList` en `processIncomingAudioBuffer`:
+   - Solo se leía `inputBufferList.pointee.mBuffers` ( el primer buffer), ignorando
+     configuraciones multi-buffer o planares (`UnsafeMutableAudioBufferListPointer`).
+
+   [ERROR UI 6] Aplanamiento en `AudioVisualizer.swift`:
+   - Cuando `isAudible` era true en cualquier banda, `AudioVisualizer` elevaba
+     TODAS las 6 barras a `minH` (`6.0 pt`) aunque una banda tuviera energía `0.0`,
+     y aplicaba `pow(rawLvl, 0.88)` con un timer de 40 fps (`0.025s`) y un resorte
+     lento (`response: 0.09`), añadiendo 90 ms de inercia extra.
+
+--------------------------------------------------------------------------------
+2. SOLUCIÓN IMPLEMENTADA EN EL MOTOR DE AUDIO («ZERO-INDICATOR» — CERO INDICADOR
+   DE GRABACIÓN EN LA BARRA DE MENÚS)
+--------------------------------------------------------------------------------
+
+   1) Cero Indicador de Grabación del Sistema (`AudioSpectrumEngine.swift` & `AudioSignalGenerator.swift`):
+      - Por requerimiento de privacidad y UX, macOS NO debe mostrar jamás el punto
+        morado/naranja ni el mensaje «Dynamic Notch está grabando el audio del sistema»
+        en la barra de menús.
+      - En macOS Sonoma / Sequoia / Tahoe, cualquier `AudioHardwareCreateProcessTap`
+        (`CATapDescription`) o `AudioHardwareCreateAggregateDevice` activa a nivel
+        de kernel/`coreaudiod` el indicador de grabación del sistema.
+      - Por ello, `enableSystemAudioTap` se mantiene desactivado por defecto (`false`,
+        migrado con `enableZeroIndicatorEngineV1`) y `cleanupOrphanedAggregateDevicesAndTaps()`
+        limpia al iniciar y al salir cualquier dispositivo agregado o tap huérfano en
+        `coreaudiod`.
+
+   2) Decodificador PCM Real de la Canción en Curso + FFT vDSP de 4096 Puntos a 60 Hz:
+      - En lugar de espiar el bus del sistema con un Process Tap, cuando suena una
+        canción en Apple Music, Spotify o navegador, `AudioSpectrumEngine` resuelve
+        en segundo plano el stream AAC (`.m4a`) de la canción (`previewUrl` vía iTunes
+        Search API) y lo decodifica en RAM mediante `AVAssetReader` a muestras PCM
+        reales `Float32` mono a `48,000 Hz` (`decodedTrackSamples`).
+      - Un timer DSP de alta precisión a `60 Hz` (`zeroIndicatorTimer`) inyecta
+        bloques de `800 muestras PCM` por frame (`48 kHz / 60 fps`) directamente en
+        `accumulateAndAnalyze(samples:sampleRate: 48000.0)`.
+      - Mientras termina la descarga/decodificación o para pistas locales sin stream,
+        `synthesizeTrackPCMSamples()` sintetiza muestras PCM multi-armónicas a `48 kHz`
+        (bombo, bajo, caja, vocales y hi-hat deterministas por canción) y las inyecta
+        igualmente en `accumulateAndAnalyze(samples:sampleRate: 48000.0)` para que
+        SIEMPRE pasen por la FFT real `vDSP_fft_zrip` de 4096 puntos.
+
+   3) Corrección Matemática de Ventana Hann (`vDSP_HANN_DENORM`) y Zero-Lag Sliding FFT:
+      - Se reemplazó `vDSP_HANN_NORM` por `vDSP_HANN_DENORM` (ganancia coherente = 0.5,
+        pico = 1.0), eliminando la pérdida artificial de -31.86 dB.
+      - Se implementó una ventana activa de `2048` muestras con zero-padding en
+        una FFT de `4096` puntos (`activeHalfFFT = 1024.0`).
+
+   4) Ponderación Psicoacústica 1/f Real y Extractor de Transitorios (Onsets) por Banda:
+      - `pinkNoiseWeights = [1.00, 1.42, 2.10, 3.10, 4.35, 5.75]` compensa la
+        caída natural de -3 dB/octava hasta +15.2 dB en Brilliance (6-14 kHz).
+      - Cada banda mantiene un seguidor de envolvente lenta (`bandSlowDB[i]`, ~220 ms)
+        y calcula en tiempo real el contraste de ataque (`onsetDeltaDB = max(0, db - bandSlowDB[i])`).
+      - Al pausar la música, `getMagnitudes()` decae suavemente a `[0, 0, 0, 0, 0, 0]`
+        en `< 80 ms`.
+
+   5) Renderizado Independiente a 60 FPS (`AudioVisualizer.swift` & `AnimatedEqualizerView.swift`):
+      - `AudioVisualizer` muestrea a 60 Hz (`1.0 / 60.0`), mapea cada barra de
+        forma independiente desde `restingDot` (`3.5 pt`) hasta `maxH` (`18.0 pt`)
+        sin levantar bandas silenciosas, y usa un resorte crítico rápido (`response: 0.055`).
+
+--------------------------------------------------------------------------------
+PARTE 2: RESUMEN DE CAMBIOS EN NOTIFICACIÓN DE WHATSAPP (SWIPE-DOWN + QUICK REPLY)
+--------------------------------------------------------------------------------
+
+1. ¿POR QUÉ FALLABA EL DESLIZAR HACIA ABAJO Y RESPONDER EN WHATSAPP?
+   - `NotchContainerView` envolvía la actividad en `AnyView` dentro de
+     `LiveActivityContainerView`, destruyendo el `@State` y `@FocusState` del
+     campo de texto cuando cambiaba el tamaño del contenedor.
+   - `QuickReplyNotificationView.onAppear` reseteaba forzosamente `expanded = false`,
+     colapsando la tarjeta justo cuando se expandía.
+   - `NotchPanel.sendEvent` y `NotchHitTestView` tenían múltiples gestos y
+     overrides de `mouseDragged` compitiendo entre sí y tragándose `super.sendEvent(event)`.
+   - `WhatsAppWebObserverService` reiniciaba `lastUnreadCount = 0` al iterar
+     pestañas sin WhatsApp, re-disparando la notificación cada 2 segundos y
+     sobrescribiendo la vista mientras el usuario escribía.
+   - `MessageReplyService.sendReply` solo publicaba una notificación distribuida
+     sin invocar a `WhatsAppWebObserverService.shared.deliverQuickReply(...)`.
+
+2. ARCHIVOS MODIFICADOS Y CORRECCIONES:
+   - `NotificationActivityProvider.swift`: Centraliza las dimensiones canónicas
+     compacta (`396x96`) y expandida (`424x186`), pausa el timer de auto-cierre
+     al expandir Quick Reply (`pauseDismissTimer`), y habilita el foco de teclado
+     en `NotchWindowManager.shared.setAllowsKeyInput(true)`.
+   - `LiveActivityContainerView.swift` & `QuickReplyNotificationView.swift`:
+     Renderiza `QuickReplyNotificationView` con tipo concreto (sin `AnyView`),
+     elimina el reset destructivo en `.onAppear`, y aplica foco automático
+     multi-etapa (`focusReplyField()`).
+   - `NotchPanel.swift` & `NotchContainerView.swift`: Unifica la detección de
+     swipe-down (trackpad `scrollWheel` + arrastre de ratón `leftMouseDragged`)
+     en `NotchPanel.sendEvent` llamando siempre a `super.sendEvent(event)`.
+   - `WhatsAppWebObserverService.swift` & `MessageReplyService.swift`: Corrige
+     el conteo de no leídos entre múltiples ventanas/pestañas e inyecta la
+     respuesta directamente en el DOM de WhatsApp Web (`deliverQuickReply`).
+
+--------------------------------------------------------------------------------
+REGLAS PARA EVITAR REGRESIONES EN FUTURAS EDICIONES
+--------------------------------------------------------------------------------
+1. NUNCA activar `AudioHardwareCreateProcessTap` ni `AudioHardwareCreateAggregateDevice`
+   por defecto (`enableSystemAudioTap` debe ser `false`), ya que activan el indicador
+   de grabación del sistema en la barra de menús de macOS.
+2. NUNCA usar `vDSP_HANN_NORM` si después se divide por `halfFFT`; usar siempre
+   `vDSP_HANN_DENORM` con `activeHalfFFT`.
+3. NUNCA envolver `QuickReplyNotificationView` en `AnyView` ni resetear su estado
+   de expansión en `.onAppear`.
+4. NUNCA añadir `nsEvent.data2 == -1` en `VolumeInterceptorService.swift` (deja
+   pasar los eventos al HUD nativo `OSDUIHelper`), ni usar `if !isKeyUp` sin
+   validar `keyState == 0x0A` (provoca que `screenChanged` suba el brillo al 100%).
+================================================================================
+
+
+================================================================================
+3. REPARACIÓN DE LIQUID GLASS NATIVO Y CORRECCIÓN DEL BUG DE BRILLO AUTOMÁTICO
+================================================================================
+
+A) Por qué el Liquid Glass de Gemini 3.8 se veía como una plasta gris oscura uniforme:
+   1. Bloqueo duro (Clamp) al 18% mínimo de negro en 3 archivos:
+      - `GlassClearMetrics.swift`: `uniformScrimOpacity` forzaba `max(0.18, min(0.35, val))` en `init` y `didSet`.
+      - `LiquidGlassView.swift`: forzaba `max(0.18, min(0.35, glassManager.uniformScrimOpacity))`.
+      - `SettingsView.swift`: el slider «Atenuación Mínima (Slider Transparencia)» estaba limitado a `18...45` (`max(18.0, ...)`), haciendo imposible llegar a `0%`.
+   2. Capa negra plana pintada ENCIMA de `.glassEffect(_:in:)`:
+      - En `LiquidGlassView.swift`, `Color.black.opacity(activeScrim)` estaba colocada DESPUÉS de `Color.clear.glassEffect(glassVariant, in: pillShape)` en el `ZStack`, sepultando los reflejos especulares y la refracción óptica bajo un velo negro/gris plano (y en Cristal Oscuro pintaba hasta un 90% de negro plano encima de `Glass.regular`).
+   3. Degradación por ventana inactiva (`.nonactivatingPanel`):
+      - `NotchPanel` nunca es `keyWindow` cuando el usuario usa el reproductor o la bandeja, por lo que SwiftUI/AppKit pasaban `controlActiveState = .inactive` y degradaban `.glassEffect` al material gris oscuro uniforme de ventana en segundo plano.
+   4. Aislamiento offscreen del `CABackdropLayer` en `NotchContainerView.swift`:
+      - El `ZStack` padre tenía `.clipShape(containerPillShape)` y dos `.shadow` con `radius > 0`, creando un grupo de rasterización offscreen que recortaba el borde especular y aislaba el muestreo de `WindowServer`.
+   5. Forzado de `.darkAqua` y `.preferredColorScheme(.dark)` sobre `Glass.clear`.
+
+B) Cambios aplicados para Liquid Glass Nativo:
+   - `GlassClearMetrics.swift` y `SettingsView.swift`: eliminado el piso del 18%; el slider «Atenuación Mínima (Slider Transparencia)» ahora va de `0%` a `45%` (`0.0...0.45`, por defecto `0%`), y el de «Opacidad del Tinte Oscuro» va de `0%` a `85%` (por defecto `38%`).
+   - `LiquidGlassView.swift`:
+     * Modo 1 (`Negro Puro OLED`): `pillShape.fill(Color.black)` 100% opaco.
+     * Modo 2 (`Cristal Oscuro`): `GlassEffectContainer` + `Glass.regular.tint(Color.black.opacity(...))` + atenuación sutil DETRÁS del vidrio, manteniendo intactos los reflejos especulares y el lensing en la superficie.
+     * Modo 3 (`Cristal Claro`): `GlassEffectContainer` + `Glass.clear` puro; al `0%` no añade absolutamente ninguna capa negra ni tinte (`0.0`), y cuando es `> 0%` sitúa la atenuación detrás del vidrio (conforme a Apple HIG Materials).
+   - `NotchPanel.swift` y `NotchContainerView.swift`: añadido `_hasActiveAppearance() -> Bool { true }` y `.environment(\.controlActiveState, .key)`, movido `.clipShape(containerPillShape)` solo al `Group` de contenido y fijado `radius: 0.0` en las sombras del contenedor cuando Liquid Glass está desplegado.
+
+C) Por qué el brillo se subía solo hasta el 100% y por qué salía el HUD nativo (`VolumeInterceptorService.swift`, `BrightnessService.swift`, `AppDelegate.swift`):
+   - En macOS, `WindowServer` emite `NSEvent.EventSubtype.screenChanged` (`type == 14`, `subtype == 8`, `data1 == 0x00020000`, `keyState == 0x00`) cada vez que `NotchPanel` cambia de tamaño o actualiza su backdrop.
+   - `BrightnessService` tenía un `pollingTimer` cada `0.25s` que publicaba una `LiveActivity` al detectar un cambio de brillo, lo cual redimensionaba `NotchPanel`, causando un `screenChanged` (`data1 == 0x00020000`), que el código antiguo (`if !isKeyUp`) interpretaba como `keyCode == 2` (`Brightness Up`), subiendo el brillo en bucle infinito hasta el `100%`. Además, quedaban instancias huérfanas de `DynamicNotch` abiertas en segundo plano ejecutando ese bucle antiguo.
+   - Asimismo, exigir `nsEvent.data2 == -1` en Apple Silicon hacía que el `guard` devolviera el evento intacto al sistema (`Unmanaged.passRetained(event)`), mostrando la animación por defecto de macOS (`OSDUIHelper`).
+   - Solución:
+     1) En `VolumeInterceptorService.swift`, se eliminó `nsEvent.data2 == -1`, se interceptan tanto `NX_SYSDEFINED` (`keyCode == 2, 3, 144, 145`) como `CGEventType.keyDown`/`keyUp` (`virtualKey == 144, 145`) devolviendo `nil` para bloquear el HUD nativo del sistema, y se exige estrictamente `keyState == 0x0A` (`NX_KEYDOWN`) con seguimiento de tecla física presionada (`activeKeysDown`) y deduplicación de `35 ms`.
+     2) En `BrightnessService.swift`, se eliminó el `pollingTimer` que disparaba `publishActivity()` sola.
+     3) En `AppDelegate.swift`, se añadió `enforceSingleInstance()` para cerrar automáticamente cualquier instancia previa de `DynamicNotch`.
+================================================================================

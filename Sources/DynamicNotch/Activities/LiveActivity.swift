@@ -7,6 +7,51 @@ public enum ActivityStyle: String, Equatable {
     case card
 }
 
+public enum ActivityKind: String, CaseIterable, Identifiable {
+    case timer
+    case call
+    case recording
+    case vpn
+    case download
+    case agentAI
+    case music
+    case generic
+    
+    public var id: String { rawValue }
+    
+    public var defaultPriority: Int {
+        switch self {
+        case .call, .recording: return 900
+        case .timer: return 800
+        case .agentAI, .download, .vpn: return 700
+        case .music: return 500
+        case .generic: return 600
+        }
+    }
+}
+
+/// Dos variantes de diseño para las bolitas satélite de Live Activities:
+/// - Variante A: Bolita de color de acento con icono o texto corto de alto contraste.
+/// - Variante B: Bolita oscura con anillo de progreso animado (Circle().trim()) y acento específico.
+public enum BolitaVariant: Equatable {
+    case color(bgColor: Color, fgColor: Color, iconName: String, shortText: String? = nil)
+    case progressRing(progress: Double, strokeColor: Color, iconName: String, shortText: String? = nil)
+    
+    public var iconName: String {
+        switch self {
+        case .color(_, _, let icon, _): return icon
+        case .progressRing(_, _, let icon, _): return icon
+        }
+    }
+    
+    public var shortText: String? {
+        switch self {
+        case .color(_, _, _, let text): return text
+        case .progressRing(_, _, _, let text): return text
+        }
+    }
+}
+
 public struct AirPodsActivityState: Equatable {
     public let name: String
     public let batteryLevel: Int
@@ -52,49 +97,101 @@ public enum SliderPillState: Equatable {
     }
 }
 
+public enum SatelliteSide: String, Equatable {
+    case right
+    case left
+}
+
+public enum ActivityLifecycleState: String, Equatable {
+    case starting
+    case active
+    case updated
+    case paused
+    case attention
+    case finished
+    case dismissed
+}
+
 public struct LiveActivity: Identifiable {
     public let id: String
+    public var kind: ActivityKind
     public var priority: Int
     public var style: ActivityStyle
+    public var state: ActivityLifecycleState
+    public var title: String?
+    public var subtitle: String?
+    public var progress: Double?
     public var leading: AnyView?
     public var center: AnyView?
     public var trailing: AnyView?
     public var tint: Color
     public var customView: AnyView?
+    public var bolitaVariant: BolitaVariant?
+    public var expandedView: AnyView?
     public var duration: TimeInterval?
     public var onTap: (() -> Void)?
+    public var onDismiss: (() -> Void)?
     public var createdAt: Date
+    public var lastUpdatedAt: Date
     public var sliderState: SliderPillState?
     public var airpodsState: AirPodsActivityState?
+    public var isUrgent: Bool = false
+    public var customExpandedWidth: CGFloat? = nil
+    public var customExpandedHeight: CGFloat? = nil
     
     public init(
         id: String,
-        priority: Int,
+        kind: ActivityKind = .generic,
+        priority: Int? = nil,
         style: ActivityStyle,
+        state: ActivityLifecycleState = .active,
+        title: String? = nil,
+        subtitle: String? = nil,
+        progress: Double? = nil,
         leading: AnyView? = nil,
         center: AnyView? = nil,
         trailing: AnyView? = nil,
         customView: AnyView? = nil,
+        bolitaVariant: BolitaVariant? = nil,
+        expandedView: AnyView? = nil,
         tint: Color = DesignTokens.green,
         duration: TimeInterval? = nil,
         sliderState: SliderPillState? = nil,
         airpodsState: AirPodsActivityState? = nil,
+        isUrgent: Bool = false,
+        customExpandedWidth: CGFloat? = nil,
+        customExpandedHeight: CGFloat? = nil,
         onTap: (() -> Void)? = nil,
-        createdAt: Date = Date()
+        onDismiss: (() -> Void)? = nil,
+        createdAt: Date = Date(),
+        lastUpdatedAt: Date = Date()
     ) {
         self.id = id
-        self.priority = priority
+        self.kind = kind
+        self.priority = priority ?? kind.defaultPriority
         self.style = style
+        self.state = state
+        self.title = title
+        self.subtitle = subtitle
+        self.progress = progress
         self.leading = leading
         self.center = center
         self.trailing = trailing
         self.customView = customView
+        self.bolitaVariant = bolitaVariant
+        self.expandedView = expandedView
         self.tint = tint
         self.duration = duration
         self.sliderState = sliderState
         self.airpodsState = airpodsState
+        self.isUrgent = isUrgent
+        self.customExpandedWidth = customExpandedWidth
+        self.customExpandedHeight = customExpandedHeight
         self.onTap = onTap
+        self.onDismiss = onDismiss
         self.createdAt = createdAt
+        self.lastUpdatedAt = lastUpdatedAt
     }
 }
+
 

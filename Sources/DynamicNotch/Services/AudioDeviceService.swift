@@ -7,6 +7,10 @@ public struct AudioOutputDevice: Identifiable, Equatable {
     public let name: String
     public let isDefault: Bool
     public let isAirPods: Bool
+    
+    public var icon: String {
+        AudioDeviceService.shared.iconForDevice(name: name, isAirPods: isAirPods)
+    }
 }
 
 public final class AudioDeviceService: NSObject, ObservableObject {
@@ -61,7 +65,7 @@ public final class AudioDeviceService: NSObject, ObservableObject {
             
             if streamSize > 0 {
                 let name = getDeviceName(id: id)
-                let isAirPods = name.localizedCaseInsensitiveContains("AirPods")
+                let isAirPods = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats")
                 result.append(AudioOutputDevice(
                     id: id,
                     name: name,
@@ -139,24 +143,32 @@ public final class AudioDeviceService: NSObject, ObservableObject {
     
     public var isAirPodsActive: Bool {
         let name = currentDeviceName.lowercased()
-        return name.contains("airpods") || name.contains("beats")
+        return name.contains("airpods") || name.contains("beats") || name.contains("powerbeats")
     }
     
-    public var currentDeviceIcon: String {
+    public var isAirPlayActive: Bool {
         let name = currentDeviceName.lowercased()
-        if name.contains("airpods max") {
-            return "airpodsmax"
-        } else if name.contains("airpods pro") {
-            return "airpodspro"
-        } else if name.contains("airpods") {
-            return "airpods"
-        } else if name.contains("beats") {
+        return name.contains("airplay") || name.contains("apple tv") || name.contains("tv")
+    }
+    
+    /// Devuelve el icono exacto correspondiente al dispositivo actual conectado (ej: airpods.gen4 para AirPods 4)
+    public var currentDeviceIcon: String {
+        if isAirPodsActive {
+            return BluetoothAudioService.shared.currentAirPodsSymbol
+        }
+        return iconForDevice(name: currentDeviceName, isAirPods: false)
+    }
+    
+    /// Devuelve el SF Symbol exacto para cualquier dispositivo de audio por su nombre y tipo
+    public func iconForDevice(name: String, isAirPods: Bool = false) -> String {
+        let lower = name.lowercased()
+        if isAirPods || lower.contains("airpods") || lower.contains("beats") || lower.contains("powerbeats") {
+            return BluetoothAudioService.shared.symbolForDeviceName(name)
+        } else if lower.contains("headphone") || lower.contains("auricular") || lower.contains("auriculares") || lower.contains("cascos") {
             return "headphones"
-        } else if name.contains("headphone") || name.contains("auricular") || name.contains("auriculares") {
-            return "headphones"
-        } else if name.contains("tv") || name.contains("apple tv") || name.contains("airplay") {
+        } else if lower.contains("tv") || lower.contains("apple tv") || lower.contains("airplay") {
             return "airplayaudio"
-        } else if name.contains("homepod") || name.contains("speaker") || name.contains("altavoz") || name.contains("altavoces") {
+        } else if lower.contains("homepod") || lower.contains("speaker") || lower.contains("altavoz") || lower.contains("altavoces") {
             return "speaker.wave.2.fill"
         } else {
             return "laptopcomputer"
@@ -309,11 +321,6 @@ public final class AudioDeviceService: NSObject, ObservableObject {
             return isMuted != 0
         }
         return false
-    }
-    
-    public var isAirPlayActive: Bool {
-        let name = currentDeviceName.lowercased()
-        return name.contains("airplay") || name.contains("apple tv")
     }
     
     public func setVolume(_ volume: Float) {

@@ -286,25 +286,7 @@ public struct NotchShelfView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 12)
-                .onEnded { value in
-                    // Si el usuario desliza hacia la derecha desde cualquier parte de la bandeja: regresar a Música
-                    let tx = value.translation.width
-                    let ty = value.translation.height
-                    if tx > 24 && abs(tx) > (abs(ty) * 0.7) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            appState.activeTab = .music
-                            appState.mode = .expanded
-                            appState.overscrollOffset = 0
-                            appState.contentOverscrollOffset = 0
-                        }
-                        if appState.enableShelfHaptics {
-                            appState.hapticService.triggerSnap()
-                        }
-                    }
-                }
-        )
+        .contentShape(Rectangle())
         .onDrop(of: [.fileURL, .item], isTargeted: Binding(
             get: { appState.isShelfDragTargeted },
             set: { appState.isShelfDragTargeted = $0 }

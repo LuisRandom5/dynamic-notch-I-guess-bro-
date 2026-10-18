@@ -13,7 +13,7 @@ public struct AnimatedEqualizerView: View {
     }
     
     public var body: some View {
-        HStack(alignment: .bottom, spacing: 2.2) {
+        HStack(alignment: .bottom, spacing: PlayerMetrics.visualizerBarSpacing) {
             ForEach(0..<4, id: \.self) { index in
                 Capsule()
                     .fill(
@@ -27,8 +27,8 @@ public struct AnimatedEqualizerView: View {
                         )
                     )
                     .frame(
-                        width: 2.8,
-                        height: isPlaying ? max(3.5, barHeights[index] * 13) : 3.5
+                        width: PlayerMetrics.visualizerBarWidth,
+                        height: isPlaying ? max(PlayerMetrics.visualizerMinHeight, barHeights[index] * 14) : PlayerMetrics.visualizerMinHeight
                     )
             }
         }
@@ -46,19 +46,24 @@ public struct AnimatedEqualizerView: View {
         timer = nil
         
         if isPlaying {
-            timer = Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { _ in
-                withAnimation(.spring(response: 0.12, dampingFraction: 0.60)) {
+            let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { _ in
+                let mags = ProceduralMotionEngine.shared.getMagnitudes(barCount: 4)
+                guard mags.count >= 4 else { return }
+                withAnimation(.interactiveSpring(response: 0.06, dampingFraction: 0.85)) {
                     barHeights = [
-                        CGFloat.random(in: 0.20...1.0),
-                        CGFloat.random(in: 0.35...1.0),
-                        CGFloat.random(in: 0.15...0.95),
-                        CGFloat.random(in: 0.30...1.0)
+                        CGFloat(mags[0]),
+                        CGFloat(mags[1]),
+                        CGFloat(mags[2]),
+                        CGFloat(mags[3])
                     ]
                 }
             }
+            t.tolerance = 0.004
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
         } else {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                barHeights = [0.2, 0.2, 0.2, 0.2]
+                barHeights = [0.0, 0.0, 0.0, 0.0]
             }
         }
     }

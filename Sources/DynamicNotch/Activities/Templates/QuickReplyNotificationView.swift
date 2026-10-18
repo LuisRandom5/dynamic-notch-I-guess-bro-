@@ -12,6 +12,7 @@ public struct QuickReplyNotificationView: View {
     public let appName: String
     public let appIcon: String
     public let tintColor: Color
+    public let enableQuickReply: Bool
     
     // Fuente de verdad única: el proveedor.
     @ObservedObject private var provider = NotificationActivityProvider.shared
@@ -38,7 +39,8 @@ public struct QuickReplyNotificationView: View {
         avatar: NSImage? = nil,
         appName: String = "WhatsApp",
         appIcon: String = "message.fill",
-        tintColor: Color = Color(red: 0.15, green: 0.78, blue: 0.45)
+        tintColor: Color = Color(red: 0.15, green: 0.78, blue: 0.45),
+        enableQuickReply: Bool = true
     ) {
         self.id = id
         self.title = title
@@ -48,6 +50,7 @@ public struct QuickReplyNotificationView: View {
         self.appName = appName
         self.appIcon = appIcon
         self.tintColor = tintColor
+        self.enableQuickReply = enableQuickReply
     }
     
     public var body: some View {
@@ -145,18 +148,33 @@ public struct QuickReplyNotificationView: View {
                         .foregroundColor(Color.white.opacity(0.40))
                 }
                 
-                Text(message)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.90))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                
-                // Micro-hint animado con holgura vertical
+                let isMedia = message.lowercased().contains("foto") || message.lowercased().contains("video") || message.lowercased().contains("audio") || message.lowercased().contains("imagen")
                 HStack(spacing: 4) {
-                    Image(systemName: "chevron.compact.down")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("Desliza hacia abajo o toca para responder")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                    if isMedia {
+                        Image(systemName: message.lowercased().contains("video") ? "video.fill" : (message.lowercased().contains("audio") ? "waveform" : "photo.fill"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(tintColor)
+                    }
+                    Text(message)
+                        .font(.system(size: 12.5, weight: .regular))
+                        .foregroundColor(Color.white.opacity(0.95))
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                }
+                
+                // Micro-hint animado con holgura vertical o acceso directo
+                HStack(spacing: 4) {
+                    if enableQuickReply {
+                        Image(systemName: "chevron.compact.down")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Desliza hacia abajo o toca para responder")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                    } else {
+                        Image(systemName: "arrow.up.right.square.fill")
+                            .font(.system(size: 9.5, weight: .semibold))
+                        Text("Toca para abrir \(appName)")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                    }
                 }
                 .foregroundColor(tintColor.opacity(0.95))
                 .padding(.top, 1)
@@ -179,9 +197,9 @@ public struct QuickReplyNotificationView: View {
         .padding(.bottom, 12)
         .contentShape(Rectangle())
         // Gesto unificado omnidireccional:
-        // - Deslizar hacia abajo (dy >= 8 o inercia >= 14) -> Expandir respuesta rápida
+        // - Deslizar hacia abajo (dy >= 8 o inercia >= 14) -> Expandir respuesta rápida o abrir app si es genérico
         // - Deslizar hacia arriba (dy <= -8 o inercia <= -14) -> Descartar notificación al notch
-        // - Tap directo (dy y dx < 6) -> Expandir respuesta rápida
+        // - Tap directo (dy y dx < 6) -> Expandir respuesta rápida o abrir app si es genérico
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
@@ -208,15 +226,23 @@ public struct QuickReplyNotificationView: View {
                         AppState.shared.hapticService.triggerSnap()
                         dismissActivity()
                     }
-                    // 2. Swipe hacia abajo -> Expandir respuesta rápida
+                    // 2. Swipe hacia abajo -> Expandir respuesta rápida (o abrir app si no hay remitente)
                     else if dy >= 6 || pdy >= 10 {
-                        AppState.shared.hapticService.triggerExpand()
-                        expandToQuickReply()
+                        if enableQuickReply {
+                            AppState.shared.hapticService.triggerExpand()
+                            expandToQuickReply()
+                        } else {
+                            openAssociatedApp()
+                        }
                     }
                     // 3. Tap directo
                     else if abs(dy) < 6 && abs(dx) < 6 {
-                        AppState.shared.hapticService.triggerExpand()
-                        expandToQuickReply()
+                        if enableQuickReply {
+                            AppState.shared.hapticService.triggerExpand()
+                            expandToQuickReply()
+                        } else {
+                            openAssociatedApp()
+                        }
                     }
                 }
         )
@@ -288,16 +314,30 @@ public struct QuickReplyNotificationView: View {
                 .buttonStyle(.plain)
             }
             
-            // Fila 2: Cita sutil del mensaje recibido con píldora verde
-            HStack(spacing: 9) {
+            // Fila 2: Cita clara del mensaje recibido con píldora verde y soporte multilínea
+            let isMedia = message.lowercased().contains("foto") || message.lowercased().contains("video") || message.lowercased().contains("audio") || message.lowercased().contains("imagen")
+            HStack(alignment: .top, spacing: 9) {
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(tintColor)
-                    .frame(width: 3, height: 28)
+                    .frame(width: 3)
                 
-                Text(message)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.70))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 3) {
+                    if isMedia {
+                        HStack(spacing: 4) {
+                            Image(systemName: message.lowercased().contains("video") ? "video.fill" : (message.lowercased().contains("audio") ? "waveform" : "photo.fill"))
+                                .font(.system(size: 10.5, weight: .semibold))
+                            Text(message.lowercased().contains("video") ? "Video" : (message.lowercased().contains("audio") ? "Mensaje de voz" : "Foto"))
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(tintColor)
+                    }
+                    
+                    Text(message)
+                        .font(.system(size: 12.5, weight: .regular))
+                        .foregroundColor(Color.white.opacity(0.92))
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                }
                 
                 Spacer()
             }
@@ -305,18 +345,19 @@ public struct QuickReplyNotificationView: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.white.opacity(0.08))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
             )
             
-            // Fila 3: Campo de texto con botón de enviar estilizado
-            HStack(spacing: 8) {
-                HStack {
-                    TextField("Escribe una respuesta a \(title)...", text: $replyText)
+            // Fila 3: Campo de texto con botón de enviar estilizado y expansión vertical animada
+            HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .center, spacing: 6) {
+                    TextField("Escribe una respuesta a \(title)...", text: $replyText, axis: .vertical)
                         .textFieldStyle(.plain)
+                        .lineLimit(1...5)
                         .font(.system(size: 13.5, weight: .medium))
                         .foregroundColor(.white)
                         .focused($isInputFocused)
@@ -327,6 +368,7 @@ public struct QuickReplyNotificationView: View {
                     if !replyText.isEmpty {
                         Button(action: {
                             replyText = ""
+                            updateHeightForText("")
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 13))
@@ -336,16 +378,16 @@ public struct QuickReplyNotificationView: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .padding(.vertical, 8)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     focusReplyField()
                 }
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 18)
                         .fill(Color.white.opacity(0.10))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 20)
+                            RoundedRectangle(cornerRadius: 18)
                                 .stroke(isInputFocused ? tintColor.opacity(0.80) : Color.white.opacity(0.14), lineWidth: 1)
                         )
                 )
@@ -384,12 +426,29 @@ public struct QuickReplyNotificationView: View {
         .padding(.horizontal, 18)
         .padding(.top, 34) // Despeje para la cámara del notch
         .padding(.bottom, 16)
+        .onChange(of: replyText) { _, newText in
+            updateHeightForText(newText)
+        }
+        .onChange(of: provider.dynamicReplyHeight) { _, _ in
+            syncContainerDimensions(expanded: isExpanded)
+        }
         .onAppear {
             focusReplyField()
+            updateHeightForText(replyText)
         }
     }
     
     // MARK: - Control de Animaciones y Dimensiones
+    
+    private func updateHeightForText(_ text: String) {
+        guard isExpanded else { return }
+        let newlines = text.components(separatedBy: "\n").count
+        let approxWrap = max(1, (text.count + 28) / 30)
+        let estimatedLines = min(max(newlines, approxWrap), 4)
+        let extraHeight = CGFloat((estimatedLines - 1) * 20)
+        let targetHeight = NotificationActivityProvider.expandedHeight + extraHeight
+        NotificationActivityProvider.shared.updateReplyHeight(targetHeight)
+    }
     
     private func focusReplyField() {
         NotchWindowManager.shared.setAllowsKeyInput(true)
@@ -408,7 +467,7 @@ public struct QuickReplyNotificationView: View {
     private func syncContainerDimensions(expanded: Bool) {
         if expanded {
             ActivityCenter.shared.customCardWidth = expandedWidth
-            ActivityCenter.shared.customCardHeight = expandedHeight
+            ActivityCenter.shared.customCardHeight = provider.dynamicReplyHeight
             ActivityCenter.shared.customTopRadius = NotificationActivityProvider.topRadius
             ActivityCenter.shared.customBottomRadius = NotificationActivityProvider.expandedBottomRadius
         } else {
@@ -422,7 +481,23 @@ public struct QuickReplyNotificationView: View {
     
     // Tap, drag y swipe del trackpad pasan TODOS por el proveedor; la vista reacciona en applyExpansion.
     private func expandToQuickReply() {
+        guard enableQuickReply else {
+            openAssociatedApp()
+            return
+        }
         NotificationActivityProvider.shared.expandQuickReply()
+    }
+    
+    private func openAssociatedApp() {
+        AppState.shared.hapticService.triggerSnap()
+        if appName.lowercased().contains("whatsapp") {
+            WhatsAppWebObserverService.shared.activateWhatsAppWeb()
+        } else if appName.lowercased().contains("mensaje") || appName.lowercased().contains("messages") || appName.lowercased().contains("imessage") {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.MobileSMS") {
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+            }
+        }
+        dismissActivity()
     }
     
     private func collapseBack() {
@@ -456,8 +531,16 @@ public struct QuickReplyNotificationView: View {
         isSentSuccess = true
         AppState.shared.hapticService.triggerSnap()
         
-        // Despachar respuesta hacia WhatsApp Web / Desktop (inyectando en DOM o pegando en el chat activo)
-        MessageReplyService.shared.sendReply(to: handle, message: textToSend, app: appName, openBrowser: true)
+        let isDemo = handle.lowercased().contains("carlos") ||
+                     handle.lowercased().contains("demo") ||
+                     title.lowercased().contains("carlos")
+        
+        if isDemo {
+            DNDLogger.log("QuickReplyNotificationView: 🧪 Demo detectada ('\(handle)'). Respuesta simulada: '\(textToSend)'. Envío omitido.")
+        } else {
+            // Despachar respuesta hacia WhatsApp Web / Desktop (inyectando en DOM o pegando en el chat activo)
+            MessageReplyService.shared.sendReply(to: handle, message: textToSend, app: appName, openBrowser: false)
+        }
         
         // Micro-animación de éxito antes de desvanecer hacia el notch
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {

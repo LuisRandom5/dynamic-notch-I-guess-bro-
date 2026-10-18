@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-public final class AudioSpectrumTestWindowController: NSWindowController {
+public final class AudioSpectrumTestWindowController: NSWindowController, NSWindowDelegate {
     public static let shared = AudioSpectrumTestWindowController()
     
     private init() {
@@ -16,6 +16,7 @@ public final class AudioSpectrumTestWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: AudioSpectrumTestView())
         super.init(window: window)
+        window.delegate = self
     }
     
     required init?(coder: NSCoder) {
@@ -23,8 +24,13 @@ public final class AudioSpectrumTestWindowController: NSWindowController {
     }
     
     public func show() {
+        AudioSpectrumEngine.shared.isSimulatedMode = false
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+    
+    public func windowWillClose(_ notification: Notification) {
+        // Do not disable enableSystemAudioTap so Dynamic Notch continues analyzing real system audio
     }
 }
 
@@ -57,6 +63,7 @@ public struct AudioSpectrumTestView: View {
     @State private var displayPercentages: [Int] = [0, 0, 0, 0, 0, 0]
     @State private var diagnosticsList: [BandDiagnostics] = []
     @State private var testTimer: Timer? = nil
+    @State private var tickCounter: Int = 0
     @State private var csvExportURL: URL? = nil
     @State private var showExportAlert: Bool = false
     
@@ -178,7 +185,7 @@ public struct AudioSpectrumTestView: View {
                 Text("Vista Previa a Tamaño Real (Dynamic Island / Notch)")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Text("Escala 1:1 nativa (6 barras de 3.5 pt)")
+                Text("Escala 1:1 nativa (6 barras finas de 2.0 pt)")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
@@ -196,9 +203,9 @@ public struct AudioSpectrumTestView: View {
                     
                     Spacer()
                     
-                    // 6 barras estilo Dynamic Island tamaño real
-                    HStack(alignment: .center, spacing: 2.2) {
-                        ForEach(0..<6, id: \.self) { i in
+                    // 6 barras estilo Dynamic Island tamaño real calibrado
+                    HStack(alignment: .center, spacing: PlayerMetrics.visualizerBarSpacing) {
+                        ForEach(0..<PlayerMetrics.visualizerBarCount, id: \.self) { i in
                             Capsule()
                                 .fill(
                                     LinearGradient(
@@ -208,12 +215,12 @@ public struct AudioSpectrumTestView: View {
                                     )
                                 )
                                 .frame(
-                                    width: 3.5,
-                                    height: max(3.5, CGFloat(liveLevels[i]) * 18.0)
+                                    width: PlayerMetrics.visualizerBarWidth,
+                                    height: max(PlayerMetrics.visualizerPausedDotSize, CGFloat(liveLevels[i]) * PlayerMetrics.visualizerMaxHeight)
                                 )
                         }
                     }
-                    .frame(height: 18)
+                    .frame(height: PlayerMetrics.visualizerMaxHeight)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -302,7 +309,7 @@ public struct AudioSpectrumTestView: View {
                                     )
                                 )
                                 .frame(width: 32, height: max(6, CGFloat(liveLevels[i]) * 120))
-                                .animation(.spring(response: 0.16, dampingFraction: 0.82), value: liveLevels[i])
+                                .animation(.linear(duration: 0.033), value: liveLevels[i])
                             
                             // Línea de Peak Hold
                             Capsule()
@@ -615,7 +622,7 @@ public struct AudioSpectrumTestView: View {
                                 .foregroundColor(.white.opacity(0.6))
                         }
                         Spacer()
-                        AudioVisualizer(isPlaying: true)
+                        AudioVisualizer(isPlaying: engine.isRealAudioActive || engine.isSimulatedMode || MusicService.shared.currentTrack.isPlaying)
                     }
                     .padding(.horizontal, 16)
                     .frame(width: 260, height: 70)
@@ -662,8 +669,11 @@ public struct AudioSpectrumTestView: View {
                 self.displayPercentages[i] = Int(round(lvl * 100))
             }
             
-            // Actualizar tabla de diagnóstico cada ~300ms
-            self.diagnosticsList = engine.computeDiagnostics()
+            self.tickCounter += 1
+            if self.tickCounter % 10 == 0 {
+                // Actualizar tabla de diagnóstico cada ~330ms
+                self.diagnosticsList = engine.computeDiagnostics()
+            }
         }
     }
     

@@ -30,6 +30,7 @@ public struct ActivityPillView: View {
             HStack {
                 if let leading = activity.leading {
                     leading
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 Spacer(minLength: 0)
             }
@@ -49,6 +50,7 @@ public struct ActivityPillView: View {
                 Spacer(minLength: 0)
                 if let trailing = activity.trailing {
                     trailing
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .padding(.trailing, 18)

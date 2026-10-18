@@ -51,6 +51,39 @@ public enum MiniAppKind: String, CaseIterable, Identifiable {
     }
 }
 
+/// Modos de presentación para Live Activities múltiples:
+/// - Modo A (Personalizado Dynamic Notch): Cápsula principal compacta flanqueada por bolitas satélite desprendidas.
+/// - Modo B (Inspirado en iOS HIG): Dos presentaciones mínimas (una adyacente al notch y una separada).
+public enum MultiActivityPresentationMode: String, CaseIterable, Identifiable {
+    case modeA = "modeA"
+    case modeB = "modeB"
+    
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .modeA: return "Modo A: Compacta + Bolitas Satélite"
+        case .modeB: return "Modo B: Inspirado en iOS (2 Mínimas)"
+        }
+    }
+}
+
+public enum SatelliteLocationPreference: String, CaseIterable, Identifiable {
+    case automatic = "automatic"
+    case bothSides = "bothSides"
+    case rightOnly = "rightOnly"
+    case bottomRow = "bottomRow"
+    
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .automatic: return "Automática (Espacio libre)"
+        case .bothSides: return "Ambos lados (Izquierda y Derecha)"
+        case .rightOnly: return "Solo derecha"
+        case .bottomRow: return "Fila inferior"
+        }
+    }
+}
+
 public final class AppState: ObservableObject {
     public static let shared = AppState()
     
@@ -155,6 +188,63 @@ public final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(pinAudioMonitorMiniAppInNotch, forKey: "pinAudioMonitorMiniAppInNotch") }
     }
     
+    // MARK: - Live Activities & Bolitas Settings
+    @Published public var multiActivityMode: MultiActivityPresentationMode = {
+        if let raw = UserDefaults.standard.string(forKey: "multiActivityMode"),
+           let mode = MultiActivityPresentationMode(rawValue: raw) {
+            return mode
+        }
+        return .modeA // Modo A por defecto (prioridad del proyecto)
+    }() {
+        didSet {
+            UserDefaults.standard.set(multiActivityMode.rawValue, forKey: "multiActivityMode")
+            ActivityCenter.shared.recalculateRoles()
+        }
+    }
+    
+    @Published public var satelliteLocation: SatelliteLocationPreference = {
+        if let raw = UserDefaults.standard.string(forKey: "satelliteLocation"),
+           let loc = SatelliteLocationPreference(rawValue: raw) {
+            return loc
+        }
+        return .automatic
+    }() {
+        didSet {
+            UserDefaults.standard.set(satelliteLocation.rawValue, forKey: "satelliteLocation")
+            NotchWindowManager.shared.updateHitAreaForCurrentState()
+        }
+    }
+    
+    @Published public var maxSatelliteBolitas: Int = {
+        let val = UserDefaults.standard.integer(forKey: "maxSatelliteBolitas")
+        return val > 0 ? val : 2 // 2 por defecto
+    }() {
+        didSet {
+            UserDefaults.standard.set(maxSatelliteBolitas, forKey: "maxSatelliteBolitas")
+            ActivityCenter.shared.recalculateRoles()
+        }
+    }
+    
+    @Published public var bolitaDiameter: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: "bolitaDiameter")
+        return (saved > 0 && saved != 28.0 && saved != 36.0) ? CGFloat(saved) : 26.0 // 26 pt compacta, precisa y fiel a iOS
+    }() {
+        didSet {
+            UserDefaults.standard.set(Double(bolitaDiameter), forKey: "bolitaDiameter")
+            NotchWindowManager.shared.updateHitAreaForCurrentState()
+        }
+    }
+    
+    @Published public var bolitaGap: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: "bolitaGap")
+        return (saved > 0 && saved != 8.0) ? CGFloat(saved) : 6.0 // 6 pt cohesión perfecta con el notch
+    }() {
+        didSet {
+            UserDefaults.standard.set(Double(bolitaGap), forKey: "bolitaGap")
+            NotchWindowManager.shared.updateHitAreaForCurrentState()
+        }
+    }
+    
     // Visualizer Style Setting
     @Published public var visualizerColorStyle: VisualizerColorStyle = {
         if let saved = UserDefaults.standard.string(forKey: "visualizerColorStyle"),
@@ -178,11 +268,15 @@ public final class AppState: ObservableObject {
            let mode = NotchAppearanceMode(rawValue: saved) {
             return mode
         }
-        return .clearGlass // Por defecto: Cristal Claro ("Glass.clear")
+        return .darkGlass // Por defecto: Cristal Oscuro ("Glass.regular" con apariencia oscura forzada)
     }() {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: "notchAppearanceMode")
-            isLiquidGlassEnabled = (appearanceMode != .pureOLED)
+            DispatchQueue.main.async {
+                NotchWindowManager.shared.panel?.appearance = (self.effectiveAppearanceMode == .clearGlass)
+                    ? NSAppearance(named: .aqua)
+                    : NSAppearance(named: .darkAqua)
+            }
         }
     }
     
@@ -195,17 +289,27 @@ public final class AppState: ObservableObject {
         return appearanceMode
     }
     
-    @Published public var isLiquidGlassEnabled: Bool = UserDefaults.standard.object(forKey: "isLiquidGlassEnabled") != nil
-        ? UserDefaults.standard.bool(forKey: "isLiquidGlassEnabled")
-        : true {
-        didSet { UserDefaults.standard.set(isLiquidGlassEnabled, forKey: "isLiquidGlassEnabled") }
+    public var isLiquidGlassEnabled: Bool {
+        get { effectiveAppearanceMode != .pureOLED }
+        set {
+            guard newValue != (effectiveAppearanceMode != .pureOLED) else { return }
+            if !newValue {
+                appearanceMode = .pureOLED
+            } else if appearanceMode == .pureOLED {
+                appearanceMode = .darkGlass
+            }
+        }
     }
     
-    // Opacidad de tinte: rango 30%-90%, DEFAULT 55% (0.55)
-    @Published public var glassDarknessOpacity: Double = UserDefaults.standard.object(forKey: "glassDarknessOpacity") != nil
-        ? UserDefaults.standard.double(forKey: "glassDarknessOpacity")
-        : 0.55 {
-        didSet { UserDefaults.standard.set(glassDarknessOpacity, forKey: "glassDarknessOpacity") }
+    // Opacidad de tinte en Cristal Oscuro: rango 0%-85%, DEFAULT 38% (0.38) para preservar profundidad óptica de Glass.regular
+    @Published public var glassDarknessOpacity: Double = UserDefaults.standard.object(forKey: "glassDarknessOpacityV2") != nil
+        ? max(0.0, min(0.85, UserDefaults.standard.double(forKey: "glassDarknessOpacityV2")))
+        : 0.38 {
+        didSet {
+            let clamped = max(0.0, min(0.85, glassDarknessOpacity))
+            UserDefaults.standard.set(clamped, forKey: "glassDarknessOpacityV2")
+            UserDefaults.standard.set(clamped, forKey: "glassDarknessOpacity")
+        }
     }
     @Published public var enableTrackpadSwipe: Bool = UserDefaults.standard.object(forKey: "enableTrackpadSwipe") != nil ? UserDefaults.standard.bool(forKey: "enableTrackpadSwipe") : true {
         didSet { UserDefaults.standard.set(enableTrackpadSwipe, forKey: "enableTrackpadSwipe") }
@@ -218,8 +322,19 @@ public final class AppState: ObservableObject {
     public enum LockScreenStyle: String, CaseIterable, Identifiable {
         case heroWidget = "heroWidget" // Carátula Hero + Cápsula Flotante (Referencia / iOS Widget)
         case compactCard = "compactCard" // Tarjeta Horizontal Unificada (macOS)
+        case ambientCanvas = "ambientCanvas" // Canvas Inmersivo con Letras Sincronizadas (Imagen 1)
         public var id: String { rawValue }
+        
+        public var displayName: String {
+            switch self {
+            case .heroWidget: return "Hero Widget (iOS)"
+            case .compactCard: return "Tarjeta Compacta (macOS)"
+            case .ambientCanvas: return "Canvas Inmersivo con Letras (Imagen 1)"
+            }
+        }
     }
+    
+    @Published public var isAmbientCanvasOpen: Bool = false
     
     public enum LockScreenRenderMode: String, CaseIterable, Identifiable {
         case pureOLED = "pureOLED" // 0. 100% Negro Puro OLED (#000000 opaco absoluto)

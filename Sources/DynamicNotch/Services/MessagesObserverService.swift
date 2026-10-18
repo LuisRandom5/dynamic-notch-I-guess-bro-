@@ -1,0 +1,473 @@
+import Foundation
+import AppKit
+import SwiftUI
+import ApplicationServices
+
+/// Servicio en segundo plano para detección de mensajes entrantes de iMessage / Mensajes (macOS)
+/// y despacho de respuestas rápidas (Quick Reply) de forma no invasiva.
+public final class MessagesObserverService: ObservableObject {
+    public static let shared = MessagesObserverService()
+    
+    @Published public var isEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isEnabled, forKey: "enableMessagesObserver")
+            if isEnabled {
+                start()
+            } else {
+                stop()
+            }
+        }
+    }
+    
+    private var timer: Timer?
+    private var isQuerying: Bool = false
+    private let queue = DispatchQueue(label: "com.dynamicnotch.messages.observer", qos: .utility)
+    
+    private struct ChatRecord {
+        let message: String
+        let time: String
+        let isUnread: Bool
+        var lastAlertedAt: Date
+    }
+    private var knownRecords: [String: ChatRecord] = [:]
+    private var lastBannerSignature: String = ""
+    private var lastBannerAlertedAt: Date = .distantPast
+    private var isFirstCheck: Bool = true
+    
+    private init() {
+        if UserDefaults.standard.object(forKey: "enableMessagesObserver") == nil {
+            self.isEnabled = true
+        } else {
+            self.isEnabled = UserDefaults.standard.bool(forKey: "enableMessagesObserver")
+        }
+    }
+    
+    public func start() {
+        guard isEnabled, timer == nil else { return }
+        
+        // Sondeo ultra-rápido a 0.12s para interceptar y sustituir notificaciones al instante sin latencia visual
+        let newTimer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
+            self?.pollMessages()
+        }
+        newTimer.tolerance = 0.02
+        RunLoop.main.add(newTimer, forMode: .common)
+        timer = newTimer
+    }
+    
+    public func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    public func pollMessages() {
+        guard isEnabled, !isQuerying else { return }
+        isQuerying = true
+        
+        queue.async { [weak self] in
+            defer { self?.isQuerying = false }
+            guard let self = self else { return }
+            
+            // 1. Detección en tiempo real de Banners de Notificación del Sistema (com.apple.notificationcenterui)
+            let didDetectBanner = self.checkNotificationCenterBanners()
+            
+            // 2. Si la app Mensajes (com.apple.MobileSMS) está abierta, inspección profunda de la lista de conversaciones
+            if !didDetectBanner {
+                self.checkMessagesAppConversations()
+            }
+            
+            if self.isFirstCheck {
+                self.isFirstCheck = false
+            }
+        }
+    }
+    
+    // MARK: - Canal 1: Banners del Centro de Notificaciones (Intercepción y Reemplazo)
+    private func checkNotificationCenterBanners() -> Bool {
+        let apps = NSWorkspace.shared.runningApplications
+        guard let nc = apps.first(where: { $0.bundleIdentifier == "com.apple.notificationcenterui" }) else {
+            return false
+        }
+        
+        let appRef = AXUIElementCreateApplication(nc.processIdentifier)
+        var winRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winRef) == .success,
+              let wins = winRef as? [AXUIElement], wins.count > 2 else {
+            return false
+        }
+        
+        for win in wins {
+            var titleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef)
+            let title = (titleRef as? String) ?? ""
+            
+            // Los banners activos tienen títulos distintos a las áreas de estado/previsión
+            if title == "Estado" || title == "Previsión" { continue }
+            
+            let strings = collectAXStrings(win)
+            guard !strings.isEmpty else { continue }
+            
+            // Regla estricta: Notificaciones de Instagram NUNCA deben generar pop-up en Dynamic Notch
+            // y NUNCA se debe descartar su banner nativo de macOS
+            let isInstagram = strings.contains { s in
+                let l = s.lowercased()
+                return l.contains("instagram") || l.contains("threads")
+            }
+            if isInstagram {
+                continue
+            }
+            
+            // Detectar el origen
+            let isWhatsApp = strings.contains { s in
+                let l = s.lowercased()
+                return l.contains("whatsapp")
+            }
+            let isAgent = strings.contains { s in
+                let l = s.lowercased()
+                return l.contains("antigravity") || l.contains("editor de scripts") || l.contains("terminal") || l.contains("tarea completada") || l.contains("cortex")
+            }
+            
+            // Por requerimiento del usuario: los pop-ups en Dynamic Notch son exclusivamente para WhatsApp por ahora (y avisos de agentes)
+            // Cualquier otra app (Instagram, correo, recordatorios, sistema) se mantiene nativa en macOS sin interferencia
+            guard isWhatsApp || isAgent else {
+                continue
+            }
+            
+            // Cerrar y descartar el banner nativo de macOS ÚNICAMENTE para las apps autorizadas a reemplazarlo
+            dismissNativeBanner(win)
+            
+            // Filtrar etiquetas del sistema
+            let cleanStrings = strings.filter { s in
+                let l = s.lowercased()
+                return !l.contains("whatsapp") &&
+                       l != "notification center" && l != "centro de notificaciones" &&
+                       l != "editor de scripts" &&
+                       !l.isEmpty
+            }
+            
+            guard !cleanStrings.isEmpty else { continue }
+            
+            let sender = cleanStrings[0]
+            let message = cleanStrings.count > 1 ? cleanStrings[1] : (isWhatsApp ? "Nuevo mensaje" : "Notificación")
+            
+            let sig = "\(sender): \(message)"
+            if sig == self.lastBannerSignature && Date().timeIntervalSince(self.lastBannerAlertedAt) < 4.0 {
+                return true
+            }
+            
+            self.lastBannerSignature = sig
+            self.lastBannerAlertedAt = Date()
+            
+            if isAgent {
+                DNDLogger.log("MessagesObserverService: 🤖 Notificación nativa de Antigravity interceptada y reemplazada en Dynamic Notch: '\(sender)' - '\(message)'")
+                DispatchQueue.main.async {
+                    AgentActivityProvider.shared.showInteraction(
+                        type: .notification,
+                        title: sender.isEmpty ? "Antigravity" : sender,
+                        subtitle: "Antigravity",
+                        message: message,
+                        duration: 5.5
+                    )
+                }
+            } else if isWhatsApp {
+                DNDLogger.log("MessagesObserverService: 🔔 Notificación de WhatsApp interceptada para Dynamic Notch: '\(sender)': '\(message)'")
+                DispatchQueue.main.async {
+                    NotificationActivityProvider.shared.showNotification(
+                        title: sender,
+                        message: message,
+                        handle: sender,
+                        appIcon: "message.fill",
+                        appName: "WhatsApp",
+                        tint: Color(red: 0.15, green: 0.78, blue: 0.45),
+                        enableQuickReply: true,
+                        duration: 6.0
+                    )
+                }
+            }
+            return true
+        }
+        
+        return false
+    }
+    
+    @discardableResult
+    private func dismissNativeBanner(_ elem: AXUIElement, depth: Int = 0) -> Bool {
+        if depth > 8 { return false }
+        var actRef: CFArray?
+        AXUIElementCopyActionNames(elem, &actRef)
+        if let actions = actRef as? [String] {
+            for a in actions {
+                let l = a.lowercased()
+                if l.contains("cerrar") || l.contains("close") || l.contains("dismiss") || a == "AXCancel" {
+                    if AXUIElementPerformAction(elem, a as CFString) == .success {
+                        return true
+                    }
+                }
+            }
+        }
+        
+        var roleRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef) == .success,
+           let role = roleRef as? String, (role == "AXButton" || role == "AXPressable") {
+            var descRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+            var titleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
+            let desc = ((descRef as? String) ?? "").lowercased()
+            let title = ((titleRef as? String) ?? "").lowercased()
+            if desc.contains("cerrar") || desc.contains("close") || desc.contains("dismiss") ||
+               title.contains("cerrar") || title.contains("close") || title.contains("dismiss") {
+                if AXUIElementPerformAction(elem, "AXPress" as CFString) == .success {
+                    return true
+                }
+            }
+        }
+        
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for c in children {
+                if dismissNativeBanner(c, depth: depth + 1) { return true }
+            }
+        }
+        return false
+    }
+    
+    // MARK: - Canal 2: App Mensajes Abierta (com.apple.MobileSMS)
+    private func checkMessagesAppConversations() {
+        let apps = NSWorkspace.shared.runningApplications
+        guard let msgApp = apps.first(where: { $0.bundleIdentifier == "com.apple.MobileSMS" }) else {
+            return
+        }
+        
+        let appRef = AXUIElementCreateApplication(msgApp.processIdentifier)
+        var winRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winRef) == .success,
+              let wins = winRef as? [AXUIElement], let mainWindow = wins.first else {
+            return
+        }
+        
+        guard let convosGroup = findAXGroup(elem: mainWindow, descName: "Conversaciones") else {
+            return
+        }
+        
+        var childrenRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(convosGroup, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              let children = childrenRef as? [AXUIElement] else {
+            return
+        }
+        
+        for item in children.prefix(12) {
+            var descRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(item, kAXDescriptionAttribute as CFString, &descRef)
+            guard let desc = descRef as? String, !desc.isEmpty else { continue }
+            
+            // El formato estándar de macOS para cada ítem de conversación es:
+            // "Nombre Del Contacto, No leídos, Texto del mensaje , 9:58 p. m."
+            // o en inglés: "Sender Name, Unread, Message text , 9:58 PM"
+            // o si ya está leído: "Nombre Del Contacto, Texto del mensaje , 9:58 p. m."
+            let parts = desc.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard parts.count >= 2 else { continue }
+            
+            let contact = parts[0]
+            guard !contact.isEmpty else { continue }
+            
+            let isUnread = parts.contains(where: {
+                let l = $0.lowercased()
+                return l == "no leídos" || l == "no leído" || l == "unread"
+            })
+            
+            let time = parts.last ?? ""
+            let messageParts = parts.dropFirst().filter { p in
+                let l = p.lowercased()
+                return l != "no leídos" && l != "no leído" && l != "unread" && l != "fijada" && l != "pinned" && p != time
+            }
+            let message = messageParts.joined(separator: ", ")
+            
+            let prev = knownRecords[contact]
+            
+            if isFirstCheck {
+                knownRecords[contact] = ChatRecord(
+                    message: message,
+                    time: time,
+                    isUnread: isUnread,
+                    lastAlertedAt: Date()
+                )
+                continue
+            }
+            
+            var shouldAlert = false
+            if isUnread {
+                if let p = prev {
+                    if !p.isUnread || p.message != message || p.time != time {
+                        shouldAlert = true
+                    }
+                } else {
+                    shouldAlert = true
+                }
+            } else if let p = prev {
+                // Si la conversación está abierta en primer plano pero la ventana no tiene foco
+                let isFrontmost = (NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.MobileSMS")
+                if !isFrontmost && p.message != message && !message.isEmpty && p.time != time {
+                    // Verificar que no sea mensaje saliente
+                    let lower = message.lowercased()
+                    if !lower.hasPrefix("tu mensaje") && !lower.hasPrefix("you:") && !lower.hasPrefix("tú:") {
+                        shouldAlert = true
+                    }
+                }
+            }
+            
+            if shouldAlert, let p = prev, Date().timeIntervalSince(p.lastAlertedAt) < 2.5 && p.message == message {
+                shouldAlert = false
+            }
+            
+            knownRecords[contact] = ChatRecord(
+                message: message,
+                time: time,
+                isUnread: isUnread,
+                lastAlertedAt: shouldAlert ? Date() : (prev?.lastAlertedAt ?? Date())
+            )
+            
+            if shouldAlert {
+                DNDLogger.log("MessagesObserverService: 🔔 NUEVO MENSAJE DETECTADO en app Mensajes de '\(contact)': '\(message)' (hora: \(time))")
+                dispatchNotification(sender: contact, message: message.isEmpty ? "Nuevo mensaje" : message)
+                break
+            }
+        }
+    }
+    
+    // MARK: - Despacho de Notificación a Dynamic Notch
+    private func dispatchNotification(sender: String, message: String) {
+        DispatchQueue.main.async {
+            if NotificationActivityProvider.shared.isNotificationActive &&
+                NotificationActivityProvider.shared.isQuickReplyExpanded {
+                return
+            }
+            
+            // Buscar avatar en Contactos nativos de macOS
+            let contactInfo = ContactLookupService.shared.lookupContact(name: sender)
+            
+            NotificationActivityProvider.shared.showNotification(
+                title: contactInfo?.name ?? sender,
+                message: message,
+                handle: sender,
+                avatar: contactInfo?.avatar,
+                appIcon: "message.fill",
+                appName: "iMessage",
+                tint: Color(red: 0.18, green: 0.52, blue: 0.98), // Azul vibrante iMessage
+                enableQuickReply: true,
+                duration: 6.0
+            )
+        }
+    }
+    
+    // MARK: - Envío de Respuesta Rápida (Quick Reply)
+    public func deliverQuickReply(message: String, recipient: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        let escapedMsg = trimmed.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let escapedRecipient = recipient.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        
+        let scriptSource = """
+        tell application "Messages"
+            set targetChat to missing value
+            repeat with c in chats
+                try
+                    if (name of c as string) contains "\(escapedRecipient)" or (id of c as string) contains "\(escapedRecipient)" then
+                        set targetChat to c
+                        exit repeat
+                    end if
+                end try
+                repeat with p in participants of c
+                    try
+                        if (name of p as string) contains "\(escapedRecipient)" or (full name of p as string) contains "\(escapedRecipient)" or (handle of p as string) contains "\(escapedRecipient)" then
+                            set targetChat to c
+                            exit repeat
+                        end if
+                    end try
+                end repeat
+                if targetChat is not missing value then exit repeat
+            end repeat
+            
+            if targetChat is not missing value then
+                send "\(escapedMsg)" to targetChat
+            else
+                try
+                    set iMessageService to 1st service whose service type is iMessage
+                    set newBuddy to participant "\(escapedRecipient)" of iMessageService
+                    send "\(escapedMsg)" to newBuddy
+                end try
+            end if
+        end tell
+        """
+        
+        queue.async {
+            var errorInfo: NSDictionary?
+            if let script = NSAppleScript(source: scriptSource) {
+                script.executeAndReturnError(&errorInfo)
+                if let err = errorInfo {
+                    DNDLogger.log("MessagesObserverService: Error enviando respuesta AppleScript: \(err)")
+                } else {
+                    DNDLogger.log("MessagesObserverService: ✅ Respuesta enviada exitosamente a '\(recipient)' vía iMessage: '\(trimmed)'")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Simulación para Pruebas
+    public func simulateTestNotification() {
+        let contactInfo = ContactLookupService.shared.lookupContact(name: "Hermano")
+        NotificationActivityProvider.shared.showNotification(
+            title: "Hermano",
+            message: "¡Hola! ¿Cómo vas con el notch dinámico?",
+            handle: "Hermano",
+            avatar: contactInfo?.avatar,
+            appIcon: "message.fill",
+            appName: "iMessage",
+            tint: Color(red: 0.18, green: 0.52, blue: 0.98),
+            enableQuickReply: true,
+            duration: 6.0
+        )
+    }
+    
+    // MARK: - Helpers AXUIElement
+    private func findAXGroup(elem: AXUIElement, descName: String, depth: Int = 0) -> AXUIElement? {
+        if depth > 10 { return nil }
+        var descRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+        if (descRef as? String) == descName { return elem }
+        
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for c in children {
+                if let f = findAXGroup(elem: c, descName: descName, depth: depth + 1) { return f }
+            }
+        }
+        return nil
+    }
+    
+    private func collectAXStrings(_ elem: AXUIElement, depth: Int = 0) -> [String] {
+        if depth > 8 { return [] }
+        var results: [String] = []
+        var valRef: CFTypeRef?
+        var titleRef: CFTypeRef?
+        var descRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXValueAttribute as CFString, &valRef)
+        AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
+        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+        
+        if let v = valRef as? String, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results.append(v) }
+        if let t = titleRef as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results.append(t) }
+        if let d = descRef as? String, !d.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results.append(d) }
+        
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for c in children.prefix(20) {
+                results.append(contentsOf: collectAXStrings(c, depth: depth + 1))
+            }
+        }
+        return results
+    }
+}

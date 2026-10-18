@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import ApplicationServices
 
 /// Servicio en segundo plano para detección automática de mensajes entrantes en WhatsApp Web
 /// Funciona de forma no invasiva inspeccionando navegadores compatibles (Safari, Chrome, Arc, Brave, Edge).
@@ -29,6 +30,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
     
     private var timer: Timer?
+    private var burstTimer: Timer?
+    private var burstAttemptsRemaining: Int = 0
+    private var pendingBurstCount: Int = 0
     private var lastUnreadCount: Int? = nil
     private var lastSeenTitle: String = ""
     private var lastSeenMessageContent: String = ""
@@ -37,6 +41,15 @@ public final class WhatsAppWebObserverService: ObservableObject {
     private let scriptQueue = DispatchQueue(label: "com.dynamicnotch.whatsapp.applescript", qos: .utility)
     private var compiledScripts: [String: NSAppleScript] = [:]
     
+    private struct ChatRecord {
+        let message: String
+        let time: String
+        let unreadCount: Int
+        let isMuted: Bool
+        var lastAlertedAt: Date
+    }
+    private var knownChatRecords: [String: ChatRecord] = [:]
+    
     private init() {
         if UserDefaults.standard.object(forKey: "enableWhatsAppWebObserver") == nil {
             self.isEnabled = true
@@ -44,23 +57,23 @@ public final class WhatsAppWebObserverService: ObservableObject {
             self.isEnabled = UserDefaults.standard.bool(forKey: "enableWhatsAppWebObserver")
         }
         let savedInterval = UserDefaults.standard.double(forKey: "whatsAppWebPollInterval")
-        self.pollInterval = savedInterval >= 1.0 ? savedInterval : 2.0
+        self.pollInterval = savedInterval >= 0.5 ? savedInterval : 0.8
     }
     
     /// Inicia el monitor en segundo plano
     public func start() {
         guard isEnabled, timer == nil else { return }
         
-        // Ejecutar primer sondeo suavemente tras 2 segundos
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+        // Ejecutar primer sondeo suavemente tras 1 segundo
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.pollWhatsAppWeb()
         }
         
-        let interval = max(1.5, pollInterval)
+        let interval = max(0.5, pollInterval)
         let newTimer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             self?.pollWhatsAppWeb()
         }
-        newTimer.tolerance = interval * 0.25
+        newTimer.tolerance = 0.08
         RunLoop.main.add(newTimer, forMode: .common)
         timer = newTimer
     }
@@ -92,16 +105,21 @@ public final class WhatsAppWebObserverService: ObservableObject {
             defer { self?.isQuerying = false }
             guard let self = self else { return }
             
-            let titles = self.fetchWhatsAppTitlesFromBrowsers(activeBrowsers: activeBrowsers)
-            guard !titles.isEmpty else { return }
+            // 1. Escaneo en tiempo real de chats vía Accessibility API
+            let didScanAX = self.scanChatsViaAccessibility(activeBrowsers: activeBrowsers)
             
-            // Seleccionar la mejor pestaña de WhatsApp Web en el ciclo actual (evita que múltiples pestañas
-            // con "WhatsApp" en el título reinicien lastUnreadCount a 0 y disparen notificaciones cada 2s)
-            let bestTitle = titles.first(where: { $0.range(of: #"^\(\d+\)"#, options: .regularExpression) != nil })
-                ?? titles.first(where: { $0 == "WhatsApp" || $0.hasPrefix("WhatsApp") })
-                ?? titles[0]
-            
-            self.processWhatsAppTitle(bestTitle)
+            // 2. Si AX no encontró tablas activas, respaldo con título de ventana
+            if !didScanAX {
+                let titles = self.fetchWhatsAppTitlesFromBrowsers(activeBrowsers: activeBrowsers)
+                guard !titles.isEmpty else { return }
+                
+                // Seleccionar la mejor pestaña de WhatsApp Web en el ciclo actual
+                let bestTitle = titles.first(where: { $0.range(of: #"^\(\d+\)"#, options: .regularExpression) != nil })
+                    ?? titles.first(where: { $0 == "WhatsApp" || $0.hasPrefix("WhatsApp") })
+                    ?? titles[0]
+                
+                self.processWhatsAppTitle(bestTitle, activeBrowsers: activeBrowsers)
+            }
         }
     }
     
@@ -194,23 +212,57 @@ public final class WhatsAppWebObserverService: ObservableObject {
         return raw.components(separatedBy: sep).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
     
-    // MARK: - Detección de Mensajes Nuevos y Notificación en la Isla
-    private func processWhatsAppTitle(_ title: String) {
-        // Ejemplos comunes de títulos en WhatsApp Web:
-        // "(101) WhatsApp"
-        // "(102) WhatsApp"
-        // "(1) Carlos: ¡Hola bro!"
-        // "(1) Mamá: ¿A qué hora vienes?"
-        // "WhatsApp"
+    // MARK: - Extractor Robusto de Remitente y Mensaje desde el Título
+    private func extractSenderAndMessage(from title: String) -> (sender: String, message: String)? {
+        var cleanTitle = title
+        if let match = title.range(of: #"^\((\d+)\)\s*"#, options: .regularExpression) {
+            cleanTitle = String(title[match.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         
-        // Extraer número de no leídos dentro de los paréntesis iniciales "(N)"
+        let lower = cleanTitle.lowercased()
+        guard lower != "whatsapp" && lower != "whatsapp web" && !cleanTitle.isEmpty else { return nil }
+        
+        // 1. Formato estándar con dos puntos: "Carlos: ¡Hola amigo!"
+        if cleanTitle.contains(":") {
+            let parts = cleanTitle.components(separatedBy: ":")
+            if parts.count >= 2 {
+                let sender = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                let msg = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sender.isEmpty && sender.lowercased() != "whatsapp" {
+                    return (sender: sender, message: msg.isEmpty ? "Nuevo mensaje" : msg)
+                }
+            }
+        }
+        
+        // 2. Formatos con guion: "Carlos - Hola" o "Carlos – Hola"
+        for sep in [" - ", " – ", " — "] {
+            if cleanTitle.contains(sep) {
+                let parts = cleanTitle.components(separatedBy: sep)
+                if parts.count >= 2 {
+                    let sender = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                    let msg = parts.dropFirst().joined(separator: sep).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !sender.isEmpty && sender.lowercased() != "whatsapp" {
+                        return (sender: sender, message: msg.isEmpty ? "Nuevo mensaje" : msg)
+                    }
+                }
+            }
+        }
+        
+        // 3. Formato donde el título alternó directamente al contacto o grupo (ej. "(1) Carlos" o "(1) Familia"):
+        let isSystemString = lower.contains("mensaje") || lower.contains("unread") || lower.contains("notification")
+        if !isSystemString && cleanTitle.count >= 2 {
+            return (sender: cleanTitle, message: "Nuevo mensaje recibido")
+        }
+        
+        return nil
+    }
+
+    // MARK: - Detección de Mensajes Nuevos e Inspección Profunda de Remitente
+    private func processWhatsAppTitle(_ title: String, activeBrowsers: [String]) {
         var unreadCount: Int? = nil
-        var contentAfterCount = title
-        
         if let match = title.range(of: #"^\((\d+)\)\s*"#, options: .regularExpression) {
             let countStr = title[match].filter { $0.isNumber }
             unreadCount = Int(countStr)
-            contentAfterCount = String(title[match.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
         // Si es el primer chequeo, registrar estado base sin disparar falsas alarmas
@@ -231,81 +283,691 @@ public final class WhatsAppWebObserverService: ObservableObject {
             return
         }
         
-        // Un mensaje nuevo real ocurre cuando:
-        // 1. El conteo de no leídos aumenta (ej. de 101 a 102)
-        // 2. O el título muestra un contacto y mensaje explícito con ':' que no habíamos procesado antes
-        let countIncreased = currentCount > previousCount
-        let hasNewExplicitMessage = contentAfterCount.contains(":") && contentAfterCount != lastSeenMessageContent
-        let hasNewMessage = countIncreased || hasNewExplicitMessage
+        // 1. ¿El título ya trae remitente y mensaje explícito? (p. ej. en versiones o navegadores que lo incluyan)
+        if let details = extractSenderAndMessage(from: title) {
+            let explicitSignature = "\(details.sender): \(details.message)"
+            let isNewMessage = (currentCount > previousCount) || (explicitSignature != lastSeenMessageContent)
+            self.lastUnreadCount = unreadCount
+            self.lastSeenTitle = title
+            self.lastSeenMessageContent = explicitSignature
+            
+            if isNewMessage {
+                dispatchNotification(sender: details.sender, message: details.message)
+            }
+            return
+        }
         
+        // 2. Si el conteo aumentó (o hay un mensaje no leído nuevo):
+        let countIncreased = currentCount > previousCount
         self.lastUnreadCount = unreadCount
         self.lastSeenTitle = title
-        if contentAfterCount.contains(":") {
-            self.lastSeenMessageContent = contentAfterCount
+        
+        if countIncreased && currentCount > 0 {
+            self.burstCheckWithDeepInspection(unreadCount: currentCount, activeBrowsers: activeBrowsers)
+        }
+    }
+    
+    // MARK: - Sondeo Rápido con Inspección Profunda (Accessibility + DOM)
+    private func burstCheckWithDeepInspection(unreadCount: Int, activeBrowsers: [String]) {
+        // WhatsApp Web actualiza el DOM de la lista de chats en ~100-350ms tras recibir el mensaje.
+        // Hacemos hasta 4 intentos de sondeo directo para capturar el remitente real inmediatamente.
+        for attempt in 0..<4 {
+            if attempt > 0 {
+                Thread.sleep(forTimeInterval: 0.28)
+            }
+            
+            // Intentar inspección vía Accessibility API (Safari, Chrome, Arc, Brave, Edge, WhatsApp)
+            if let details = fetchDetailsViaAccessibility(activeBrowsers: activeBrowsers) {
+                let signature = "\(details.sender): \(details.message)"
+                self.lastSeenMessageContent = signature
+                self.dispatchNotification(sender: details.sender, message: details.message)
+                return
+            }
+            
+            // Si el título alternó en segundo plano con algún texto explícito
+            let titles = self.fetchWhatsAppTitlesFromBrowsers(activeBrowsers: activeBrowsers)
+            for t in titles {
+                if let details = self.extractSenderAndMessage(from: t) {
+                    let signature = "\(details.sender): \(details.message)"
+                    self.lastSeenMessageContent = signature
+                    self.dispatchNotification(sender: details.sender, message: details.message)
+                    return
+                }
+            }
         }
         
-        guard hasNewMessage else { return }
-        
-        // Formatear remitente y texto
-        var senderName = "WhatsApp Web"
-        var messageText = "Nuevo mensaje recibido"
-        
-        if contentAfterCount.contains(":") {
-            let parts = contentAfterCount.components(separatedBy: ":")
-            if parts.count >= 2 {
-                senderName = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-                messageText = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        } else if contentAfterCount != "WhatsApp" && !contentAfterCount.isEmpty {
-            senderName = contentAfterCount
-            if currentCount > 0 {
-                messageText = "\(currentCount) mensajes nuevos sin leer"
-            }
-        } else if currentCount > 0 {
-            messageText = "Tienes \(currentCount) mensajes sin leer"
+        // Si tras la inspección profunda no se pudo identificar el contacto específico
+        // (por ejemplo si la pestaña está en App Nap estricto o no cargó la tabla):
+        // NO mostramos "Tienes mensajes sin leer" como si fuera un contacto.
+        // Mostramos "WhatsApp" con Quick Reply deshabilitado y acción directa de abrir la app.
+        let msg = unreadCount > 1 ? "\(unreadCount) mensajes nuevos sin leer" : "Nuevo mensaje recibido"
+        self.dispatchNotification(sender: "WhatsApp", message: msg)
+    }
+    
+    // MARK: - Inspección Profunda y Tiempo Real vía Accessibility API (AXUIElement)
+    private struct ParsedChatRow {
+        let contact: String
+        let message: String
+        let time: String
+        let unreadCount: Int
+        let isMuted: Bool
+        let isPinned: Bool
+        let rowElement: AXUIElement
+    }
+    
+    @discardableResult
+    private func scanChatsViaAccessibility(activeBrowsers: [String]) -> Bool {
+        let runningApps = NSWorkspace.shared.runningApplications
+        var targetBundleIds = activeBrowsers
+        if !targetBundleIds.contains("net.whatsapp.WhatsApp") {
+            targetBundleIds.append("net.whatsapp.WhatsApp")
         }
         
-        // Disparar en el hilo principal la Live Activity interactiva (sin interrumpir si ya está escribiendo un Quick Reply)
+        var didFindTable = false
+        for bundleId in targetBundleIds {
+            guard let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) else { continue }
+            let appRef = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            
+            var candidateWindows: [AXUIElement] = []
+            for attr in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
+                var winRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(appRef, attr as CFString, &winRef) == .success, let w = winRef {
+                    candidateWindows.append(w as! AXUIElement)
+                }
+            }
+            var childrenRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(appRef, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+               let arr = childrenRef as? [AnyObject] {
+                for c in arr {
+                    let elem = c as! AXUIElement
+                    var roleRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+                    if (roleRef as? String) == "AXWindow" {
+                        candidateWindows.append(elem)
+                    }
+                }
+            }
+            
+            for win in candidateWindows {
+                guard let table = findAXChatTable(win) else { continue }
+                var rowsRef: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
+                      let rowArray = rowsRef as? [AnyObject] else { continue }
+                
+                didFindTable = true
+                let rows = rowArray.map { $0 as! AXUIElement }
+                for r in rows.prefix(15) {
+                    if let p = parseChatRow(r) {
+                        processParsedRow(p)
+                    }
+                }
+                
+                if isFirstCheck {
+                    isFirstCheck = false
+                }
+                return true
+            }
+        }
+        return didFindTable
+    }
+    
+    private func processParsedRow(_ row: ParsedChatRow) {
+        let contact = row.contact
+        guard !contact.isEmpty else { return }
+        
+        let lower = contact.lowercased()
+        if lower.contains("whatsapp") && !lower.contains(" ") { return }
+        
+        let unread = row.unreadCount
+        let msg = row.message
+        let time = row.time
+        let isMuted = row.isMuted
+        
+        if isFirstCheck {
+            knownChatRecords[contact] = ChatRecord(
+                message: msg,
+                time: time,
+                unreadCount: unread,
+                isMuted: isMuted,
+                lastAlertedAt: Date()
+            )
+            // Si en el primer arranque ya hay un mensaje no leído nuevo y no silenciado, alertar
+            if unread > 0 && !isMuted {
+                let lowerMsg = msg.lowercased()
+                if lowerMsg != "escribiendo..." && lowerMsg != "typing..." && !msg.isEmpty {
+                    DNDLogger.log("WhatsAppWebObserverService: 🔔 MENSAJE NO LEÍDO AL INICIAR de '\(contact)': '\(msg)' (no leídos: \(unread), hora: \(time))")
+                    dispatchNotification(sender: contact, message: msg)
+                }
+            }
+            return
+        }
+        
+        // Manejo especial para cuando el chat está seleccionado/abierto en WhatsApp Web (unread == 0):
+        // WhatsApp Web reproduce el sonido de mensaje pero marca unread = 0 porque el chat está en pantalla.
+        // Si el usuario no tiene la ventana del navegador en primer plano, debe recibir la notificación emergente.
+        if unread == 0 {
+            if let prev = knownChatRecords[contact] {
+                let isFrontmostBrowser = NSWorkspace.shared.runningApplications.contains { app in
+                    guard app.isActive else { return false }
+                    let b = app.bundleIdentifier ?? ""
+                    return b == "com.apple.Safari" || b == "com.google.Chrome" || b == "company.thebrowser.Browser" || b == "com.brave.Browser" || b == "net.whatsapp.WhatsApp"
+                }
+                
+                let lowerMsg = msg.lowercased()
+                let isOutgoing = lowerMsg.hasPrefix("tú:") || lowerMsg.hasPrefix("tu:") || lowerMsg.hasPrefix("you:") || lowerMsg.hasPrefix("✓")
+                let isTyping = lowerMsg == "escribiendo..." || lowerMsg == "typing..."
+                
+                if !isFrontmostBrowser && !isOutgoing && !isTyping && !isMuted && !msg.isEmpty {
+                    if (prev.message != msg || prev.time != time) && Date().timeIntervalSince(prev.lastAlertedAt) >= 2.5 {
+                        DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE EN CHAT ACTIVO de '\(contact)': '\(msg)' (hora: \(time))")
+                        knownChatRecords[contact] = ChatRecord(
+                            message: msg,
+                            time: time,
+                            unreadCount: 0,
+                            isMuted: isMuted,
+                            lastAlertedAt: Date()
+                        )
+                        dispatchNotification(sender: contact, message: msg)
+                        return
+                    }
+                }
+                
+                knownChatRecords[contact] = ChatRecord(
+                    message: msg,
+                    time: time,
+                    unreadCount: 0,
+                    isMuted: isMuted,
+                    lastAlertedAt: prev.lastAlertedAt
+                )
+            } else {
+                knownChatRecords[contact] = ChatRecord(
+                    message: msg,
+                    time: time,
+                    unreadCount: 0,
+                    isMuted: isMuted,
+                    lastAlertedAt: Date()
+                )
+            }
+            return
+        }
+        
+        guard !isMuted else { return }
+        let lowerMsg = msg.lowercased()
+        guard lowerMsg != "escribiendo..." && lowerMsg != "typing..." else { return }
+        
+        var shouldAlert = false
+        if let prev = knownChatRecords[contact] {
+            if prev.unreadCount == 0 {
+                shouldAlert = true
+            } else if unread > prev.unreadCount {
+                shouldAlert = true
+            } else if msg != prev.message {
+                shouldAlert = true
+            } else if time != prev.time {
+                shouldAlert = true
+            }
+            
+            if shouldAlert && Date().timeIntervalSince(prev.lastAlertedAt) < 2.5 && msg == prev.message {
+                shouldAlert = false
+            }
+        } else {
+            shouldAlert = true
+        }
+        
+        knownChatRecords[contact] = ChatRecord(
+            message: msg,
+            time: time,
+            unreadCount: unread,
+            isMuted: isMuted,
+            lastAlertedAt: shouldAlert ? Date() : (knownChatRecords[contact]?.lastAlertedAt ?? Date())
+        )
+        
+        if shouldAlert {
+            DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE DETECTADO de '\(contact)': '\(msg)' (no leídos: \(unread), hora: \(time))")
+            dispatchNotification(sender: contact, message: msg)
+        }
+    }
+    
+    private func fetchDetailsViaAccessibility(activeBrowsers: [String]) -> (sender: String, message: String)? {
+        let runningApps = NSWorkspace.shared.runningApplications
+        // Priorizar Safari y los navegadores activos detectados, o la app nativa de WhatsApp
+        var targetBundleIds = activeBrowsers
+        if !targetBundleIds.contains("net.whatsapp.WhatsApp") {
+            targetBundleIds.append("net.whatsapp.WhatsApp")
+        }
+        
+        for bundleId in targetBundleIds {
+            guard let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) else { continue }
+            if let details = extractChatFromBrowserAX(pid: app.processIdentifier) {
+                return details
+            }
+        }
+        return nil
+    }
+    
+    private func extractChatFromBrowserAX(pid: pid_t) -> (sender: String, message: String)? {
+        let appRef = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        
+        var candidateWindows: [AXUIElement] = []
+        for attr in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
+            var winRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(appRef, attr as CFString, &winRef) == .success, let w = winRef {
+                candidateWindows.append(w as! AXUIElement)
+            }
+        }
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appRef, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let arr = childrenRef as? [AnyObject] {
+            for c in arr {
+                let elem = c as! AXUIElement
+                var roleRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+                if (roleRef as? String) == "AXWindow" {
+                    candidateWindows.append(elem)
+                }
+            }
+        }
+        
+        for win in candidateWindows {
+            guard let table = findAXChatTable(win) else { continue }
+            var rowsRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
+                  let rowArray = rowsRef as? [AnyObject] else { continue }
+            
+            let rows = rowArray.map { $0 as! AXUIElement }
+            var parsedRows: [ParsedChatRow] = []
+            for r in rows.prefix(15) {
+                if let p = parseChatRow(r) {
+                    parsedRows.append(p)
+                }
+            }
+            
+            // 1. Prioridad máxima: Primer chat con mensajes no leídos que NO esté silenciado
+            if let target = parsedRows.first(where: { $0.unreadCount > 0 && !$0.isMuted }) {
+                return (sender: target.contact, message: target.message)
+            }
+            // 2. Chat con mensajes no leídos (incluso si está silenciado)
+            if let target = parsedRows.first(where: { $0.unreadCount > 0 }) {
+                return (sender: target.contact, message: target.message)
+            }
+            // 3. Primer chat no fijado y no silenciado (el más reciente en la lista)
+            if let target = parsedRows.first(where: { !$0.isPinned && !$0.isMuted }) {
+                return (sender: target.contact, message: target.message)
+            }
+            
+            // 4. Si el chat activo está abierto en pantalla
+            if let active = findActiveChatConversation(win) {
+                return (sender: active.contact, message: active.lastMsg.isEmpty ? "Nuevo mensaje" : active.lastMsg)
+            }
+        }
+        return nil
+    }
+    
+    private func findAXChatTable(_ elem: AXUIElement, depth: Int = 0) -> AXUIElement? {
+        if depth > 12 { return nil }
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+        var descRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+        let role = (roleRef as? String) ?? ""
+        let desc = (descRef as? String) ?? ""
+        if role == "AXTable" || desc == "Lista de chats" { return elem }
+        
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children {
+                if let f = findAXChatTable(c as! AXUIElement, depth: depth + 1) { return f }
+            }
+        }
+        return nil
+    }
+    
+    private func collectStringsFromAX(_ elem: AXUIElement, depth: Int = 0) -> [String] {
+        if depth > 8 { return [] }
+        var results: [String] = []
+        var valRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXValueAttribute as CFString, &valRef)
+        var titleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
+        var descRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+        
+        if let v = valRef as? String, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results.append(v) }
+        if let t = titleRef as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results.append(t) }
+        if let d = descRef as? String, !d.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results.append(d) }
+        
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children {
+                results.append(contentsOf: collectStringsFromAX(c as! AXUIElement, depth: depth + 1))
+            }
+        }
+        return results
+    }
+    
+    private func parseChatRow(_ row: AXUIElement) -> ParsedChatRow? {
+        var rawList: [String] = []
+        for s in collectStringsFromAX(row) {
+            if rawList.last != s { rawList.append(s) }
+        }
+        
+        let isMuted = rawList.contains { $0.lowercased().contains("silenciado") }
+        let isPinned = rawList.contains { $0.lowercased().contains("fijó") }
+        
+        var unreadCount = 0
+        for s in rawList {
+            let lower = s.lowercased()
+            if lower.contains("no leído") || lower.contains("unread") {
+                let digits = s.filter { $0.isNumber }
+                if let count = Int(digits), count > 0 {
+                    unreadCount = count
+                    break
+                }
+            }
+        }
+        
+        // En WhatsApp Web la marca de tiempo (ej. "8:48 p.m.", "Ayer", "Hoy", "12/10/2026")
+        // separa de forma canónica la cabecera (contacto y estado) del mensaje real
+        let timeRegex = try? NSRegularExpression(
+            pattern: #"^(?:\d{1,2}:\d{2}\s*(?:p\.?m\.?|a\.?m\.?)|ayer|hoy|\d{1,2}/\d{1,2}/\d{2,4})$"#,
+            options: .caseInsensitive
+        )
+        var timeIndex = -1
+        for (i, s) in rawList.enumerated() {
+            if timeRegex?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil {
+                timeIndex = i
+                break
+            }
+        }
+        
+        let contact: String
+        let message: String
+        
+        if timeIndex > 0 {
+            // Todo antes de timeIndex es el contacto / grupo (filtrando badges de sistema)
+            let contactParts = rawList[0..<timeIndex].filter { s in
+                let lower = s.lowercased()
+                if lower.contains("ver estado") { return false }
+                if lower.contains("no leído") || lower.contains("unread") { return false }
+                if lower.contains("se fijó") || lower.contains("destacado") || lower.contains("silenciado") { return false }
+                return true
+            }
+            contact = contactParts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Todo después de timeIndex es el cuerpo del mensaje recibido
+            let messageParts = rawList[(timeIndex + 1)...].filter { s in
+                let lower = s.lowercased()
+                if lower.contains("chat silenciado") { return false }
+                if lower.contains("desaparecerán de este chat") { return false }
+                if lower.contains("se fijó el chat") || lower.contains("chat destacado") { return false }
+                if lower.contains("ver estado") { return false }
+                return true
+            }
+            
+            var msg = ""
+            for p in messageParts {
+                if p == ":" || p == ": " || p == ": " {
+                    msg += ": "
+                } else if msg.hasSuffix(": ") {
+                    msg += p
+                } else if msg.isEmpty {
+                    msg = p
+                } else {
+                    msg += " " + p
+                }
+            }
+            message = msg.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            // Fallback si no hubo coincidencia con formato de hora
+            let filtered = rawList.filter { s in
+                let lower = s.lowercased()
+                if lower.contains("ver estado") { return false }
+                if lower.contains("no leído") || lower.contains("unread") { return false }
+                if lower.contains("se fijó") || lower.contains("destacado") || lower.contains("silenciado") { return false }
+                if lower.contains("desaparecerán de este chat") { return false }
+                if s == ":" || s == ": " || s == ": " { return false }
+                return true
+            }
+            guard !filtered.isEmpty else { return nil }
+            contact = filtered[0]
+            message = filtered.count > 1 ? filtered.dropFirst().joined(separator: " ") : "Nuevo mensaje"
+        }
+        
+        guard !contact.isEmpty else { return nil }
+        
+        let timeString = (timeIndex >= 0 && timeIndex < rawList.count) ? rawList[timeIndex] : ""
+        return ParsedChatRow(
+            contact: contact,
+            message: message.isEmpty ? "Nuevo mensaje" : message,
+            time: timeString,
+            unreadCount: unreadCount,
+            isMuted: isMuted,
+            isPinned: isPinned,
+            rowElement: row
+        )
+    }
+    
+    private func findActiveChatConversation(_ elem: AXUIElement, depth: Int = 0) -> (contact: String, lastMsg: String)? {
+        if depth > 12 { return nil }
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+        var descRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+        
+        let role = (roleRef as? String) ?? ""
+        let desc = (descRef as? String) ?? ""
+        
+        if role == "AXTextArea" && (desc.contains("Escribir un mensaje para") || desc.contains("Type a message to")) {
+            let contact = desc
+                .replacingOccurrences(of: "Escribir un mensaje para", with: "")
+                .replacingOccurrences(of: "Type a message to", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !contact.isEmpty {
+                return (contact: contact, lastMsg: "")
+            }
+        }
+        
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children {
+                if let f = findActiveChatConversation(c as! AXUIElement, depth: depth + 1) { return f }
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Despacho y Actualización de Notificaciones
+    private func dispatchNotification(sender: String, message: String) {
         DispatchQueue.main.async {
             if NotificationActivityProvider.shared.isNotificationActive &&
                 NotificationActivityProvider.shared.isQuickReplyExpanded {
                 return
             }
+            
+            let isKnownContact = sender != "WhatsApp Web" &&
+                                sender != "WhatsApp" &&
+                                !sender.lowercased().contains("whatsapp") &&
+                                !sender.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            
+            // Si ya hay una notificación activa pero decía "WhatsApp Web", actualizarla en vivo con el remitente real
+            if NotificationActivityProvider.shared.isNotificationActive,
+               let current = NotificationActivityProvider.shared.currentPayload,
+               (current.title == "WhatsApp Web" || current.title == "WhatsApp") && isKnownContact {
+                let initials = ContactLookupService.shared.extractInitials(from: sender)
+                let avatar = ContactLookupService.shared.generateMonogramAvatar(for: sender, initials: initials)
+                NotificationActivityProvider.shared.updateActiveNotification(
+                    title: sender,
+                    message: message,
+                    handle: sender,
+                    avatar: avatar,
+                    enableQuickReply: true
+                )
+                return
+            }
+            
             NotificationActivityProvider.shared.showNotification(
-                title: senderName,
-                message: messageText,
-                handle: senderName,
+                title: sender,
+                message: message,
+                handle: sender,
                 appIcon: "message.fill",
-                appName: "WhatsApp Web",
+                appName: "WhatsApp",
                 tint: Color(red: 0.15, green: 0.78, blue: 0.45),
-                enableQuickReply: true,
+                enableQuickReply: isKnownContact,
                 duration: 6.0
             )
             AppState.shared.hapticService.triggerSnap()
         }
     }
     
-    /// Envía una respuesta rápida a WhatsApp Web (intentando primero inyección DOM silenciosa y como respaldo activación + pegado)
+    /// Envía una respuesta rápida a WhatsApp Web sin redirigir al usuario ni sacarlo de su app actual
     public func deliverQuickReply(message: String, recipient: String) {
-        let escapedJS = message
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "")
+        let lower = recipient.lowercased()
+        guard !lower.contains("carlos") && !lower.contains("demo") else {
+            DNDLogger.log("WhatsAppWebObserverService: 🧪 Demo detectada ('\(recipient)'). Envío a WhatsApp Web omitido de forma segura.")
+            return
+        }
         
-        let jsSnippet = "(function(){var box=document.querySelector('#main footer div[contenteditable=\\\"true\\\"]')||document.querySelector('div[contenteditable=\\\"true\\\"][data-tab=\\\"10\\\"]');if(!box)return 'NO_BOX';box.focus();document.execCommand('selectAll',false,null);document.execCommand('insertText',false,'\(escapedJS)');setTimeout(function(){var btn=document.querySelector('#main footer button[aria-label=\\\"Enviar\\\"]')||document.querySelector('#main footer button[aria-label=\\\"Send\\\"]')||document.querySelector('#main footer span[data-icon=\\\"send\\\"]')||document.querySelector('#main footer span[data-icon=\\\"wds-ic-send-filled\\\"]');if(btn){(btn.closest('button')||btn).click();}else{box.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));}},60);return 'SENT_SILENT';})()"
+        // Guardar la app que el usuario tenía activa para no perder foco
+        let previousApp = NSWorkspace.shared.runningApplications.first(where: {
+            $0.isActive && $0.bundleIdentifier != Bundle.main.bundleIdentifier
+        })
         
         scriptQueue.async { [weak self] in
             guard let self = self else { return }
-            if self.trySilentDOMSend(jsSnippet: jsSnippet) {
-                DNDLogger.log("WhatsAppWebObserverService: Respuesta enviada silenciosamente vía DOM JS")
+            
+            // 1. Intentar entrega 100% silenciosa vía Accessibility API (sin activar Safari/Chrome ni cambiar de espacio)
+            if self.deliverViaAccessibility(message: message, recipient: recipient) {
+                DNDLogger.log("WhatsAppWebObserverService: ✅ Respuesta enviada silenciosamente vía AXUIElement")
                 return
             }
-            // Fallback: activar pestaña de WhatsApp Web / App y pegar + enviar con System Events
-            DNDLogger.log("WhatsAppWebObserverService: Activando WhatsApp Web y enviando respuesta desde portapapeles")
-            self.activateAndPasteReply()
+            
+            // 2. Si falla AX, intentar inyección DOM silenciosa vía JavaScript
+            let escapedJS = message
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "'", with: "\\'")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "")
+            let jsSnippet = "(function(){var box=document.querySelector('#main footer div[contenteditable=\\\"true\\\"]')||document.querySelector('div[contenteditable=\\\"true\\\"][data-tab=\\\"10\\\"]');if(!box)return 'NO_BOX';box.focus();document.execCommand('selectAll',false,null);document.execCommand('insertText',false,'\(escapedJS)');setTimeout(function(){var btn=document.querySelector('#main footer button[aria-label=\\\"Enviar\\\"]')||document.querySelector('#main footer button[aria-label=\\\"Send\\\"]')||document.querySelector('#main footer span[data-icon=\\\"send\\\"]')||document.querySelector('#main footer span[data-icon=\\\"wds-ic-send-filled\\\"]');if(btn){(btn.closest('button')||btn).click();}else{box.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));}},60);return 'SENT_SILENT';})()"
+            
+            if self.trySilentDOMSend(jsSnippet: jsSnippet) {
+                DNDLogger.log("WhatsAppWebObserverService: ✅ Respuesta enviada silenciosamente vía DOM JS")
+                return
+            }
+            
+            // 3. Fallback: pegar, enviar y restaurar el foco inmediatamente a la aplicación previa
+            DNDLogger.log("WhatsAppWebObserverService: Entregando respuesta con System Events y restaurando foco...")
+            self.activatePasteAndRestore(message: message, recipient: recipient, previousApp: previousApp)
         }
+    }
+    
+    private func deliverViaAccessibility(message: String, recipient: String) -> Bool {
+        let runningApps = NSWorkspace.shared.runningApplications
+        let targetBundleIds = [
+            "com.apple.Safari",
+            "com.google.Chrome",
+            "company.thebrowser.Browser",
+            "com.brave.Browser",
+            "com.microsoft.edgemac",
+            "net.whatsapp.WhatsApp"
+        ]
+        
+        for bundleId in targetBundleIds {
+            guard let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) else { continue }
+            let appRef = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            
+            var winRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(appRef, kAXMainWindowAttribute as CFString, &winRef) == .success,
+                  let win = winRef as! AXUIElement? else { continue }
+            
+            // 1. Si conocemos el destinatario, seleccionarlo en la tabla de chats
+            if !recipient.isEmpty && recipient != "WhatsApp" {
+                if let table = findAXChatTable(win) {
+                    var rowsRef: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
+                       let rows = rowsRef as? [AnyObject] {
+                        for r in rows.prefix(15) {
+                            let row = r as! AXUIElement
+                            if let p = parseChatRow(row), p.contact.lowercased() == recipient.lowercased() {
+                                clickAXElement(p.rowElement)
+                                Thread.sleep(forTimeInterval: 0.12)
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 2. Buscar el área de texto
+            guard let textArea = findAXTextArea(win) else { continue }
+            
+            // 3. Escribir el mensaje en el área de texto vía AX
+            let setRes = AXUIElementSetAttributeValue(textArea, kAXValueAttribute as CFString, message as CFTypeRef)
+            guard setRes == .success else { continue }
+            
+            Thread.sleep(forTimeInterval: 0.10)
+            
+            // 4. Localizar y presionar el botón Enviar exacto
+            if let sendBtn = findAXSendButton(win) {
+                if clickAXElement(sendBtn) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
+    private func findAXTextArea(_ elem: AXUIElement, depth: Int = 0) -> AXUIElement? {
+        if depth > 15 { return nil }
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+        if (roleRef as? String) == "AXTextArea" {
+            return elem
+        }
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children {
+                if let found = findAXTextArea(c as! AXUIElement, depth: depth + 1) {
+                    return found
+                }
+            }
+        }
+        return nil
+    }
+    
+    private func findAXSendButton(_ elem: AXUIElement, depth: Int = 0) -> AXUIElement? {
+        if depth > 16 { return nil }
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+        let role = roleRef as? String ?? ""
+        if role == "AXButton" {
+            var titleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
+            var descRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+            let t = (titleRef as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let d = (descRef as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if t == "Enviar" || d == "Enviar" || t == "Send" || d == "Send" {
+                return elem
+            }
+        }
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children {
+                if let found = findAXSendButton(c as! AXUIElement, depth: depth + 1) {
+                    return found
+                }
+            }
+        }
+        return nil
     }
     
     private func trySilentDOMSend(jsSnippet: String) -> Bool {
@@ -362,18 +1024,90 @@ public final class WhatsAppWebObserverService: ObservableObject {
         return false
     }
     
-    private func activateAndPasteReply() {
+    private func activatePasteAndRestore(message: String, recipient: String, previousApp: NSRunningApplication?) {
+        let pasteboard = NSPasteboard.general
+        let prevString = pasteboard.string(forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(message, forType: .string)
+        
         activateWhatsAppWebSync()
-        Thread.sleep(forTimeInterval: 0.35)
+        Thread.sleep(forTimeInterval: 0.12)
+        
+        if !recipient.isEmpty && recipient != "WhatsApp" {
+            selectChatViaAX(recipient: recipient)
+            Thread.sleep(forTimeInterval: 0.10)
+        }
+        
         let pasteScript = """
         tell application "System Events"
             keystroke "v" using command down
-            delay 0.12
+            delay 0.05
             key code 36
         end tell
         """
         var err: NSDictionary?
         NSAppleScript(source: pasteScript)?.executeAndReturnError(&err)
+        
+        if let prevStr = prevString {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                pasteboard.clearContents()
+                pasteboard.setString(prevStr, forType: .string)
+            }
+        }
+        
+        // RESTAURAR INMEDIATAMENTE EL FOCO A LA APLICACIÓN PREVIA
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            if let prev = previousApp, prev.bundleIdentifier != "com.apple.Safari" && prev.bundleIdentifier != "com.google.Chrome" {
+                if #available(macOS 14.0, *) {
+                    prev.activate()
+                } else {
+                    prev.activate(options: [.activateIgnoringOtherApps])
+                }
+            }
+        }
+    }
+    
+    private func selectChatViaAX(recipient: String) {
+        let runningApps = NSWorkspace.shared.runningApplications
+        for app in runningApps where app.bundleIdentifier == "com.apple.Safari" ||
+                                     app.bundleIdentifier == "com.google.Chrome" ||
+                                     app.bundleIdentifier == "net.whatsapp.WhatsApp" {
+            let appRef = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            var winRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(appRef, kAXMainWindowAttribute as CFString, &winRef) == .success,
+               let win = winRef as! AXUIElement?,
+               let table = findAXChatTable(win) {
+                var rowsRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
+                   let rows = rowsRef as? [AnyObject] {
+                    for r in rows.prefix(15) {
+                        let row = r as! AXUIElement
+                        if let p = parseChatRow(row), p.contact.lowercased() == recipient.lowercased() {
+                            clickAXElement(p.rowElement)
+                            return
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    @discardableResult
+    private func clickAXElement(_ elem: AXUIElement) -> Bool {
+        var actionsRef: CFArray?
+        AXUIElementCopyActionNames(elem, &actionsRef)
+        if let actions = actionsRef as? [String], actions.contains(kAXPressAction as String) {
+            return AXUIElementPerformAction(elem, kAXPressAction as CFString) == .success
+        }
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children {
+                if clickAXElement(c as! AXUIElement) { return true }
+            }
+        }
+        return false
     }
     
     /// Activa la pestaña o ventana de WhatsApp Web en el navegador
@@ -406,6 +1140,13 @@ public final class WhatsAppWebObserverService: ObservableObject {
             """
             var err: NSDictionary?
             if let res = NSAppleScript(source: script)?.executeAndReturnError(&err).stringValue, res == "ACTIVATED" {
+                if let safari = runningApps.first(where: { $0.bundleIdentifier == "com.apple.Safari" }) {
+                    if #available(macOS 14.0, *) {
+                        safari.activate()
+                    } else {
+                        safari.activate(options: [.activateIgnoringOtherApps])
+                    }
+                }
                 return
             }
         }
@@ -448,6 +1189,13 @@ public final class WhatsAppWebObserverService: ObservableObject {
             }
             var err: NSDictionary?
             if let res = NSAppleScript(source: script)?.executeAndReturnError(&err).stringValue, res == "ACTIVATED" {
+                if let browser = runningApps.first(where: { $0.bundleIdentifier == bundleId }) {
+                    if #available(macOS 14.0, *) {
+                        browser.activate()
+                    } else {
+                        browser.activate(options: [.activateIgnoringOtherApps])
+                    }
+                }
                 return
             }
         }

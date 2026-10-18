@@ -221,6 +221,7 @@ public struct NotchPlayerView: View {
             .padding(.bottom, PlayerMetrics.bottomPadding)
             .offset(x: appState.contentOverscrollOffset * 0.45, y: appState.contentVerticalOverscrollOffset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .contentShape(Rectangle())
             
             // MARK: - MODO DEBUG DE COMPARACIÓN (OVERLAY)
             if debugOverlay.isOverlayActive {
@@ -241,6 +242,7 @@ public struct NotchPlayerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
         .onChange(of: track.title) { oldTitle, newTitle in
             guard !newTitle.isEmpty, newTitle != oldTitle else { return }
             withAnimation(.spring(response: 0.24, dampingFraction: 0.65)) {
@@ -258,13 +260,17 @@ public struct NotchPlayerView: View {
     @ViewBuilder
     private var standardPlayerContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // FILA 1: Carátula, Textos y Visualizador
-            HStack(alignment: .top, spacing: PlayerMetrics.artworkToTextSpacing) {
+            // FILA 1: Carátula, Textos y Visualizador (Centrado vertical armónico)
+            HStack(alignment: .center, spacing: PlayerMetrics.artworkToTextSpacing) {
                 // Carátula a la izquierda
                 Button(action: {
-                    appState.hapticService.triggerExpand()
-                    musicService.openMusicApp()
-                    appState.collapse()
+                    if NSEvent.modifierFlags.contains(.option) {
+                        AmbientCanvasWindowManager.shared.toggleCanvas()
+                    } else {
+                        appState.hapticService.triggerExpand()
+                        musicService.openMusicApp()
+                        appState.collapse()
+                    }
                 }) {
                     ZStack {
                         if let art = track.artwork {
@@ -322,15 +328,6 @@ public struct NotchPlayerView: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .background(
-                    Group {
-                        if appState.effectiveAppearanceMode == .clearGlass && GlassClearManager.shared.showLocalTextScrim {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.black.opacity(GlassClearMetrics.textScrimOpacity))
-                                .blur(radius: 2)
-                        }
-                    }
-                )
                 .shadow(
                     color: Color.black.opacity(GlassClearMetrics.textShadowOpacity),
                     radius: GlassClearMetrics.textShadowRadius,
@@ -342,12 +339,11 @@ public struct NotchPlayerView: View {
                 .scaleEffect(animStage1 ? 1.0 : 0.94)
                 .opacity(animStage1 ? 1.0 : 0.0)
                 
-                // Visualizador de Audio
+                // Visualizador de Audio (Perfectamente centrado en la fila)
                 AudioVisualizer(
                     isPlaying: track.isPlaying || !AudioSpectrumEngine.shared.isSilent,
                     colorMode: .fromArtwork(track.artwork)
                 )
-                .padding(.top, 3)
                 .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
                 .notchContentExit(isExiting: shouldFadeMediaAnchors)
                 .scaleEffect(animStage1 ? 1.0 : 0.90)
@@ -401,15 +397,21 @@ public struct NotchPlayerView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
+                                if abs(value.translation.height) > abs(value.translation.width) && abs(value.translation.height) > 4 {
+                                    if isSeeking { isSeeking = false }
+                                    return
+                                }
                                 isSeeking = true
                                 let ratio = max(0.0, min(1.0, value.location.x / geo.size.width))
                                 seekPosition = track.duration * Double(ratio)
                             }
                             .onEnded { value in
-                                let ratio = max(0.0, min(1.0, value.location.x / geo.size.width))
-                                let newPos = track.duration * Double(ratio)
-                                musicService.seek(to: newPos)
-                                isSeeking = false
+                                if isSeeking {
+                                    let ratio = max(0.0, min(1.0, value.location.x / geo.size.width))
+                                    let newPos = track.duration * Double(ratio)
+                                    musicService.seek(to: newPos)
+                                    isSeeking = false
+                                }
                             }
                     )
                 }
@@ -441,6 +443,7 @@ public struct NotchPlayerView: View {
                 .scaleEffect(animStage3 ? 1.0 : 0.94)
                 .opacity(animStage3 ? 1.0 : 0.0)
         }
+        .contentShape(Rectangle())
     }
     
     // MARK: - Vista Detallada (Apple Music Mini Player Expandido)
@@ -536,15 +539,21 @@ public struct NotchPlayerView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
+                                if abs(value.translation.height) > abs(value.translation.width) && abs(value.translation.height) > 4 {
+                                    if isSeeking { isSeeking = false }
+                                    return
+                                }
                                 isSeeking = true
                                 let ratio = max(0.0, min(1.0, value.location.x / geo.size.width))
                                 seekPosition = track.duration * Double(ratio)
                             }
                             .onEnded { value in
-                                let ratio = max(0.0, min(1.0, value.location.x / geo.size.width))
-                                let newPos = track.duration * Double(ratio)
-                                musicService.seek(to: newPos)
-                                isSeeking = false
+                                if isSeeking {
+                                    let ratio = max(0.0, min(1.0, value.location.x / geo.size.width))
+                                    let newPos = track.duration * Double(ratio)
+                                    musicService.seek(to: newPos)
+                                    isSeeking = false
+                                }
                             }
                     )
                 }
@@ -645,6 +654,7 @@ public struct NotchPlayerView: View {
             }
             .padding(.horizontal, 8)
         }
+        .contentShape(Rectangle())
     }
     
     // Fila de controles compartida
@@ -785,11 +795,6 @@ public struct NotchPlayerView: View {
                 }
             }
         }
-        .shadow(
-            color: Color.black.opacity(appState.effectiveAppearanceMode == .clearGlass ? 0.22 : 0.0),
-            radius: 2,
-            y: 1
-        )
     }
     
     // MARK: - Selector de Audio / AirPlay Integrado dentro de la Píldora
@@ -837,7 +842,7 @@ public struct NotchPlayerView: View {
                             }
                         }) {
                             HStack(spacing: 10) {
-                                Image(systemName: dev.isAirPods ? "airpodspro" : "speaker.wave.2.fill")
+                                Image(systemName: dev.icon)
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundColor(dev.isDefault ? Color.blue : Color.white.opacity(0.65))
                                     .frame(width: 20)

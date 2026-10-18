@@ -49,8 +49,10 @@ public struct NotchContainerView: View {
     @EnvironmentObject var screenService: ScreenService
     @EnvironmentObject var musicService: MusicService
     @EnvironmentObject var batteryService: BatteryService
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
     @ObservedObject var activityCenter = ActivityCenter.shared
     @ObservedObject var notificationProvider = NotificationActivityProvider.shared
+    @ObservedObject var agentProvider = AgentActivityProvider.shared
     @ObservedObject var speedManager = AnimationSpeedManager.shared
     @ObservedObject var glassManager = GlassClearManager.shared
     @Namespace private var notchNamespace
@@ -81,6 +83,13 @@ public struct NotchContainerView: View {
     @State private var hasSwitchedPageInCurrentDrag: Bool = false
     @State private var isMouseInsideWidget: Bool = false
     
+    private enum DragLockAxis {
+        case none
+        case horizontal
+        case vertical
+    }
+    @State private var dragLockAxis: DragLockAxis = .none
+    
     private var geometry: NotchGeometry {
         screenService.currentGeometry
     }
@@ -91,7 +100,10 @@ public struct NotchContainerView: View {
         }
         switch appState.mode {
         case .idle:
-            return !appState.shelfItems.isEmpty ? geometry.width + 96 : geometry.width
+            if !appState.shelfItems.isEmpty {
+                return geometry.width + 96
+            }
+            return geometry.width
         case .compact:
             let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
             return geometry.width + 104 + (wingExtra * 2)
@@ -104,6 +116,10 @@ public struct NotchContainerView: View {
     private var currentWidth: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedWidth
+        } else if agentProvider.isProgressHUDExpanded {
+            return AgentLiveProgressView.hudWidth
+        } else if let expandedAct = activityCenter.expandedActivity {
+            return activityCenter.customCardWidth ?? (expandedAct.customExpandedWidth ?? 430)
         } else if appState.isDropInvitationActive {
             return 460
         } else if let activity = activityCenter.currentActivity {
@@ -123,17 +139,36 @@ public struct NotchContainerView: View {
             case .sliderPill:
                 return geometry.width + 292
             case .airpodsPill:
-                return geometry.width + 132
+                return geometry.width + 104
             case .card:
                 if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
                     return notificationProvider.isQuickReplyExpanded
                         ? NotificationActivityProvider.expandedWidth
                         : NotificationActivityProvider.compactWidth
                 }
+                if activity.id == "agent_live_progress" || activity.id.hasPrefix("agent_progress") || (agentProvider.isActive && activity.id.hasPrefix("agent_")) {
+                    if activityCenter.expandedActivity?.id == activity.id || agentProvider.isProgressHUDExpanded {
+                        return AgentLiveProgressView.hudWidth
+                    }
+                    return agentProvider.isExpanded
+                        ? AgentActivityProvider.expandedWidth
+                        : baseRestingWidth
+                }
                 return activityCenter.customCardWidth ?? 390
             }
         } else {
-            return baseRestingWidth
+            switch appState.mode {
+            case .idle:
+                if !appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch {
+                    return geometry.width + 24
+                }
+                return geometry.width
+            case .compact:
+                let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
+                return geometry.width + 104 + (wingExtra * 2)
+            case .expanded, .shelf:
+                return NotchTuning.expandedWidth
+            }
         }
     }
     
@@ -143,6 +178,10 @@ public struct NotchContainerView: View {
             return (appState.isPlayerDetailExpanded && appState.mode == .expanded)
                 ? PlayerMetrics.detailCardHeight
                 : (appState.mode == .shelf ? 204 : NotchTuning.expandedHeight)
+        } else if agentProvider.isProgressHUDExpanded {
+            return AgentLiveProgressView.hudHeight
+        } else if let expandedAct = activityCenter.expandedActivity {
+            return activityCenter.customCardHeight ?? (expandedAct.customExpandedHeight ?? 160)
         } else if appState.isDropInvitationActive {
             return 144
         } else if let activity = activityCenter.currentActivity {
@@ -155,8 +194,16 @@ public struct NotchContainerView: View {
             case .card:
                 if notificationProvider.isNotificationActive && activity.id.hasPrefix("notification_") {
                     return notificationProvider.isQuickReplyExpanded
-                        ? NotificationActivityProvider.expandedHeight
+                        ? notificationProvider.dynamicReplyHeight
                         : NotificationActivityProvider.compactHeight
+                }
+                if activity.id == "agent_live_progress" || activity.id.hasPrefix("agent_progress") || (agentProvider.isActive && activity.id.hasPrefix("agent_")) {
+                    if activityCenter.expandedActivity?.id == activity.id || agentProvider.isProgressHUDExpanded {
+                        return AgentLiveProgressView.hudHeight
+                    }
+                    return agentProvider.isExpanded
+                        ? AgentActivityProvider.expandedHeight
+                        : geometry.height
                 }
                 return activityCenter.customCardHeight ?? 112
             }
@@ -169,6 +216,10 @@ public struct NotchContainerView: View {
     private var topRadius: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedTopRadius
+        } else if agentProvider.isProgressHUDExpanded {
+            return 0
+        } else if activityCenter.expandedActivity != nil {
+            return activityCenter.customTopRadius ?? 24
         } else if appState.isDropInvitationActive {
             return 0
         } else if let activity = activityCenter.currentActivity {
@@ -176,6 +227,12 @@ public struct NotchContainerView: View {
             case .pill, .sliderPill, .airpodsPill:
                 return 0
             case .card:
+                if activity.id == "agent_live_progress" || activity.id.hasPrefix("agent_progress") {
+                    return 0
+                }
+                if agentProvider.isActive && activity.id.hasPrefix("agent_") {
+                    return AgentActivityProvider.topRadius
+                }
                 return activityCenter.customTopRadius ?? 28
             }
         } else if dragOffsetY > 0 {
@@ -189,6 +246,10 @@ public struct NotchContainerView: View {
     private var bottomRadius: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedBottomRadius
+        } else if agentProvider.isProgressHUDExpanded {
+            return 28
+        } else if activityCenter.expandedActivity != nil {
+            return activityCenter.customBottomRadius ?? 32
         } else if appState.isDropInvitationActive {
             return 42
         } else if let activity = activityCenter.currentActivity {
@@ -203,6 +264,14 @@ public struct NotchContainerView: View {
                     return notificationProvider.isQuickReplyExpanded
                         ? NotificationActivityProvider.expandedBottomRadius
                         : NotificationActivityProvider.compactBottomRadius
+                }
+                if activity.id == "agent_live_progress" || activity.id.hasPrefix("agent_progress") || (agentProvider.isActive && activity.id.hasPrefix("agent_")) {
+                    if activity.id == "agent_live_progress" || activity.id.hasPrefix("agent_progress") || agentProvider.currentProgressPayload != nil {
+                        return 28
+                    }
+                    return agentProvider.isExpanded
+                        ? AgentActivityProvider.expandedBottomRadius
+                        : AgentActivityProvider.compactBottomRadius
                 }
                 return activityCenter.customBottomRadius ?? 32
             }
@@ -223,7 +292,7 @@ public struct NotchContainerView: View {
 
     private var activeExpandedHeight: CGFloat {
         let notifPull = notificationProvider.isNotificationActive ? notificationProvider.dragPullOffset : 0
-        return currentHeight + appState.verticalOverscrollOffset + notifPull
+        return currentHeight + notifPull
     }
     
     private var containerOffsetY: CGFloat {
@@ -336,198 +405,283 @@ public struct NotchContainerView: View {
         let absS = abs(snapStretch)
         let maxS = max(1.0, OverscrollMetrics.maxStretch)
         let heightFactor = 1.0 - (min(absS, maxS) / maxS) * OverscrollMetrics.heightShortenPercent
-        return activeExpandedHeight * heightFactor
+        return (activeExpandedHeight + appState.verticalOverscrollOffset) * heightFactor
+    }
+    
+    private var containerPillShape: ElasticPillShape {
+        ElasticPillShape(
+            topRadius: topRadius,
+            bottomRadius: bottomRadius,
+            stretch: 0,
+            verticalStretch: 0
+        )
     }
     
     @ViewBuilder
-    private var notchContainerContent: some View {
-        VStack(spacing: 8) {
-            // Píldora Principal (#000 puro, anclada arriba contra la cámara o Liquid Glass)
-            ZStack(alignment: .top) {
-                // Fondo reactivo: Negro Puro OLED o Cristal Líquido (Liquid Glass)
-                DynamicNotchBackgroundView(
-                    topRadius: topRadius,
-                    bottomRadius: bottomRadius,
-                    isLiquidGlass: appState.isLiquidGlassEnabled,
-                    darknessOpacity: appState.glassDarknessOpacity,
-                    stretch: 0,
-                    verticalStretch: 0,
-                    isExpanded: appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive
-                )
-                .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
-                
-                // Contenido según el modo, Live Activity o HUD de volumen
-                Group {
-                    if appState.mode == .expanded {
-                        NotchPlayerView(
-                            namespace: notchNamespace,
-                            animStage1: animStage1,
-                            animStage2: animStage2,
-                            animStage3: animStage3,
-                            controlsExiting: controlsExiting,
-                            progressExiting: progressExiting,
-                            topRowExiting: topRowExiting
-                        )
-                        .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
-                        .transition(.opacity)
-                    } else if appState.mode == .shelf {
-                        NotchShelfView()
-                            .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
-                                removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
-                            ))
-                            .id("notchShelfView")
-                    } else if activityCenter.currentActivity != nil {
-                        // Live Activity activa (Pill / SliderPill / Card): Máxima prioridad, nunca es desplazada por el reproductor
-                        LiveActivityContainerView()
-                            .frame(width: currentWidth, height: currentHeight, alignment: .top)
-                            .clipShape(ElasticPillShape(
-                                topRadius: topRadius,
-                                bottomRadius: bottomRadius,
-                                stretch: 0,
-                                verticalStretch: 0
-                            ))
-                            .clipped()
-                            .transition(.opacity)
-                    } else if appState.isDropInvitationActive {
-                        NotchDropInvitationView()
-                            .frame(width: currentWidth, height: currentHeight, alignment: .top)
-                            .transition(.opacity)
-                    } else {
-                        switch appState.mode {
-                        case .idle:
-                            if !appState.shelfItems.isEmpty {
-                                HStack(spacing: 0) {
-                                    // Ala izquierda simétrica (44 pt): Miniatura o icono del archivo
-                                    ZStack {
-                                        if let item = appState.shelfItems.first {
-                                            if item.isImage {
-                                                Image(nsImage: item.icon)
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fill)
-                                                    .frame(width: 17, height: 17)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
-                                            } else {
-                                                Image(nsImage: item.icon)
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fit)
-                                                    .frame(width: 14, height: 14)
-                                                    .frame(width: 18, height: 18)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                                                            .fill(DesignTokens.blue.opacity(0.18))
-                                                    )
-                                            }
-                                        } else {
-                                            Image(systemName: "doc.fill")
-                                                .font(.system(size: 10.5, weight: .semibold))
-                                                .foregroundColor(DesignTokens.blue)
-                                        }
-                                    }
-                                    .frame(width: 48, height: currentHeight)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        performExpand()
-                                    }
-                                    
-                                    // Zona central del sensor de cámara (centrado exacto sobre el hardware)
-                                    Color.clear
-                                        .frame(width: geometry.width, height: currentHeight)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            performExpand()
-                                        }
-                                    
-                                    // Ala derecha simétrica (48 pt): Bandeja parpadeante con pulso radar
-                                    ActiveFileBadgeView()
-                                        .frame(width: 48, height: currentHeight)
-                                }
-                                .frame(width: currentWidth, height: currentHeight)
-                            } else {
-                                Color.clear
-                                    .frame(width: currentWidth, height: currentHeight)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        performExpand()
-                                    }
-                            }
-                            
-                        case .compact:
-                            if appState.isHoldingBareNotch {
-                                Color.clear
-                                    .frame(width: currentWidth, height: currentHeight)
-                            } else {
-                                NotchCompactView(namespace: notchNamespace)
-                                    .frame(width: currentWidth, height: currentHeight)
-                                    .blur(radius: dragBlur)
-                                    .opacity(isTransitioningFromActivity ? 0.0 : 1.0)
-                                    .transition(.opacity)
-                            }
-                            
-                        default:
-                            EmptyView()
-                        }
-                    }
+    private var topNotchCloseZone: some View {
+        if activityCenter.expandedActivity != nil {
+            Color.clear
+                .frame(width: geometry.width, height: geometry.height)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activityCenter.collapseExpandedActivity()
                 }
-                .clipShape(ElasticPillShape(
-                    topRadius: topRadius,
-                    bottomRadius: bottomRadius,
-                    stretch: 0,
-                    verticalStretch: 0
-                ))
-                
-                // Zona táctil superior en el notch para cerrar al hacer click en el notch
-                if appState.mode == .expanded || appState.mode == .shelf {
-                    Color.clear
-                        .frame(width: geometry.width, height: geometry.height)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            performCollapse()
-                        }
-                } else if let activity = activityCenter.currentActivity, activity.style == .card && activity.customView == nil {
-                    Color.clear
-                        .frame(width: max(geometry.width, 180), height: max(geometry.height, 36))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            activity.onTap?()
-                        }
+        } else if agentProvider.isProgressHUDExpanded {
+            Color.clear
+                .frame(width: geometry.width, height: geometry.height)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    agentProvider.collapseProgressHUD()
+                }
+        } else if appState.mode == .expanded || appState.mode == .shelf {
+            Color.clear
+                .frame(width: geometry.width, height: geometry.height)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    performCollapse()
+                }
+        } else if let activity = activityCenter.currentActivity, activity.style == .card && activity.customView == nil {
+            Color.clear
+                .frame(width: max(geometry.width, 180), height: max(geometry.height, 36))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activity.onTap?()
+                }
+        }
+    }
+    
+    @ViewBuilder
+    private func expandedActivityContentView(_ expandedAct: LiveActivity) -> some View {
+        if let customExpanded = expandedAct.expandedView {
+            customExpanded
+        } else if expandedAct.kind == .agentAI {
+            AgentLiveProgressView()
+        } else if let customView = expandedAct.customView {
+            customView
+        } else {
+            let titleText: String = expandedAct.title ?? expandedAct.kind.rawValue.capitalized
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: expandedAct.bolitaVariant?.iconName ?? "star.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(expandedAct.tint)
+                    Text(titleText)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button("Cerrar") {
+                        activityCenter.collapseExpandedActivity()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if let subtitle = expandedAct.subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                 }
             }
-            // MARCO PRIMARIO: Se fija el ancho y alto del contenedor simétricamente antes de aplicar sombra
+            .padding(.horizontal, 22)
+            .padding(.top, 36)
+            .padding(.bottom, 18)
+        }
+    }
+    
+    @ViewBuilder
+    private var idleContentView: some View {
+        if !appState.shelfItems.isEmpty {
+            HStack(spacing: 0) {
+                // Ala izquierda simétrica (44 pt): Miniatura o icono del archivo
+                ZStack {
+                    if let item = appState.shelfItems.first {
+                        if item.isImage {
+                            Image(nsImage: item.icon)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 17, height: 17)
+                                .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+                        } else {
+                            Image(nsImage: item.icon)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 14, height: 14)
+                                .frame(width: 18, height: 18)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                                        .fill(DesignTokens.blue.opacity(0.18))
+                                )
+                        }
+                    } else {
+                        Image(systemName: "doc.fill")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(DesignTokens.blue)
+                    }
+                }
+                .frame(width: 48, height: currentHeight)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    performExpand()
+                }
+                
+                // Zona central del sensor de cámara (centrado exacto sobre el hardware)
+                Color.clear
+                    .frame(width: geometry.width, height: currentHeight)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        performExpand()
+                    }
+                
+                // Ala derecha simétrica (48 pt): Bandeja parpadeante con pulso radar
+                ActiveFileBadgeView()
+                    .frame(width: 48, height: currentHeight)
+            }
+            .frame(width: currentWidth, height: currentHeight)
+        } else {
+            Color.clear
+                .frame(width: currentWidth, height: currentHeight)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    performExpand()
+                }
+        }
+    }
+    
+    @ViewBuilder
+    private var mainModeContentView: some View {
+        if let expandedAct = activityCenter.expandedActivity {
+            expandedActivityContentView(expandedAct)
+                .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                    removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
+                ))
+        } else if agentProvider.isProgressHUDExpanded {
+            AgentLiveProgressView()
+                .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                    removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
+                ))
+        } else if appState.mode == .expanded {
+            NotchPlayerView(
+                namespace: notchNamespace,
+                animStage1: animStage1,
+                animStage2: animStage2,
+                animStage3: animStage3,
+                controlsExiting: controlsExiting,
+                progressExiting: progressExiting,
+                topRowExiting: topRowExiting
+            )
+            .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+            .transition(.opacity)
+        } else if appState.mode == .shelf {
+            NotchShelfView()
+                .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                    removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .top))
+                ))
+                .id("notchShelfView")
+        } else if activityCenter.currentActivity != nil {
+            // Live Activity activa (Pill / SliderPill / Card): Máxima prioridad, nunca es desplazada por el reproductor
+            LiveActivityContainerView()
+                .frame(width: currentWidth, height: currentHeight, alignment: .top)
+                .transition(.opacity)
+        } else if appState.isDropInvitationActive {
+            NotchDropInvitationView()
+                .frame(width: currentWidth, height: currentHeight, alignment: .top)
+                .transition(.opacity)
+        } else {
+            switch appState.mode {
+            case .idle:
+                idleContentView
+            case .compact:
+                if appState.isHoldingBareNotch {
+                    Color.clear
+                        .frame(width: currentWidth, height: currentHeight)
+                } else {
+                    NotchCompactView(namespace: notchNamespace)
+                        .frame(width: currentWidth, height: currentHeight)
+                        .blur(radius: dragBlur)
+                        .opacity(isTransitioningFromActivity ? 0.0 : 1.0)
+                        .transition(.opacity)
+                }
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var notchContainerContent: some View {
+        ZStack(alignment: .top) {
+            VStack(spacing: 8) {
+                // Píldora Principal (#000 puro, anclada arriba contra la cámara o Liquid Glass)
+                ZStack(alignment: .top) {
+                    // Fondo reactivo: Negro Puro OLED o Cristal Líquido (Liquid Glass)
+                    DynamicNotchBackgroundView(
+                        topRadius: topRadius,
+                        bottomRadius: bottomRadius,
+                        isLiquidGlass: appState.isLiquidGlassEnabled,
+                        darknessOpacity: appState.glassDarknessOpacity,
+                        stretch: 0,
+                        verticalStretch: 0,
+                        isExpanded: appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil
+                    )
+                    .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                    
+                    mainModeContentView
+                        .clipShape(containerPillShape)
+                    
+                    // Zona táctil superior en el notch para cerrar al hacer click en el notch
+                    topNotchCloseZone
+                }
+                .environment(\.colorScheme, .dark)
+                .contentShape(containerPillShape)
+            // MARCO PRIMARIO: Se fija el ancho y alto del contenedor simétricamente.
+            // CRÍTICO PARA LIQUID GLASS: No aplicar .clipShape ni .shadow(radius > 0) al ZStack padre cuando
+            // Liquid Glass está desplegado, pues CoreAnimation crea un grupo de rasterización offscreen que
+            // aísla el CABackdropLayer del WindowServer y recorta el borde especular de .glassEffect(_:in:).
             .frame(
                 width: cardExpandedWidth,
                 height: cardExpandedHeight,
                 alignment: .top
             )
             .offset(x: cardOffsetX)
-            // Sombra Multicapa (Ambient + Key): profundidad hiperrealista tipo isla dinámica
-            // En modo Cristal Claro EXPANDIDO, se anula la sombra interior directa para evitar manchas oscuras bajo la tarjeta translúcida;
-            // cuando está colapsado (idle/compact), la píldora es negro puro y sí proyecta su sombra fija de Dynamic Island.
+            // Sombra Multicapa (Ambient + Key): activa únicamente en Negro Puro OLED.
+            // En Liquid Glass tanto la opacidad como el radio son 0.0 SIEMPRE para evitar pases offscreen en Metal.
             .shadow(
                 color: Color.black.opacity(
-                    (appState.effectiveAppearanceMode == .clearGlass && (appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive))
+                    (appState.effectiveAppearanceMode != .pureOLED)
                         ? 0.0
                         : ((shadowOpacity * 0.42) + (hasDownPull ? 0.14 : 0.0))
                 ),
-                radius: (shadowRadius * 0.38) + (hasDownPull ? 4 : 0),
+                radius: (appState.effectiveAppearanceMode != .pureOLED)
+                    ? 0.0
+                    : ((shadowRadius * 0.38) + (hasDownPull ? 4 : 0)),
                 x: 0,
-                y: (shadowY * 0.45) + totalOffsetY * 0.2
+                y: (appState.effectiveAppearanceMode != .pureOLED)
+                    ? 0.0
+                    : ((shadowY * 0.45) + totalOffsetY * 0.2)
             )
             .shadow(
                 color: Color.black.opacity(
-                    (appState.effectiveAppearanceMode == .clearGlass && (appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive))
+                    (appState.effectiveAppearanceMode != .pureOLED)
                         ? 0.0
                         : (shadowOpacity + (hasDownPull ? 0.22 : 0.0))
                 ),
-                radius: shadowRadius + (hasDownPull ? 10 : 0),
+                radius: (appState.effectiveAppearanceMode != .pureOLED)
+                    ? 0.0
+                    : (shadowRadius + (hasDownPull ? 10 : 0)),
                 x: 0,
-                y: shadowY + totalOffsetY * 0.4
+                y: (appState.effectiveAppearanceMode != .pureOLED)
+                    ? 0.0
+                    : (shadowY + totalOffsetY * 0.4)
             )
-            // Sombra exterior con máscara inversa para Cristal Claro expandido (la sombra existe fuera y es nula dentro)
+            // Sombra exterior desacoplada para Cristal Líquido (solo fuera de la silueta sin ralentizar Metal)
             .background(
                 Group {
-                    if appState.effectiveAppearanceMode == .clearGlass && glassManager.showCardShadow && (appState.mode == .expanded || appState.mode == .shelf || appState.isDropInvitationActive) {
+                    if appState.effectiveAppearanceMode != .pureOLED && glassManager.showCardShadow {
+                        let isCardOpen = (appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || activityCenter.currentActivity?.style == .card)
                         let pill = ElasticPillShape(
                             topRadius: topRadius,
                             bottomRadius: bottomRadius,
@@ -535,26 +689,27 @@ public struct NotchContainerView: View {
                             verticalStretch: 0
                         )
                         pill
-                            .fill(Color.black.opacity(GlassClearMetrics.cardShadowOpacity))
+                            .fill(Color.black.opacity(0.001))
                             .shadow(
-                                color: Color.black.opacity(GlassClearMetrics.cardShadowOpacity),
-                                radius: GlassClearMetrics.cardShadowRadius,
+                                color: Color.black.opacity(isCardOpen ? (GlassClearMetrics.cardShadowOpacity * 0.45) : (shadowOpacity * 0.35)),
+                                radius: isCardOpen ? 18 : (shadowRadius * 0.5),
                                 x: 0,
-                                y: GlassClearMetrics.cardShadowY
+                                y: isCardOpen ? GlassClearMetrics.cardShadowY : (shadowY * 0.5)
                             )
-                            .mask(
-                                Rectangle()
-                                    .overlay(
-                                        pill
-                                            .blendMode(.destinationOut)
-                                    )
-                                    .compositingGroup()
-                            )
+                    }
+                    
+                    // Patrón de prueba de líneas y texto para diagnosticar refracción de borde (Paso 1)
+                    if glassManager.showRefractionTestPattern {
+                        StripedTestPatternView()
+                            .frame(width: cardExpandedWidth + 60, height: cardExpandedHeight + 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .offset(y: -10)
                     }
                 }
             )
             .offset(y: containerOffsetY)
             .scaleEffect(x: scaleX, y: scaleY * dragScaleY, anchor: .top)
+            .contentShape(containerPillShape)
             // Gesto de presión con anticipación en 3 fases cuando está colapsado y no hay actividad activa
             .modifier(PillGestureModifier(
                 isEnabled: appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil,
@@ -576,9 +731,21 @@ public struct NotchContainerView: View {
             }
             // Gesto horizontal con rebote elástico (rubber-band bounce) entre los dos menús
             .modifier(PillGestureModifier(
-                isEnabled: (appState.mode == .expanded || appState.mode == .shelf) && activityCenter.currentActivity == nil,
+                isEnabled: (appState.mode == .expanded || appState.mode == .shelf) && activityCenter.expandedActivity == nil,
                 gesture: cardSwipeGesture
             ))
+            // Gesto de arrastre vertical hacia arriba para guardar / colapsar tarjeta de stats expandida
+            .gesture(
+                DragGesture(minimumDistance: 8)
+                    .onEnded { value in
+                        if (activityCenter.expandedActivity != nil || agentProvider.isProgressHUDExpanded) && value.translation.height < -12 {
+                            DNDLogger.log("NotchContainerView -> Drag UP detectado en tarjeta expandida! Contrayendo...")
+                            activityCenter.collapseExpandedActivity()
+                            agentProvider.collapseProgressHUD()
+                            AppState.shared.hapticService.triggerSnap()
+                        }
+                    }
+            )
             .onHover { isHovering in
                 let wasHovered = isMouseInsideWidget
                 isMouseInsideWidget = isHovering
@@ -617,17 +784,118 @@ public struct NotchContainerView: View {
             
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(
-            // Click fuera del widget para cerrar cuando está expandido o en la bandeja
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if appState.mode == .expanded || appState.mode == .shelf {
-                        performCollapse()
-                    }
+        
+        // MARK: - Bolitas Satélite de Live Activities y Coordinador de Fusión
+        if activityCenter.expandedActivity == nil {
+            let bolitaDiam = appState.bolitaDiameter
+            let gap = appState.bolitaGap
+            let isBothSides = appState.satelliteLocation == .bothSides && activityCenter.secondaryActivities.count >= 2
+            
+            // Bolitas a la Derecha
+            ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
+                let isLeft = isBothSides && index == 1
+                if !isLeft {
+                    let slotIndex = isBothSides ? (index > 1 ? index - 1 : index) : index
+                    let restingX = (cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                    let isFusingThis = activityCenter.fusingActivityId == activity.id
+                    let fusionProg = isFusingThis ? activityCenter.fusionProgress : 0.0
+                    
+                    // Fase 1: Se desplaza suavemente hacia la cápsula y se funde como superficie líquida continua
+                    let targetX = (cardExpandedWidth / 2.0) - (bolitaDiam * 0.30)
+                    let currentX = restingX - (fusionProg * (restingX - targetX))
+                    
+                    // Deformación sutil: la forma circular se alarga en la dirección del movimiento (+16% en X, -10% en Y)
+                    let elongation = (isFusingThis && !reduceMotion) ? (0.16 * sin(fusionProg * .pi)) : 0.0
+                    let baseScale = isFusingThis ? max(0.58, 1.0 - (fusionProg * 0.38)) : 1.0
+                    let scaleX = baseScale * (1.0 + elongation)
+                    let scaleY = baseScale * (1.0 - (elongation * 0.65))
+                    
+                    // Fusión líquida: borde se integra progresivamente sin desvanecimiento repentino
+                    let opacityProg = isFusingThis ? (fusionProg < 0.60 ? 1.0 : max(0.0, 1.0 - pow((fusionProg - 0.60) / 0.40, 1.8))) : 1.0
+                    
+                    NotchBolitaView(activity: activity, side: .right)
+                        .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+                        .opacity(opacityProg)
+                        .offset(
+                            x: currentX,
+                            y: max(0, (geometry.height - bolitaDiam) / 2.0)
+                        )
+                        .zIndex(100 - Double(slotIndex))
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: -18)),
+                            removal: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: -18))
+                        ))
                 }
-        )
+            }
+            
+            // Bolita a la Izquierda (si está configurado .bothSides)
+            if isBothSides, let leftActivity = activityCenter.secondaryActivities.dropFirst().first {
+                let restingX = -((cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0))
+                let isFusingThis = activityCenter.fusingActivityId == leftActivity.id
+                let fusionProg = isFusingThis ? activityCenter.fusionProgress : 0.0
+                let targetX = -((cardExpandedWidth / 2.0) - (bolitaDiam * 0.30))
+                let currentX = restingX + (fusionProg * (targetX - restingX))
+                
+                let elongation = (isFusingThis && !reduceMotion) ? (0.16 * sin(fusionProg * .pi)) : 0.0
+                let baseScale = isFusingThis ? max(0.58, 1.0 - (fusionProg * 0.38)) : 1.0
+                let scaleX = baseScale * (1.0 + elongation)
+                let scaleY = baseScale * (1.0 - (elongation * 0.65))
+                let opacityProg = isFusingThis ? (fusionProg < 0.60 ? 1.0 : max(0.0, 1.0 - pow((fusionProg - 0.60) / 0.40, 1.8))) : 1.0
+                
+                NotchBolitaView(activity: leftActivity, side: .left)
+                    .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+                    .opacity(opacityProg)
+                    .offset(
+                        x: currentX,
+                        y: max(0, (geometry.height - bolitaDiam) / 2.0)
+                    )
+                    .zIndex(100)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: 18)),
+                        removal: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: 18))
+                    ))
+            }
+            
+            // Indicador de Desbordamiento (+N)
+            if activityCenter.overflowCount > 0 {
+                let slotIndex = isBothSides
+                    ? max(0, activityCenter.secondaryActivities.count - 1)
+                    : activityCenter.secondaryActivities.count
+                let restingX = (cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                
+                NotchOverflowBolitaView(count: activityCenter.overflowCount)
+                    .offset(
+                        x: restingX,
+                        y: max(0, (geometry.height - bolitaDiam) / 2.0)
+                    )
+                    .zIndex(90)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.4, anchor: .center).combined(with: .opacity),
+                        removal: .scale(scale: 0.4, anchor: .center).combined(with: .opacity)
+                    ))
+            }
+        }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(
+        // Click fuera del widget para cerrar cuando está expandido o en la bandeja
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if activityCenter.expandedActivity != nil {
+                    activityCenter.collapseExpandedActivity()
+                } else if agentProvider.isProgressHUDExpanded {
+                    agentProvider.collapseProgressHUD()
+                } else if appState.mode == .expanded || appState.mode == .shelf {
+                    performCollapse()
+                }
+            }
+    )
+    .animation(AnimationSpeedManager.shared.spring(response: 0.40, dampingFraction: 0.82), value: activityCenter.expandedActivity?.id)
+    .animation(AnimationSpeedManager.shared.spring(response: 0.36, dampingFraction: 0.78), value: activityCenter.fusionProgress)
+    .animation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82), value: activityCenter.secondaryActivities.count)
+    .animation(.spring(response: 0.40, dampingFraction: 0.82), value: agentProvider.isProgressHUDExpanded)
+    .animation(.spring(response: 0.35, dampingFraction: 0.80), value: agentProvider.isSatelliteActive)
 
         .onChange(of: appState.isHoldingBareNotch) { _, isHolding in
             if isHolding {
@@ -662,6 +930,7 @@ public struct NotchContainerView: View {
                 triggerStaggeredIn()
             }
         }
+        .environment(\.controlActiveState, .key)
     }
     
     private var morphSpring: Animation {
@@ -756,7 +1025,7 @@ public struct NotchContainerView: View {
                 
                 let cancelX = abs(value.translation.width) > NotchTuning.dragCancelThresholdX
                 let cancelUp = value.translation.height < -25
-                let pulledDown = value.translation.height >= 18 || value.predictedEndTranslation.height >= 30
+                let pulledDown = value.translation.height >= 8 || value.predictedEndTranslation.height >= 14
                 let isTap = abs(value.translation.width) < 15 && abs(value.translation.height) < 15
                 
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
@@ -784,9 +1053,20 @@ public struct NotchContainerView: View {
                 
                 let tx = value.translation.width
                 let ty = value.translation.height
+                let totalDist = hypot(tx, ty)
                 
-                // Si el gesto es predominantemente horizontal
-                if abs(tx) > abs(ty) {
+                // Determinar y bloquear el eje del gesto con histéresis estricta para evitar saltos cruzados
+                if dragLockAxis == .none && totalDist >= 5 {
+                    if abs(tx) > abs(ty) * 1.15 {
+                        dragLockAxis = .horizontal
+                    } else if abs(ty) >= abs(tx) * 1.05 {
+                        dragLockAxis = .vertical
+                    }
+                }
+                
+                // Si el eje está bloqueado en HORIZONTAL (o es predominantemente horizontal antes del bloqueo)
+                if dragLockAxis == .horizontal || (dragLockAxis == .none && abs(tx) > abs(ty)) {
+                    // Garantizar estrictamente que swipes laterales JAMÁS estiren o desplacen verticalmente el reproductor
                     appState.verticalOverscrollOffset = 0
                     appState.contentVerticalOverscrollOffset = 0
                     
@@ -829,8 +1109,8 @@ public struct NotchContainerView: View {
                             appState.contentOverscrollOffset = 0
                         }
                     }
-                } else {
-                    // Gesto predominantemente vertical: estirar elásticamente hacia abajo anclado arriba al notch
+                } else if dragLockAxis == .vertical || (dragLockAxis == .none && abs(ty) >= abs(tx)) {
+                    // Gesto vertical: estirar elásticamente hacia abajo anclado arriba al notch
                     appState.overscrollOffset = 0
                     appState.contentOverscrollOffset = 0
                     
@@ -848,13 +1128,19 @@ public struct NotchContainerView: View {
             }
             .onEnded { value in
                 guard appState.mode == .expanded || appState.mode == .shelf else { return }
+                let currentAxis = dragLockAxis
+                dragLockAxis = .none
                 hasTriggeredHapticInSwipe = false
                 hasSwitchedPageInCurrentDrag = false
                 
                 let tx = value.translation.width
                 let ty = value.translation.height
                 
-                if abs(tx) > abs(ty) {
+                // Si el gesto fue horizontal (o predominó horizontal): NUNCA alterar el estado vertical ni bajar el reproductor
+                if currentAxis == .horizontal || (currentAxis == .none && abs(tx) > abs(ty)) {
+                    appState.verticalOverscrollOffset = 0
+                    appState.contentVerticalOverscrollOffset = 0
+                    
                     if appState.mode == .expanded {
                         if tx < -44 {
                             // Superó el umbral hacia la izquierda -> transición limpia a Bandeja
@@ -868,14 +1154,14 @@ public struct NotchContainerView: View {
                             appState.hapticService.triggerSnap()
                         } else if appState.overscrollOffset != 0 {
                             // Soltó durante overscroll: regreso con desfase Forma vs Contenido
-                            withAnimation(.spring(
-                                response: OverscrollMetrics.shapeSpringResponse * OverscrollMetrics.speedMultiplier,
+                            withAnimation(speedManager.spring(
+                                response: OverscrollMetrics.shapeSpringResponse,
                                 dampingFraction: OverscrollMetrics.shapeSpringDamping
                             )) {
                                 appState.overscrollOffset = 0
                             }
-                            withAnimation(.spring(
-                                response: OverscrollMetrics.contentSpringResponse * OverscrollMetrics.speedMultiplier,
+                            withAnimation(speedManager.spring(
+                                response: OverscrollMetrics.contentSpringResponse,
                                 dampingFraction: OverscrollMetrics.contentSpringDamping
                             )) {
                                 appState.contentOverscrollOffset = 0
@@ -885,7 +1171,7 @@ public struct NotchContainerView: View {
                         if tx > 44 {
                             // Superó el umbral hacia la derecha -> transición limpia a Música
                             hasSwitchedPageInCurrentDrag = true
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            withAnimation(speedManager.spring(response: 0.35, dampingFraction: 0.82)) {
                                 appState.mode = .expanded
                                 appState.activeTab = .music
                                 appState.overscrollOffset = 0
@@ -894,53 +1180,55 @@ public struct NotchContainerView: View {
                             appState.hapticService.triggerSnap()
                         } else if appState.overscrollOffset != 0 {
                             // Soltó durante overscroll: regreso con desfase Forma vs Contenido
-                            withAnimation(.spring(
-                                response: OverscrollMetrics.shapeSpringResponse * OverscrollMetrics.speedMultiplier,
+                            withAnimation(speedManager.spring(
+                                response: OverscrollMetrics.shapeSpringResponse,
                                 dampingFraction: OverscrollMetrics.shapeSpringDamping
                             )) {
                                 appState.overscrollOffset = 0
                             }
-                            withAnimation(.spring(
-                                response: OverscrollMetrics.contentSpringResponse * OverscrollMetrics.speedMultiplier,
+                            withAnimation(speedManager.spring(
+                                response: OverscrollMetrics.contentSpringResponse,
                                 dampingFraction: OverscrollMetrics.contentSpringDamping
                             )) {
                                 appState.contentOverscrollOffset = 0
                             }
                         }
                     }
-                } else {
-                    // Gesto vertical en reproductor (expandir a modo detallado / rebote elástico / colapsar)
+                } else if currentAxis == .vertical || (currentAxis == .none && abs(ty) >= abs(tx)) {
+                    // Gesto estrictamente vertical en reproductor (expandir a modo detallado / rebote elástico / colapsar)
                     if appState.mode == .expanded {
                         if !appState.isPlayerDetailExpanded {
-                            if ty > 22 {
-                                withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                            // Umbral deliberado hacia abajo (> 20 pt o velocidad hacia abajo) y claramente vertical
+                            let isPulledDown = ty > 20 || (ty > 12 && value.predictedEndTranslation.height > 24)
+                            if isPulledDown && abs(ty) >= abs(tx) * 1.05 {
+                                withAnimation(speedManager.spring(response: 0.42, dampingFraction: 0.82)) {
                                     appState.isPlayerDetailExpanded = true
                                     appState.verticalOverscrollOffset = 0
                                     appState.contentVerticalOverscrollOffset = 0
                                 }
                                 appState.hapticService.triggerExpand()
                             } else {
-                                withAnimation(.spring(
-                                    response: OverscrollMetrics.shapeSpringResponse * OverscrollMetrics.speedMultiplier,
+                                withAnimation(speedManager.spring(
+                                    response: OverscrollMetrics.shapeSpringResponse,
                                     dampingFraction: OverscrollMetrics.shapeSpringDamping
                                 )) {
                                     appState.verticalOverscrollOffset = 0
                                 }
-                                withAnimation(.spring(
-                                    response: OverscrollMetrics.contentSpringResponse * OverscrollMetrics.speedMultiplier,
+                                withAnimation(speedManager.spring(
+                                    response: OverscrollMetrics.contentSpringResponse,
                                     dampingFraction: OverscrollMetrics.contentSpringDamping
                                 )) {
                                     appState.contentVerticalOverscrollOffset = 0
                                 }
-                                if ty < -24 && Date().timeIntervalSince(lastCardCollapseDetailTime) > 0.75 {
+                                if ty < -16 && Date().timeIntervalSince(lastCardCollapseDetailTime) > 0.35 {
                                     performCollapse()
                                     appState.hapticService.triggerSnap()
                                 }
                             }
                         } else {
-                            if ty < -24 {
+                            if ty < -16 {
                                 detailDragCount = 0
-                                withAnimation(.spring(response: 0.44, dampingFraction: 0.86)) {
+                                withAnimation(speedManager.spring(response: 0.40, dampingFraction: 0.84)) {
                                     appState.isPlayerDetailExpanded = false
                                     appState.verticalOverscrollOffset = 0
                                     appState.contentVerticalOverscrollOffset = 0
@@ -948,14 +1236,14 @@ public struct NotchContainerView: View {
                                 lastCardCollapseDetailTime = Date()
                                 appState.hapticService.triggerSnap()
                             } else {
-                                withAnimation(.spring(
-                                    response: OverscrollMetrics.shapeSpringResponse * OverscrollMetrics.speedMultiplier,
+                                withAnimation(speedManager.spring(
+                                    response: OverscrollMetrics.shapeSpringResponse,
                                     dampingFraction: OverscrollMetrics.shapeSpringDamping
                                 )) {
                                     appState.verticalOverscrollOffset = 0
                                 }
-                                withAnimation(.spring(
-                                    response: OverscrollMetrics.contentSpringResponse * OverscrollMetrics.speedMultiplier,
+                                withAnimation(speedManager.spring(
+                                    response: OverscrollMetrics.contentSpringResponse,
                                     dampingFraction: OverscrollMetrics.contentSpringDamping
                                 )) {
                                     appState.contentVerticalOverscrollOffset = 0
@@ -964,14 +1252,14 @@ public struct NotchContainerView: View {
                         }
                     } else if appState.mode == .shelf {
                         // Bandeja temporal (Drag & Drop): rebote elástico a su forma original ya que no hay menú extendido
-                        withAnimation(.spring(
-                            response: OverscrollMetrics.shapeSpringResponse * OverscrollMetrics.speedMultiplier,
+                        withAnimation(speedManager.spring(
+                            response: OverscrollMetrics.shapeSpringResponse,
                             dampingFraction: OverscrollMetrics.shapeSpringDamping
                         )) {
                             appState.verticalOverscrollOffset = 0
                         }
-                        withAnimation(.spring(
-                            response: OverscrollMetrics.contentSpringResponse * OverscrollMetrics.speedMultiplier,
+                        withAnimation(speedManager.spring(
+                            response: OverscrollMetrics.contentSpringResponse,
                             dampingFraction: OverscrollMetrics.contentSpringDamping
                         )) {
                             appState.contentVerticalOverscrollOffset = 0
@@ -981,6 +1269,14 @@ public struct NotchContainerView: View {
                             performCollapse()
                             appState.hapticService.triggerSnap()
                         }
+                    }
+                } else {
+                    // Sin eje dominante o movimiento menor a 6 pt: restablecer elásticamente a 0
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        appState.overscrollOffset = 0
+                        appState.contentOverscrollOffset = 0
+                        appState.verticalOverscrollOffset = 0
+                        appState.contentVerticalOverscrollOffset = 0
                     }
                 }
             }
@@ -1135,7 +1431,9 @@ public struct NotchContainerView: View {
         let totalTime = speedManager.adjustedDuration(0.48)
         DispatchQueue.main.asyncAfter(deadline: .now() + totalTime) {
             guard self.isCollapsing else { return }
-            self.isCollapsing = false
+            withAnimation(.easeInOut(duration: 0.15)) {
+                self.isCollapsing = false
+            }
             self.controlsExiting = false
             self.progressExiting = false
             self.topRowExiting = false

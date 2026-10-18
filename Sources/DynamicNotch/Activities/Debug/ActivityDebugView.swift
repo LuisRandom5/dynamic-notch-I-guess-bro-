@@ -7,6 +7,7 @@ public struct ActivityDebugView: View {
     @ObservedObject var volumeInterceptor = VolumeInterceptorService.shared
     @ObservedObject var glassManager = GlassClearManager.shared
     @ObservedObject var contactService = ContactLookupService.shared
+    @ObservedObject var appState = AppState.shared
     
     // Controles para Carga
     @State private var batteryPercentage: Double = 84.0
@@ -44,6 +45,15 @@ public struct ActivityDebugView: View {
                             }
                             Spacer()
                             Button("Descartar") {
+                                if center.expandedActivity?.id == current.id {
+                                    center.collapseExpandedActivity()
+                                }
+                                if current.id == "live_timer" || current.id == "sim_timer" {
+                                    TimerActivityProvider.shared.cancelTimer()
+                                }
+                                if current.id == AgentActivityProvider.shared.progressActivityId {
+                                    AgentActivityProvider.shared.dismissProgress()
+                                }
                                 center.remove(id: current.id)
                             }
                             .buttonStyle(.borderedProminent)
@@ -52,6 +62,202 @@ public struct ActivityDebugView: View {
                             Text("No hay ninguna Live Activity activa en este momento.")
                                 .font(.system(size: 13))
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(6)
+                }
+                
+                // MARK: - SISTEMA COMPLETO DE LIVE ACTIVITIES, BOLITAS Y FUSIÓN LÍQUIDA
+                GroupBox("Sistema de Live Activities, Bolitas y Fusión Líquida") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Modos de Presentación
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Modo de Presentación:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Picker("", selection: $appState.multiActivityMode) {
+                                ForEach(MultiActivityPresentationMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                        
+                        // Ubicación de las Bolitas
+                        HStack {
+                            Text("Ubicación Bolitas:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Picker("", selection: $appState.satelliteLocation) {
+                                ForEach(SatelliteLocationPreference.allCases) { loc in
+                                    Text(loc.title).tag(loc)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 170)
+                        }
+                        
+                        // Tamaño de las Bolitas
+                        HStack {
+                            Text("Tamaño de Bolitas:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Picker("", selection: $appState.bolitaDiameter) {
+                                Text("Mini (24 pt)").tag(CGFloat(24.0))
+                                Text("Apple Nativa (26 pt)").tag(CGFloat(26.0))
+                                Text("Mediana (28 pt)").tag(CGFloat(28.0))
+                                Text("Original (32 pt)").tag(CGFloat(32.0))
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 170)
+                        }
+                        
+                        // Máximo de Bolitas Visibles
+                        HStack {
+                            Text("Máx. Bolitas Visibles:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Stepper("\(appState.maxSatelliteBolitas) bolitas", value: $appState.maxSatelliteBolitas, in: 1...4)
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        
+                        // Multiplicador de Velocidad de Animación (0.2x para inspeccionar la fusión)
+                        HStack {
+                            Text("Inspección de Fusión:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Button(speedManager.speedMultiplier < 0.5 ? "Cámara Lenta (0.2x) 🐢" : "Velocidad Normal (1.0x) ⚡️") {
+                                if speedManager.speedMultiplier < 0.5 {
+                                    speedManager.speedMultiplier = 1.0
+                                } else {
+                                    speedManager.speedMultiplier = 0.2
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(speedManager.speedMultiplier < 0.5 ? .purple : .secondary)
+                        }
+                        
+                        Divider()
+                        
+                        // Lanzador de 5 Actividades Simuladas
+                        Text("Actividades Simuladas Individuales:")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.secondary)
+                        
+                        VStack(spacing: 6) {
+                            HStack(spacing: 6) {
+                                Button("📞 Llamada (Verde)") {
+                                    launchCallActivity()
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.green)
+                                
+                                Button("⏱ Temporizador (15m)") {
+                                    launchTimerActivity()
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.orange)
+                            }
+                            
+                            HStack(spacing: 6) {
+                                Button("✨ Antigravity AI (Morado)") {
+                                    launchAIActivity()
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.purple)
+                                
+                                Button("🔴 Grabación (Roja)") {
+                                    launchRecordingActivity()
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                            }
+                            
+                            Button("🌐 VPN WireGuard (Azul)") {
+                                launchVPNActivity()
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
+                        }
+                        
+                        Divider()
+                        
+                        // Pruebas avanzadas
+                        VStack(spacing: 6) {
+                            Button("🚀 Iniciar las 5 Actividades (+N Desbordamiento)") {
+                                launchAllFiveActivities()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.purple)
+                            
+                            HStack(spacing: 6) {
+                                Button("⚡️ Simular Temporizador Urgente") {
+                                    launchTimerActivity(isUrgent: true)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.orange)
+                                
+                                Button("🗑 Descartar Todas") {
+                                    center.collapseExpandedActivity()
+                                    TimerActivityProvider.shared.cancelTimer()
+                                    AgentActivityProvider.shared.dismissProgress()
+                                    for act in center.activeActivities {
+                                        center.remove(id: act.id)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+                
+                // MARK: - PASO 1: CONFIRMACIÓN DE CRISTAL NATIVO Y SUPERFICIES
+                GroupBox("Superficies y API Activa de Cristal (Paso 1)") {
+                    VStack(alignment: .leading, spacing: 9) {
+                        HStack {
+                            Text("Píldora del Notch:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Text(AppState.shared.effectiveAppearanceMode == .pureOLED ? "Color.black (OLED Puro)" : ".glassEffect(.regular) + .darkAqua Nativo")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(AppState.shared.effectiveAppearanceMode == .pureOLED ? .secondary : .cyan)
+                        }
+                        HStack {
+                            Text("Tarjetas Expandidas:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Text(".glassEffect(.regular) Nativo (Glass.regular)")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.cyan)
+                        }
+                        HStack {
+                            Text("Pantalla de Bloqueo:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Text("NSGlassEffectView (AppKit)")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.purple)
+                        }
+                        HStack {
+                            Text("Ventana de Ajustes:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer()
+                            Text("NSVisualEffectView (.underWindowBackground)")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.green)
+                        }
+                        
+                        Divider()
+                        
+                        Toggle(isOn: $glassManager.showRefractionTestPattern) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Patrón de Prueba de Refracción (Franjas + Texto)")
+                                    .font(.system(size: 11.5, weight: .semibold))
+                                Text("Proyecta franjas diagonales de alto contraste y texto detrás de la píldora para verificar refracción óptica y brillo especular.")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                     .padding(6)
@@ -164,10 +370,10 @@ public struct ActivityDebugView: View {
                         
                         Divider()
                         
-                        // Slider Transparencia (0% a 35%)
+                        // Slider Transparencia (Mínimo 18% a 45%)
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text("Atenuación Uniforme (Slider Transparencia):")
+                                Text("Atenuación Uniforme (Mínimo 18% garantizado):")
                                     .font(.system(size: 11.5, weight: .medium))
                                 Spacer()
                                 Text("\(Int(round(glassManager.uniformScrimOpacity * 100)))%")
@@ -175,10 +381,10 @@ public struct ActivityDebugView: View {
                             }
                             Slider(
                                 value: Binding(
-                                    get: { glassManager.uniformScrimOpacity * 100 },
-                                    set: { glassManager.uniformScrimOpacity = $0 / 100.0 }
+                                    get: { max(18.0, glassManager.uniformScrimOpacity * 100) },
+                                    set: { glassManager.uniformScrimOpacity = max(0.18, $0 / 100.0) }
                                 ),
-                                in: 0...35,
+                                in: 18...45,
                                 step: 1
                             )
                         }
@@ -206,71 +412,78 @@ public struct ActivityDebugView: View {
                 // 0) LLAMADA ACTIVA CON AUDIO REACTIVO Y CONTACTOS
                 GroupBox("Llamada en Curso (FaceTime / Celular / Discord)") {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            Button(action: {
-                                CallActivityProvider.shared.startIncomingCall(name: "FaceTime Audio", handle: "Mamá", isSimulation: true)
-                            }) {
-                                HStack {
-                                    Image(systemName: "phone.badge.plus")
-                                    Text("Llamada Entrante")
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(DesignTokens.green)
-                            
-                            Button(action: {
-                                // Probar con un contacto real que tenga foto o monograma de la libreta
-                                if let contact = ContactLookupService.shared.fetchFirstContactWithPhoto() {
-                                    CallActivityProvider.shared.startIncomingCall(
-                                        name: "Llamada celular de iPhone",
-                                        handle: contact.name,
-                                        avatar: contact.avatar,
-                                        isSimulation: true
-                                    )
-                                } else {
-                                    let sampleMonogram = ContactLookupService.shared.generateMonogramAvatar(for: "Luis Ángel", initials: "LA")
-                                    CallActivityProvider.shared.startIncomingCall(
-                                        name: "Llamada celular de iPhone",
-                                        handle: "Luis Ángel",
-                                        avatar: sampleMonogram,
-                                        isSimulation: true
-                                    )
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: "person.crop.circle.badge.plus")
-                                    Text("Probar con Foto")
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(DesignTokens.blue)
-                            
-                            Button(action: {
-                                CallActivityProvider.shared.startCall(name: "FaceTime Audio", handle: "Mamá", asCard: false, isSimulation: true)
-                            }) {
-                                HStack {
-                                    Image(systemName: "phone.fill")
-                                    Text("Píldora Activa")
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            Button(action: {
-                                CallActivityProvider.shared.startCall(name: "FaceTime Audio", handle: "Mamá", asCard: true, isSimulation: true)
-                            }) {
-                                HStack {
-                                    Image(systemName: "rectangle.inset.filled")
-                                    Text("Tarjeta Activa")
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            if CallActivityProvider.shared.isCallActive || CallActivityProvider.shared.isIncomingCall {
-                                Button("Colgar") {
-                                    CallActivityProvider.shared.endCall()
+                        VStack(spacing: 8) {
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    CallActivityProvider.shared.startIncomingCall(name: "FaceTime Audio", handle: "Mamá", isSimulation: true)
+                                }) {
+                                    HStack {
+                                        Image(systemName: "phone.badge.plus")
+                                        Text("Llamada Entrante")
+                                    }
                                 }
                                 .buttonStyle(.borderedProminent)
-                                .tint(.red)
+                                .tint(DesignTokens.green)
+                                
+                                Button(action: {
+                                    if let contact = ContactLookupService.shared.fetchFirstContactWithPhoto() {
+                                        CallActivityProvider.shared.startIncomingCall(
+                                            name: "Llamada celular de iPhone",
+                                            handle: contact.name,
+                                            avatar: contact.avatar,
+                                            isSimulation: true
+                                        )
+                                    } else {
+                                        let sampleMonogram = ContactLookupService.shared.generateMonogramAvatar(for: "Luis Ángel", initials: "LA")
+                                        CallActivityProvider.shared.startIncomingCall(
+                                            name: "Llamada celular de iPhone",
+                                            handle: "Luis Ángel",
+                                            avatar: sampleMonogram,
+                                            isSimulation: true
+                                        )
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: "person.crop.circle.badge.plus")
+                                        Text("Probar con Foto")
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(DesignTokens.blue)
+                                
+                                if CallActivityProvider.shared.isCallActive || CallActivityProvider.shared.isIncomingCall {
+                                    Button("Colgar") {
+                                        CallActivityProvider.shared.endCall()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.red)
+                                }
+                                
+                                Spacer()
+                            }
+                            
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    CallActivityProvider.shared.startCall(name: "FaceTime Audio", handle: "Mamá", asCard: false, isSimulation: true)
+                                }) {
+                                    HStack {
+                                        Image(systemName: "phone.fill")
+                                        Text("Píldora Activa")
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                
+                                Button(action: {
+                                    CallActivityProvider.shared.startCall(name: "FaceTime Audio", handle: "Mamá", asCard: true, isSimulation: true)
+                                }) {
+                                    HStack {
+                                        Image(systemName: "rectangle.inset.filled")
+                                        Text("Tarjeta Activa")
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                
+                                Spacer()
                             }
                         }
                         
@@ -299,10 +512,12 @@ public struct ActivityDebugView: View {
                             }
                             .buttonStyle(.bordered)
                             
-                            Text(contactService.isAuthorized ? "✅ Contactos autorizados" : "⚠️ Contactos pendientes de permiso")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(contactService.isAuthorized ? DesignTokens.green : DesignTokens.orange)
+                            Spacer()
                         }
+                        
+                        Text(contactService.isAuthorized ? "✅ Contactos autorizados" : "⚠️ Contactos pendientes de permiso")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(contactService.isAuthorized ? DesignTokens.green : DesignTokens.orange)
                         
                         Text("Integración con TUCallCenter (FaceTime/Celular), Discord y Contactos del sistema con fotos reales y monogramas.")
                             .font(.system(size: 11))
@@ -522,27 +737,37 @@ public struct ActivityDebugView: View {
                 // AIRPODS WING ANIMATION DEMO
                 GroupBox("Animación de AirPods (Alas del Notch)") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Button(action: {
-                            let details = BluetoothAudioService.shared.queryConnectedAirPods()
-                            let name = details?.deviceName ?? "AirPods de Luis Angel"
-                            let bat = details?.primaryBattery ?? 85
-                            AirPodsActivityProvider.shared.publishAirPodsActivity(
-                                name: name,
-                                batteryLevel: bat,
-                                leftPercent: details?.leftBattery,
-                                rightPercent: details?.rightBattery,
-                                casePercent: details?.caseBattery,
-                                duration: 8.0
-                            )
-                        }) {
-                            HStack {
-                                Image(systemName: "airpods")
-                                Text("Disparar Animación de AirPods en el Notch (8s)")
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                let details = BluetoothAudioService.shared.queryConnectedAirPods()
+                                let name = details?.deviceName ?? "AirPods de Luis Angel"
+                                let bat = details?.primaryBattery ?? 85
+                                AirPodsActivityProvider.shared.publishAirPodsActivity(
+                                    name: name,
+                                    batteryLevel: bat,
+                                    leftPercent: details?.leftBattery,
+                                    rightPercent: details?.rightBattery,
+                                    casePercent: details?.caseBattery,
+                                    duration: 13.0
+                                )
+                            }) {
+                                HStack {
+                                    Image(systemName: "airpods")
+                                    Text("Disparar Animación de AirPods en el Notch (13s)")
+                                }
+                                .frame(maxWidth: .infinity)
                             }
-                            .frame(maxWidth: .infinity)
+                            .buttonStyle(.borderedProminent)
+                            .tint(Color.green)
+                            
+                            if center.currentActivity?.id == AirPodsActivityProvider.shared.providerId || center.activeActivities.contains(where: { $0.id == AirPodsActivityProvider.shared.providerId }) {
+                                Button("Cerrar") {
+                                    center.remove(id: AirPodsActivityProvider.shared.providerId)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.green)
                     }
                     .padding(6)
                 }
@@ -664,11 +889,244 @@ public struct ActivityDebugView: View {
                     }
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 460, height: 680)
+        .frame(minWidth: 560, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
         .onAppear {
             contactService.checkCurrentStatus()
         }
+    }
+    
+    // MARK: - Métodos de Simulación de Live Activities y Fusión
+    
+    private func launchTimerActivity(isUrgent: Bool = false) {
+        let duration: TimeInterval = isUrgent ? 60 : 900
+        TimerActivityProvider.shared.startTimer(duration: duration, title: "Temporizador", asCard: isUrgent)
+    }
+    
+    private func launchCallActivity() {
+        let call = LiveActivity(
+            id: "sim_call",
+            kind: .call,
+            priority: 900,
+            style: .pill,
+            state: .active,
+            title: "FaceTime Audio",
+            subtitle: "Mamá • 08:32",
+            leading: AnyView(
+                HStack(spacing: 5) {
+                    Image(systemName: "phone.fill")
+                        .foregroundColor(.green)
+                    Text("08:32")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+            ),
+            trailing: AnyView(
+                Image(systemName: "waveform")
+                    .foregroundColor(.green)
+            ),
+            bolitaVariant: .color(bgColor: Color(red: 0.18, green: 0.80, blue: 0.44), fgColor: .white, iconName: "phone.fill"),
+            expandedView: AnyView(
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "phone.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Mamá")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("FaceTime Audio • 08:32")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button(action: {
+                            center.collapseExpandedActivity()
+                            center.remove(id: "sim_call")
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "phone.down.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Colgar llamada")
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 36) // Despeje holgado para el notch físico de la Mac
+                .padding(.bottom, 18)
+            ),
+            customExpandedWidth: 420,
+            customExpandedHeight: 114
+        )
+        center.publish(call)
+    }
+    
+    private func launchRecordingActivity() {
+        let rec = LiveActivity(
+            id: "sim_rec",
+            kind: .recording,
+            priority: 880,
+            style: .pill,
+            state: .active,
+            title: "Grabación de Pantalla",
+            subtitle: "01:45",
+            leading: AnyView(
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                    Text("REC")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.red)
+                }
+            ),
+            trailing: AnyView(
+                Text("01:45")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+            ),
+            bolitaVariant: .color(bgColor: Color(red: 0.95, green: 0.26, blue: 0.21), fgColor: .white, iconName: "record.circle"),
+            expandedView: AnyView(
+                HStack {
+                    Image(systemName: "record.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Grabación de Pantalla Activa")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Duración: 01:45 • Pantalla Integrada")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button(action: {
+                        center.collapseExpandedActivity()
+                        center.remove(id: "sim_rec")
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Detener grabación")
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 36) // Despeje holgado para el notch físico de la Mac
+                .padding(.bottom, 18)
+            ),
+            customExpandedWidth: 420,
+            customExpandedHeight: 112
+        )
+        center.publish(rec)
+    }
+    
+    private func launchVPNActivity() {
+        let vpn = LiveActivity(
+            id: "sim_vpn",
+            kind: .vpn,
+            priority: 650,
+            style: .pill,
+            state: .active,
+            title: "VPN WireGuard",
+            subtitle: "Zurich, CH",
+            leading: AnyView(
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(.blue)
+                    Text("VPN")
+                        .font(.system(size: 11, weight: .bold))
+                }
+            ),
+            trailing: AnyView(
+                Text("ON")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.blue)
+            ),
+            bolitaVariant: .color(bgColor: Color(red: 0.15, green: 0.55, blue: 0.98), fgColor: .white, iconName: "network"),
+            expandedView: AnyView(
+                HStack {
+                    Image(systemName: "shield.checkered")
+                        .font(.system(size: 24))
+                        .foregroundColor(.blue)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("VPN Conectada")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Servidor: Zurich (WireGuard) • 42 ms")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button(action: {
+                        center.collapseExpandedActivity()
+                        center.remove(id: "sim_vpn")
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.16))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "power")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Desconectar VPN")
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 36) // Despeje holgado para el notch físico de la Mac
+                .padding(.bottom, 18)
+            ),
+            customExpandedWidth: 420,
+            customExpandedHeight: 112
+        )
+        center.publish(vpn)
+    }
+    
+    private func launchAIActivity() {
+        let steps = [
+            AgentLiveStep(title: "Read NotchContainerView.swift", isCompleted: true),
+            AgentLiveStep(title: "Edit NotchBolitaView.swift", isCompleted: true),
+            AgentLiveStep(title: "Morphing Fusion Transition", isCompleted: false, isActive: true),
+            AgentLiveStep(title: "Build and Validate", isCompleted: false)
+        ]
+        let diff = AgentFileDiff(
+            filename: "NotchBolitaView.swift",
+            additions: 84,
+            deletions: 12,
+            statusText: "Morphing...",
+            progress: 0.68
+        )
+        let payload = AgentLiveProgressPayload(
+            agentName: "Antigravity",
+            taskName: "Live Activities & Bolitas",
+            steps: steps,
+            fileDiff: diff,
+            isCompleted: false
+        )
+        AgentActivityProvider.shared.showProgress(payload: payload)
+    }
+    
+    private func launchAllFiveActivities() {
+        launchCallActivity()
+        launchTimerActivity()
+        launchAIActivity()
+        launchRecordingActivity()
+        launchVPNActivity()
     }
 }

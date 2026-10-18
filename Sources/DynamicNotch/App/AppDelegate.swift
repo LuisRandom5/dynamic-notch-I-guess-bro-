@@ -3,6 +3,37 @@ import SwiftUI
 
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        let notifCenter = ImmediateNotificationCenter.shared
+        
+        // 1. Garantía de Instancia Única (Single-Instance Enforcement):
+        // Notificar a cualquier instancia previa que se cierre de inmediato y terminar procesos duplicados
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("com.luisrandom.DynamicNotch.terminateOlderInstances"),
+            object: nil,
+            userInfo: ["newPID": myPID],
+            deliverImmediately: true
+        )
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.luisrandom.DynamicNotch") where app.processIdentifier != myPID {
+            if !app.terminate() {
+                _ = app.forceTerminate()
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.terminateOlderInstances") { notif in
+            if let newPID = notif.userInfo?["newPID"] as? Int32, newPID != myPID {
+                AudioSpectrumEngine.shared.stopCapture()
+                NSApp.terminate(nil)
+                exit(0)
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.quitAll") { _ in
+            AudioSpectrumEngine.shared.stopCapture()
+            NSApp.terminate(nil)
+            exit(0)
+        }
+        
         // Run as accessory app (no dock icon clutter, lives in menu bar & floating above notch)
         NSApp.setActivationPolicy(.accessory)
         
@@ -16,9 +47,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = BrightnessService.shared
         _ = MusicService.shared
         NowPlayingService.shared.refreshNowPlaying()
+        _ = ProceduralMotionEngine.shared
         CallDetectorService.shared.startMonitoring()
         _ = FullScreenDetectorService.shared
         WhatsAppWebObserverService.shared.start()
+        MessagesObserverService.shared.start()
         _ = LockScreenSkyLightBridge.shared
         _ = LockScreenManager.shared
         
@@ -26,8 +59,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         AccessibilityOnboardingWindowController.showIfNeeded()
         
         // Observadores de notificaciones distribuidas para pruebas y bisección con entrega inmediata
-        let notifCenter = ImmediateNotificationCenter.shared
-        
         notifCenter.observe("com.luisrandom.DynamicNotch.expand") { _ in
             AppState.shared.autoCollapseOnHoverExit = false
             AppState.shared.expand()
@@ -91,6 +122,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             WhatsAppWebObserverService.shared.simulateTestNotification()
         }
         
+        notifCenter.observe("com.luisrandom.DynamicNotch.testIMessage") { _ in
+            MessagesObserverService.shared.simulateTestNotification()
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testAirPods") { _ in
+            AirPodsActivityProvider.shared.publishAirPodsActivity(
+                name: "AirPods Pro de Luis",
+                batteryLevel: 100,
+                leftPercent: 100,
+                rightPercent: 100,
+                casePercent: 100,
+                duration: 13.0
+            )
+        }
+        
         notifCenter.observe("com.luisrandom.DynamicNotch.expandQuickReply") { _ in
             NotificationActivityProvider.shared.expandQuickReply()
         }
@@ -99,8 +145,95 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationActivityProvider.shared.dismissNotification()
         }
         
+        notifCenter.observe("com.luisrandom.DynamicNotch.testMusicCanvas") { _ in
+            AmbientCanvasWindowManager.shared.toggleCanvas()
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testAgentProgress") { _ in
+            AgentActivityProvider.shared.showProgress(payload: AgentLiveProgressPayload())
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testAgentFinish") { _ in
+            AgentActivityProvider.shared.showProgress(
+                payload: AgentLiveProgressPayload(
+                    agentName: "Claude",
+                    taskName: "Stale cart total",
+                    steps: [
+                        AgentLiveStep(title: "Read CartStore.swift", isCompleted: true),
+                        AgentLiveStep(title: "Edit CartStore.swift", isCompleted: true),
+                        AgentLiveStep(title: "Edit SyncEngine.swift", isCompleted: true)
+                    ],
+                    fileDiff: AgentFileDiff(
+                        filename: "Sources/.../SyncEngine.swift",
+                        additions: 49,
+                        deletions: 19,
+                        statusText: "Completed",
+                        progress: 1.0
+                    ),
+                    isCompleted: true
+                )
+            )
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testAgentPermission") { _ in
+            AgentActivityProvider.shared.showInteraction(
+                type: .permission,
+                title: "Antigravity",
+                subtitle: "Permiso requerido",
+                message: "¿Deseas ejecutar el siguiente comando en la terminal?",
+                command: "git push origin main"
+            )
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testAgentNotification") { _ in
+            AgentActivityProvider.shared.showInteraction(
+                type: .notification,
+                title: "Build Finalizado",
+                subtitle: "Dynamic Notch",
+                message: "Compilación exitosa con 0 errores.",
+                duration: 5.0
+            )
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testAgentQuestion") { _ in
+            AgentActivityProvider.shared.showInteraction(
+                type: .question,
+                title: "Antigravity",
+                subtitle: "Pregunta de Desarrollo",
+                message: "¿Deseas desplegar la versión a producción o a staging?",
+                options: [
+                    AgentActionOption(id: "staging", label: "Staging"),
+                    AgentActionOption(id: "prod", label: "Producción", isPrimary: true)
+                ]
+            )
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.expandAgent") { _ in
+            AgentActivityProvider.shared.expandInteraction()
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.collapseAgent") { _ in
+            AgentActivityProvider.shared.collapseInteraction()
+        }
+        
         notifCenter.observe("com.luisrandom.DynamicNotch.testIncomingCall") { _ in
             CallActivityProvider.shared.startIncomingCall(name: "FaceTime Audio", handle: "Mamá", isSimulation: true)
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.testActiveCallPill") { _ in
+            CallActivityProvider.shared.startCall(name: "FaceTime Audio", handle: "Mamá", asCard: false, isSimulation: true)
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.expandCallCard") { _ in
+            CallActivityProvider.shared.expandToCard()
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.collapseCallCard") { _ in
+            CallActivityProvider.shared.collapseToPill()
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.endCall") { _ in
+            CallActivityProvider.shared.endCall()
         }
         
         notifCenter.observe("com.luisrandom.DynamicNotch.testVolumeHUD") { _ in
@@ -113,6 +246,65 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         notifCenter.observe("com.luisrandom.DynamicNotch.activateWhatsApp") { _ in
             WhatsAppWebObserverService.shared.activateWhatsAppWeb()
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.showRefractionPattern") { _ in
+            DispatchQueue.main.async {
+                GlassClearManager.shared.showRefractionTestPattern.toggle()
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.expandNotch") { _ in
+            DispatchQueue.main.async {
+                AppState.shared.mode = .expanded
+                AppState.shared.activeTab = .music
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.collapseNotch") { _ in
+            DispatchQueue.main.async {
+                AppState.shared.mode = .idle
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.togglePlayerDetail") { _ in
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
+                    AppState.shared.isPlayerDetailExpanded.toggle()
+                }
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.setDarkGlass") { _ in
+            DispatchQueue.main.async {
+                AppState.shared.appearanceMode = .darkGlass
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.setClearGlass") { _ in
+            DispatchQueue.main.async {
+                AppState.shared.appearanceMode = .clearGlass
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.setOled") { _ in
+            DispatchQueue.main.async {
+                AppState.shared.appearanceMode = .pureOLED
+            }
+        }
+        
+        notifCenter.observe("com.luisrandom.DynamicNotch.switchPage") { _ in
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    if AppState.shared.mode == .shelf {
+                        AppState.shared.mode = .expanded
+                        AppState.shared.activeTab = .music
+                    } else {
+                        AppState.shared.mode = .shelf
+                        AppState.shared.activeTab = .shelf
+                    }
+                }
+            }
         }
         
         notifCenter.observe("com.luisrandom.DynamicNotch.setBisection") { notif in
@@ -148,6 +340,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // Iniciar observador en tiempo real de transferencias AirDrop
         AirDropObserverService.shared.startObserving()
         
+        // Iniciar servidor local de interacción con herramientas de IA (Antigravity / dnotch)
+        AgentIPCService.shared.start()
+        
         // Precalentar la canalización de Liquid Glass en GPU para evitar saltos en el primer despliegue
         if #available(macOS 26.0, *) {
             DispatchQueue.main.async {
@@ -173,6 +368,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     public func applicationWillTerminate(_ notification: Notification) {
+        AgentIPCService.shared.stop()
         NowPlayingService.shared.stop()
         AudioSpectrumEngine.shared.stopCapture()
         AirDropObserverService.shared.stopObserving()

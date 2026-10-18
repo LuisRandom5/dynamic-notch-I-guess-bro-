@@ -23,6 +23,7 @@ public struct LockScreenPlayerView: View {
     @State private var isHoveringProgressBar: Bool = false
     @State private var isDraggingVolume: Bool = false
     @State private var dragVolume: Float = 0.5
+    @State private var isShowingRoutePicker: Bool = false
     
     // Triggers para efectos SF Symbols
     @State private var previousButtonTrigger: Int = 0
@@ -34,8 +35,24 @@ public struct LockScreenPlayerView: View {
     
     public init() {}
     
+    private var isDemoPreview: Bool {
+        (LockScreenManager.shared.isPreviewMode || AppState.shared.isLockScreenTestArmed) && musicService.currentTrack.title.isEmpty
+    }
+    
     private var track: MusicTrack {
-        musicService.currentTrack
+        if isDemoPreview {
+            return MusicTrack(
+                title: "Starboy",
+                artist: "The Weeknd ft. Daft Punk",
+                album: "Starboy",
+                artwork: NSImage(named: NSImage.applicationIconName),
+                isPlaying: true,
+                playbackPosition: 84,
+                duration: 230,
+                appSource: "Apple Music"
+            )
+        }
+        return musicService.currentTrack
     }
     
     private var isPrivacyMode: Bool {
@@ -78,10 +95,17 @@ public struct LockScreenPlayerView: View {
     
     public var body: some View {
         ZStack {
-            if appState.lockScreenStyle == .heroWidget {
+            if appState.lockScreenStyle == .ambientCanvas {
+                AmbientMusicCanvasView()
+            } else if appState.lockScreenStyle == .heroWidget {
                 heroWidgetView
             } else {
                 compactCardView
+            }
+            
+            // Selector interactivo de ruta de audio (AirPods 4 / Altavoces / AirPlay)
+            if isShowingRoutePicker {
+                lockScreenRoutePickerOverlay
             }
             
             // Modo debug con contornos y selector de renderizado
@@ -199,11 +223,13 @@ public struct LockScreenPlayerView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .onTapGesture {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                appState.isLockScreenArtworkExpanded = false
+            SoundFeedbackService.shared.playBubblePop()
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.84)) {
+                appState.lockScreenStyle = .ambientCanvas
+                appState.isAmbientCanvasOpen = true
             }
         }
-        .help("Toca para contraer la carátula")
+        .help("Toca para abrir el Canvas a pantalla completa")
     }
     
     // MARK: - 1.2 Tarjeta Flotante Hero (Controles + Miniatura Condicional)
@@ -291,12 +317,11 @@ public struct LockScreenPlayerView: View {
                     // Fila 2: Scrubber timeline con cifras tabulares
                     timelineScrubberSection
                     
-                    // Fila 3: Controles multimedia + Selector de audio nativo (AirPlay)
+                    // Fila 3: Controles multimedia + Selector de audio dinámico (AirPods 4 / Altavoces)
                     ZStack(alignment: .trailing) {
                         mediaControlsCenter
                         
-                        NativeAudioRoutePicker()
-                            .frame(width: 22, height: 22)
+                        audioRouteButton
                             .padding(.trailing, 2)
                     }
                     
@@ -444,7 +469,7 @@ public struct LockScreenPlayerView: View {
         ZStack {
             if isOLED {
                 // Modo 100% Negro Puro OLED (#000000 opaco absoluto, cero transparencia)
-                Color.black
+                shape.fill(Color.black)
             } else if isReduceTransparency || appState.lockScreenRenderMode == .solidDark {
                 // Tier 4: Sólido Oscuro
                 Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.92)
@@ -587,9 +612,125 @@ public struct LockScreenPlayerView: View {
         ZStack(alignment: .trailing) {
             mediaControlsCenter
             
-            NativeAudioRoutePicker()
-                .frame(width: 22, height: 22)
+            audioRouteButton
                 .padding(.trailing, 2)
+        }
+    }
+    
+    // MARK: - Botón dinámico de ruta de audio (AirPods 4 / Altavoces)
+    
+    private var audioRouteButton: some View {
+        Button(action: {
+            appState.hapticService.triggerSnap()
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                isShowingRoutePicker.toggle()
+            }
+        }) {
+            ZStack {
+                Circle()
+                    .fill(audioService.isAirPodsActive ? Color.blue.opacity(0.24) : Color.white.opacity(0.12))
+                    .frame(width: 26, height: 26)
+                
+                Image(systemName: audioService.isAirPodsActive ? audioService.currentDeviceIcon : "airplayaudio")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(audioService.isAirPodsActive ? Color(red: 0.35, green: 0.75, blue: 1.0) : Color.white.opacity(0.85))
+            }
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .help("Ruta de audio: \(audioService.currentDeviceName)")
+    }
+    
+    // MARK: - Menú flotante interactivo de salidas de audio para Lock Screen
+    
+    private var lockScreenRoutePickerOverlay: some View {
+        ZStack {
+            // Fondo atenuado táctil para cerrar al tocar fuera
+            Color.black.opacity(0.40)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        isShowingRoutePicker = false
+                    }
+                }
+            
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: audioService.currentDeviceIcon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(red: 0.35, green: 0.75, blue: 1.0))
+                    
+                    Text("Salida de audio")
+                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            isShowingRoutePicker = false
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.bottom, 2)
+                
+                VStack(spacing: 5) {
+                    ForEach(audioService.getOutputDevices()) { dev in
+                        Button(action: {
+                            audioService.setDefaultOutputDevice(id: dev.id)
+                            appState.hapticService.triggerSnap()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                isShowingRoutePicker = false
+                            }
+                        }) {
+                            HStack(spacing: 10) {
+                                Image(systemName: dev.icon)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(dev.isDefault ? Color.blue : Color.white.opacity(0.70))
+                                    .frame(width: 20)
+                                
+                                Text(dev.name)
+                                    .font(.system(size: 12, weight: dev.isDefault ? .semibold : .regular, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                
+                                Spacer()
+                                
+                                if dev.isDefault {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(Color.blue)
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(dev.isDefault ? Color.blue.opacity(0.20) : Color.white.opacity(0.08))
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: 290)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(red: 0.10, green: 0.10, blue: 0.12).opacity(0.96))
+                    .shadow(color: .black.opacity(0.55), radius: 20, x: 0, y: 8)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
+            .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
     }
     
@@ -686,6 +827,15 @@ public struct LockScreenPlayerView: View {
         .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
         .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 4)
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .onTapGesture {
+            SoundFeedbackService.shared.playBubblePop()
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.84)) {
+                appState.lockScreenStyle = .ambientCanvas
+                appState.isAmbientCanvasOpen = true
+            }
+        }
+        .help("Toca para abrir el Canvas a pantalla completa")
     }
     
     private var compactTrackInfoSection: some View {

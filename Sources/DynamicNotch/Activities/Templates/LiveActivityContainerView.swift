@@ -3,6 +3,7 @@ import SwiftUI
 public struct LiveActivityContainerView: View {
     @ObservedObject var center = ActivityCenter.shared
     @ObservedObject var notificationProvider = NotificationActivityProvider.shared
+    @ObservedObject var agentProvider = AgentActivityProvider.shared
     @EnvironmentObject var appState: AppState
     
     public init() {}
@@ -59,6 +60,24 @@ public struct LiveActivityContainerView: View {
                             insertion: .opacity.animation(.easeInOut(duration: 0.18)),
                             removal: .opacity.animation(.easeOut(duration: 0.10))
                         ))
+                    } else if (activity.id == "agent_live_progress" || activity.id.hasPrefix("agent_progress")) {
+                        if center.expandedActivity?.id == activity.id || agentProvider.isProgressHUDExpanded {
+                            AgentLiveProgressView()
+                                .transition(.asymmetric(
+                                    insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                                    removal: .opacity.animation(.easeOut(duration: 0.10))
+                                ))
+                        } else {
+                            EmptyView()
+                        }
+                    } else if activity.id.hasPrefix("agent_"),
+                              let payload = agentProvider.currentPayload,
+                              payload.id == activity.id {
+                        AgentInteractionView(payload: payload)
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeInOut(duration: 0.18)),
+                                removal: .opacity.animation(.easeOut(duration: 0.10))
+                            ))
                     } else if let custom = activity.customView {
                         custom
                             .transition(.asymmetric(

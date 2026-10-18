@@ -117,6 +117,10 @@ public final class MusicService: ObservableObject {
                     self.pauseDebounceTimer?.invalidate()
                     self.pauseDebounceTimer = nil
                     
+                    if self.currentTrack.title != resolvedTrack.title {
+                        AudioSpectrumEngine.shared.resetEnvelopes()
+                    }
+                    
                     self.currentTrack = resolvedTrack
                     if !self.hasActiveMusic {
                         self.hasActiveMusic = true
@@ -124,6 +128,7 @@ public final class MusicService: ObservableObject {
                     AppState.shared.reconcileCompactMode()
                     self.updateProgressTimer(isPlaying: true)
                 } else if !isPlaying {
+                    AudioSpectrumEngine.shared.resetEnvelopes()
                     // Si ya teníamos música activa, evitar que un frame espurio o cambio de foco
                     // apague inmediatamente el minirreproductor al lado del notch.
                     if self.hasActiveMusic {
@@ -136,12 +141,12 @@ public final class MusicService: ObservableObject {
                             return
                         }
                         
-                        // 2. Debounce de 3.2s antes de confirmar la pausa real (evita parpadeos de buffer o cambio de pestaña en YouTube/Safari)
+                        // 2. Debounce rápido (0.35s) antes de confirmar la pausa real (evita parpadeos momentáneos)
                         if self.pauseDebounceTimer == nil {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                 NowPlayingService.shared.refreshNowPlaying()
                             }
-                            self.pauseDebounceTimer = Timer.scheduledTimer(withTimeInterval: 3.2, repeats: false) { [weak self] _ in
+                            self.pauseDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
                                 guard let self = self else { return }
                                 self.pauseDebounceTimer = nil
                                 
@@ -459,6 +464,7 @@ public final class MusicService: ObservableObject {
     }
     
     public func nextTrack() {
+        AudioSpectrumEngine.shared.resetEnvelopes()
         if currentTrack.appSource == "Spotify" {
             runAppleScript("tell application \"Spotify\" to next track")
         } else if currentTrack.appSource == "Apple Music" {
@@ -469,6 +475,7 @@ public final class MusicService: ObservableObject {
     }
     
     public func previousTrack() {
+        AudioSpectrumEngine.shared.resetEnvelopes()
         if currentTrack.appSource == "Spotify" {
             runAppleScript("tell application \"Spotify\" to previous track")
         } else if currentTrack.appSource == "Apple Music" {
