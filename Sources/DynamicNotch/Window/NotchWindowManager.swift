@@ -387,12 +387,24 @@ public final class NotchWindowManager: ObservableObject {
     public let gestureRecognizer = TrackpadGestureRecognizer()
     private let gestureDispatcher = NotchGestureDispatcher()
     private var globalScrollMonitor: Any?
+    private var localScrollMonitor: Any?
     
     public func setupScrollSwipeMonitors() {
         gestureRecognizer.delegate = gestureDispatcher
         if globalScrollMonitor == nil {
             globalScrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
                 self?.gestureRecognizer.handle(event)
+            }
+        }
+        // Eventos dirigidos a OTRA ventana de la propia app: cuando la tarjeta se encoge bajo el cursor, el
+        // evento de "dedos levantados" podía ir a otra ventana nuestra y nadie lo veía (el cierre interactivo
+        // se quedaba congelado hasta el temporizador de seguridad). El reconocedor descarta duplicados.
+        if localScrollMonitor == nil {
+            localScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                if event.window !== self?.panel {
+                    _ = self?.gestureRecognizer.handle(event)
+                }
+                return event
             }
         }
     }

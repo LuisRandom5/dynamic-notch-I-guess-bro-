@@ -71,12 +71,23 @@ public final class TrackpadGestureRecognizer {
         }
     }
 
+    /// El mismo evento puede llegar por varias vías (ventana del notch, monitor local y global): se procesa
+    /// una sola vez
+    private var lastEventTimestamp: TimeInterval = -1
+    private var lastEventResult = false
+    
     /// Procesa un evento `.scrollWheel`. Devuelve true si el evento pertenece a un gesto del notch
     /// (quien lo recibió en el panel debe tragárselo).
     @discardableResult
     public func handle(_ event: NSEvent) -> Bool {
         guard event.type == .scrollWheel else { return false }
-
+        if event.timestamp == lastEventTimestamp { return lastEventResult }
+        lastEventTimestamp = event.timestamp
+        lastEventResult = process(event)
+        return lastEventResult
+    }
+    
+    private func process(_ event: NSEvent) -> Bool {
         // Rueda de ratón clásica: ni fase ni inercia
         if event.phase == [] && event.momentumPhase == [] {
             return handleDiscrete(event)
