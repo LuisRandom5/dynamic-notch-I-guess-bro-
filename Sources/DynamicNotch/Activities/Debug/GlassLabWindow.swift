@@ -29,7 +29,7 @@ public final class GlassLabWindow {
         let root = NSView(frame: NSRect(origin: .zero, size: size))
         root.wantsLayer = true
 
-        // 5 columnas: 3 en SwiftUI y 2 en AppKit (NSGlassEffectView), cada una con el mismo contenido encima
+        // 5 columnas con el mismo contenido encima
         let columnWidth: CGFloat = 200
         let gap: CGFloat = 10
         for index in 0..<5 {
@@ -86,64 +86,81 @@ final class GlassLabPanel: NSPanel {
     }
 }
 
+/// Ronda 2: la ronda 1 mostró que SwiftUI y AppKit se ven igual y que sólo `Glass.clear` da el aspecto de
+/// vidrio líquido; aquí se compara cómo darle legibilidad sin perder la transparencia.
 @available(macOS 26.0, *)
 enum GlassLabVariant: Int {
-    case current, swiftUIRegular, swiftUIClear, appKitRegular, appKitClear
-
+    case clearPure, clearVeil20, clearVeil35, clearNotchGradient, clearSoftGradientShadow
+    
     var title: String {
         switch self {
-        case .current: return "1 · Antes (negro detrás + tinte)"
-        case .swiftUIRegular: return "2 · SwiftUI regular, sin tinte"
-        case .swiftUIClear: return "3 · SwiftUI clear, sin tinte"
-        case .appKitRegular: return "4 · AppKit NSGlassEffectView regular"
-        case .appKitClear: return "5 · AppKit NSGlassEffectView clear"
+        case .clearPure: return "1 · Clear puro (referencia)"
+        case .clearVeil20: return "2 · Clear + velo 20%"
+        case .clearVeil35: return "3 · Clear + velo 35%"
+        case .clearNotchGradient: return "4 · Clear + degradado del notch"
+        case .clearSoftGradientShadow: return "5 · Degradado suave + sombra"
         }
     }
-
+    
     func makeView(frame: NSRect) -> NSView {
-        switch self {
-        case .current, .swiftUIRegular, .swiftUIClear:
-            let host = NSHostingView(rootView: GlassLabSwiftUICard(variant: self))
-            host.frame = frame
-            return host
-        case .appKitRegular, .appKitClear:
-            let glass = NSGlassEffectView(frame: frame)
-            glass.style = self == .appKitRegular ? .regular : .clear
-            glass.cornerRadius = 28
-            let content = NSHostingView(rootView: GlassLabContent())
-            content.frame = NSRect(origin: .zero, size: frame.size)
-            glass.contentView = content
-            return glass
-        }
+        let host = NSHostingView(rootView: GlassLabSwiftUICard(variant: self))
+        host.frame = frame
+        return host
     }
 }
 
 @available(macOS 26.0, *)
 private struct GlassLabSwiftUICard: View {
     let variant: GlassLabVariant
-
+    
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         ZStack {
-            switch variant {
-            case .current:
-                // Réplica de la técnica anterior del notch: negro detrás + vidrio teñido de negro
-                shape.fill(Color.black.opacity(0.30))
-                Color.clear.glassEffect(Glass.regular.tint(Color.black.opacity(0.25)), in: shape)
-            case .swiftUIClear:
-                Color.clear.glassEffect(Glass.clear, in: shape)
-            default:
-                Color.clear.glassEffect(Glass.regular, in: shape)
-            }
-            GlassLabContent()
+            Color.clear.glassEffect(Glass.clear, in: shape)
+            veil.clipShape(shape).allowsHitTesting(false)
+            GlassLabContent(textShadow: variant == .clearSoftGradientShadow)
         }
         .environment(\.colorScheme, .dark)
         .environment(\.controlActiveState, .key)
+    }
+    
+    /// Velo SOBRE el vidrio y debajo del contenido: el vidrio sigue refractando el escritorio en sus bordes.
+    @ViewBuilder
+    private var veil: some View {
+        switch variant {
+        case .clearPure:
+            Color.clear
+        case .clearVeil20:
+            Color.black.opacity(0.20)
+        case .clearVeil35:
+            Color.black.opacity(0.35)
+        case .clearNotchGradient:
+            // Negro arriba (se funde con la cámara física) → velo ligero abajo
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.85), location: 0.0),
+                    .init(color: .black.opacity(0.45), location: 0.35),
+                    .init(color: .black.opacity(0.18), location: 1.0),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        case .clearSoftGradientShadow:
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.55), location: 0.0),
+                    .init(color: .black.opacity(0.22), location: 0.4),
+                    .init(color: .black.opacity(0.08), location: 1.0),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
     }
 }
 
 /// Contenido típico del notch encima del vidrio, para juzgar legibilidad.
 private struct GlassLabContent: View {
+    var textShadow: Bool = false
+    
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "music.note")
@@ -160,6 +177,7 @@ private struct GlassLabContent: View {
             }
         }
         .foregroundColor(.white)
+        .shadow(color: .black.opacity(textShadow ? 0.55 : 0), radius: textShadow ? 3 : 0, x: 0, y: 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
