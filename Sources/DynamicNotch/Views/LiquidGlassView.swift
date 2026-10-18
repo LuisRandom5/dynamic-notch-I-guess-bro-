@@ -153,6 +153,7 @@ public struct DynamicNotchBackgroundView: View {
                     // cmux #5860; y no detrás: el vidrio refractaría negro). Con el slider por defecto (38%) ≈ 11%.
                     let veilOpacity = NotchGlassMetrics.veilOpacity(for: mode)
                     let notchHeight = ScreenService.shared.currentGeometry.height
+                    let notchWidth = ScreenService.shared.currentGeometry.width
                     
                     // El vidrio aparece/desaparece con la transición nativa `materialize` (la lente se forma y
                     // se disuelve) en vez de un simple fundido de opacidad
@@ -165,22 +166,37 @@ public struct DynamicNotchBackgroundView: View {
                             Color.black.opacity(veilOpacity)
                                 .clipShape(pillShape)
                             
-                            // Franja superior a la altura de la cámara: funde el vidrio con el notch físico negro
-                            // para que la cámara no se vea como un hoyo en medio del cristal
+                            // Franja a la altura de la cámara SÓLO detrás del notch físico (con bordes suaves): funde
+                            // el vidrio con la cámara sin apagar el resto del borde superior, que así refracta como
+                            // vidrio de verdad
                             LinearGradient(
                                 stops: [
-                                    .init(color: .black.opacity(0.70), location: 0.0),
+                                    .init(color: .black.opacity(0.85), location: 0.0),
                                     .init(color: .black.opacity(0.0), location: 1.0),
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
-                            .frame(height: notchHeight + 14)
-                            .frame(maxHeight: .infinity, alignment: .top)
+                            .frame(width: notchWidth + 36, height: notchHeight + 12)
+                            .mask(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .clear, location: 0.0),
+                                        .init(color: .black, location: 18 / (notchWidth + 36)),
+                                        .init(color: .black, location: 1 - 18 / (notchWidth + 36)),
+                                        .init(color: .clear, location: 1.0),
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .clipShape(pillShape)
                         }
                         .allowsHitTesting(false)
-                        .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
+                        // El vidrio se dibuja siempre con apariencia oscura: es la variante "Clear puro" elegida en
+                        // el laboratorio; en apariencia clara macOS lo vuelve blanquecino y esmerilado
+                        .environment(\.colorScheme, .dark)
                         .environment(\.controlActiveState, .key)
                         .transition(.opacity)
                     }

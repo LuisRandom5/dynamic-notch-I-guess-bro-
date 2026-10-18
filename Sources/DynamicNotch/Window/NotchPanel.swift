@@ -16,9 +16,7 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
         self.backgroundColor = .clear
         self.hasShadow = false
         self.level = .statusBar
-        self.appearance = (AppState.shared.effectiveAppearanceMode == .clearGlass)
-            ? NSAppearance(named: .aqua)
-            : NSAppearance(named: .darkAqua)
+        self.appearance = NSAppearance(named: .darkAqua) // siempre oscura: el vidrio clear en apariencia clara se ve esmerilado
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isMovable = false
         self.isMovableByWindowBackground = false

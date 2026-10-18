@@ -66,8 +66,9 @@ public final class LockScreenManager: ObservableObject {
             AppState.shared.$lockScreenStyle
         )
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] _, _ in
+        .sink { [weak self] _, style in
             guard let self = self, self.isPanelVisible else { return }
+            AppState.shared.isLockScreenFullscreen = style == .ambientCanvas
             self.showPlayerPanel()
         }
         .store(in: &cancellables)
@@ -197,48 +198,15 @@ public final class LockScreenManager: ObservableObject {
             targetScreens = [mainScrn]
         }
         
-        let isAmbient = AppState.shared.lockScreenStyle == .ambientCanvas
-        let isHero = AppState.shared.lockScreenStyle == .heroWidget
-        let hasVolume = AppState.shared.lockScreenShowVolumeSlider
-        
-        let panelWidth: CGFloat = isAmbient
-            ? 0
-            : (isHero ? LockScreenPlayerMetrics.heroPanelWidth : LockScreenPlayerMetrics.cardWidth)
-            
-        let panelHeight: CGFloat
-        let topRatio: CGFloat
-        let heroCardHeight: CGFloat = hasVolume
-            ? LockScreenPlayerMetrics.heroCardHeightWithVolume
-            : LockScreenPlayerMetrics.heroCardHeight
-        
-        if isAmbient {
-            panelHeight = 0
-            topRatio = 0.5
-        } else if isHero {
-            panelHeight = hasVolume
-                ? LockScreenPlayerMetrics.heroPanelHeightWithVolume
-                : LockScreenPlayerMetrics.heroPanelHeight
-            topRatio = 0.54
-        } else {
-            panelHeight = hasVolume
-                ? LockScreenPlayerMetrics.cardHeightWithVolume
-                : (AppState.shared.lockScreenHideMediaDetails ? 128 : LockScreenPlayerMetrics.cardHeightCompact)
-            topRatio = LockScreenPlayerMetrics.defaultTopPositionRatio
-        }
-        
         let isOLED = AppState.shared.lockScreenRenderMode == .pureOLED || AppState.shared.effectiveAppearanceMode == .pureOLED
-        let applyPrivateBlur = !isOLED && (AppState.shared.lockScreenRenderMode == .privateBlur)
+        // Ya no: con la ventana a pantalla completa, el desenfoque de fondo de ventana borraría toda la pantalla
+        let applyPrivateBlur = false && !isOLED
         
         // Si ya teníamos paneles, actualizar frames
         if !lockScreenPanels.isEmpty && lockScreenPanels.count == targetScreens.count {
             for (idx, panel) in lockScreenPanels.enumerated() {
-                let screenFrame = targetScreens[idx].frame
-                let targetCardTopY = screenFrame.maxY - (screenFrame.height * topRatio) + AppState.shared.lockScreenVerticalOffset
-                let curWidth = isAmbient ? screenFrame.width : panelWidth
-                let curHeight = isAmbient ? screenFrame.height : panelHeight
-                let posX = isAmbient ? screenFrame.origin.x : (screenFrame.origin.x + (screenFrame.width - panelWidth) / 2)
-                let posY = isAmbient ? screenFrame.origin.y : (targetCardTopY - (isHero ? heroCardHeight : panelHeight))
-                panel.setFrame(NSRect(x: posX, y: posY, width: curWidth, height: curHeight), display: true)
+                // La ventana cubre la pantalla: LockScreenPlayerView coloca el reproductor en el hueco libre
+                panel.setFrame(targetScreens[idx].frame, display: true)
                 panel.alphaValue = 1.0
                 panel.orderFrontRegardless()
                 
@@ -255,15 +223,14 @@ public final class LockScreenManager: ObservableObject {
         // Limpiar cualquier panel previo
         cleanupPanelsOnly()
         
+        // Al aparecer, la presentación inicial es la que eligió el usuario en Ajustes
+        AppState.shared.isLockScreenFullscreen = AppState.shared.lockScreenStyle == .ambientCanvas
+        
         var newPanels: [LockScreenPanel] = []
         for screen in targetScreens {
-            let screenFrame = screen.frame
-            let targetCardTopY = screenFrame.maxY - (screenFrame.height * topRatio) + AppState.shared.lockScreenVerticalOffset
-            let curWidth = isAmbient ? screenFrame.width : panelWidth
-            let curHeight = isAmbient ? screenFrame.height : panelHeight
-            let posX = isAmbient ? screenFrame.origin.x : (screenFrame.origin.x + (screenFrame.width - panelWidth) / 2)
-            let posY = isAmbient ? screenFrame.origin.y : (targetCardTopY - (isHero ? heroCardHeight : panelHeight))
-            let panelRect = NSRect(x: posX, y: posY, width: curWidth, height: curHeight)
+            // Toda la pantalla: el paso a pantalla completa es una animación de SwiftUI, sin redimensionar
+            // la ventana; las zonas transparentes dejan pasar los clics a la pantalla de inicio de sesión
+            let panelRect = screen.frame
             
             let panel = LockScreenPanel(contentRect: panelRect)
             let rootView = LockScreenPlayerView()

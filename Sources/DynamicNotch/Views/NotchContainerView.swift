@@ -400,9 +400,10 @@ public struct NotchContainerView: View {
         appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil
     }
     
-    /// El notch se ve como Liquid Glass ahora mismo: las bolitas pasan a ser del mismo vidrio
+    /// Modo de cristal activo: las bolitas son siempre gotas de Liquid Glass. El notch cerrado sigue negro
+    /// porque tiene que fundirse con la cámara física; desplegado, es del mismo vidrio que las bolitas.
     private var isGlassSurfaceVisible: Bool {
-        isSurfaceExpanded && appState.effectiveAppearanceMode != .pureOLED
+        appState.effectiveAppearanceMode != .pureOLED
     }
     
     public var body: some View {
@@ -825,7 +826,8 @@ public struct NotchContainerView: View {
             // aparecer, se funde al tocarla (fusionProgress) y se reabsorbe al desaparecer.
             let notchRadius = geometry.height / 2.0
             let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
-            let showsBridge = appState.mode != .expanded && appState.mode != .shelf
+            // El cuello negro sólo une bolitas negras con el notch negro (en cristal, la gota se reabsorbe sola)
+            let showsBridge = appState.mode != .expanded && appState.mode != .shelf && !isGlassSurfaceVisible
             ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
                 let isLeft = isBothSides && index == 1
                 if !isLeft {

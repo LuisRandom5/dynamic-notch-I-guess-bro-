@@ -18,9 +18,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { _ in
             let state = AppState.shared
             state.objectWillChange.send()
-            NotchWindowManager.shared.panel?.appearance = (state.effectiveAppearanceMode == .clearGlass)
-                ? NSAppearance(named: .aqua)
-                : NSAppearance(named: .darkAqua)
+            NotchWindowManager.shared.panel?.appearance = NSAppearance(named: .darkAqua) // siempre oscura: el vidrio clear en apariencia clara se ve esmerilado
         }
         
         let myPID = ProcessInfo.processInfo.processIdentifier

@@ -15,6 +15,9 @@ public struct AmbientMusicCanvasView: View {
     @ObservedObject var appState = AppState.shared
 
     public var onDismiss: (() -> Void)?
+    /// En la pantalla bloqueada: espacio de nombres compartido con el reproductor compacto, para que la
+    /// carátula y la superficie se transformen de una presentación a la otra (matchedGeometryEffect)
+    public var namespace: Namespace.ID?
 
     @State private var isSeeking: Bool = false
     @State private var seekProgress: Double = 0.0
@@ -22,11 +25,19 @@ public struct AmbientMusicCanvasView: View {
     @State private var currentDate: Date = Date()
     @State private var previousTick: Int = 0
     @State private var nextTick: Int = 0
+    /// El reloj y las letras aparecen cuando la carátula y el fondo ya van llegando a su lugar
+    @State private var contentRevealed: Bool = false
 
     private let clockTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
-    public init(onDismiss: (() -> Void)? = nil) {
+    public init(namespace: Namespace.ID? = nil, onDismiss: (() -> Void)? = nil) {
+        self.namespace = namespace
         self.onDismiss = onDismiss
+    }
+    
+    /// Negro OLED: fondo negro puro (los colores sólo vienen de la carátula y las letras)
+    private var isOLED: Bool {
+        appState.lockScreenRenderMode == .pureOLED || appState.effectiveAppearanceMode == .pureOLED
     }
 
     private var track: MusicTrack { musicService.currentTrack }
@@ -47,17 +58,22 @@ public struct AmbientMusicCanvasView: View {
 
     public var body: some View {
         ZStack {
-            AmbientArtworkBackground(primary: primaryColor, secondary: secondaryColor)
+            AmbientArtworkBackground(primary: primaryColor, secondary: secondaryColor, isOLED: isOLED)
+                // La superficie del reproductor compacto crece hasta ser este fondo
+                .lockMatched("lock.surface", namespace)
 
             VStack(spacing: 0) {
                 clockHeader
                     .padding(.top, 58)
+                    .opacity(contentRevealed ? 1 : 0)
 
                 HStack(alignment: .center, spacing: 72) {
                     playerColumn
                         .frame(width: 380)
                     lyricsColumn
                         .frame(width: 560)
+                        .opacity(contentRevealed ? 1 : 0)
+                        .offset(y: contentRevealed ? 0 : 18)
                 }
                 .frame(maxHeight: .infinity)
                 .padding(.horizontal, 48)
@@ -69,6 +85,13 @@ public struct AmbientMusicCanvasView: View {
         }
         .environment(\.colorScheme, .dark)
         .onReceive(clockTimer) { currentDate = $0 }
+        .onAppear {
+            guard namespace != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+                contentRevealed = true
+                return
+            }
+            withAnimation(.easeOut(duration: 0.38).delay(0.18)) { contentRevealed = true }
+        }
     }
 
     // MARK: - Reloj
@@ -133,15 +156,14 @@ public struct AmbientMusicCanvasView: View {
         }
         .frame(width: size, height: size)
         .clipShape(shape)
+        .lockMatched("lock.artwork", namespace)
         .shadow(color: .black.opacity(0.35), radius: 28, y: 14)
         // Como en Apple Music: la carátula se encoge un poco en pausa
         .scaleEffect(track.isPlaying ? 1.0 : 0.88)
         .animation(.spring(response: 0.5, dampingFraction: 0.82), value: track.isPlaying)
         .contentShape(shape)
         .onTapGesture {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                appState.lockScreenStyle = .heroWidget
-            }
+            onDismiss?()
         }
         .help("Toca para volver a la tarjeta de música")
     }
@@ -424,7 +446,7 @@ private struct LyricsFadeMask: View {
 // MARK: - Botones de transporte
 
 /// Estado de presión al estilo iOS: el símbolo se encoge y aparece un círculo de resalte detrás.
-private struct TransportButtonStyle: ButtonStyle {
+struct TransportButtonStyle: ButtonStyle {
     let diameter: CGFloat
     @State private var isHovering = false
 
@@ -450,11 +472,15 @@ private struct TransportButtonStyle: ButtonStyle {
 private struct AmbientArtworkBackground: View {
     let primary: Color
     let secondary: Color
+    var isOLED: Bool = false
 
     var body: some View {
         ZStack {
             Color(red: 0.04, green: 0.04, blue: 0.06)
-            if #available(macOS 15.0, *) {
+            if isOLED {
+                // Negro puro: respeta el modo OLED también en pantalla completa
+                Color.black
+            } else if #available(macOS 15.0, *) {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     MeshGradient(
@@ -473,7 +499,9 @@ private struct AmbientArtworkBackground: View {
                 LinearGradient(colors: [primary, secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
                     .opacity(0.8)
             }
-            Color.black.opacity(0.38)
+            if !isOLED {
+                Color.black.opacity(0.38)
+            }
         }
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 1.2), value: primary)
@@ -487,5 +515,19 @@ private struct AmbientArtworkBackground: View {
             [0, 0.5 + wobble(1.0, 0.12)], [0.5 + wobble(2.1, 0.16), 0.5 + wobble(0.4, 0.14)], [1, 0.5 + wobble(3.3, 0.12)],
             [0, 1], [0.5 + wobble(4.2, 0.18), 1], [1, 1]
         ]
+    }
+}
+
+// MARK: - Transformación compartida con el reproductor compacto
+
+extension View {
+    /// `matchedGeometryEffect` sólo cuando hay espacio de nombres (en la ventana de escritorio no lo hay)
+    @ViewBuilder
+    func lockMatched(_ id: String, _ namespace: Namespace.ID?) -> some View {
+        if let namespace = namespace {
+            matchedGeometryEffect(id: id, in: namespace)
+        } else {
+            self
+        }
     }
 }

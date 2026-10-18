@@ -29,10 +29,6 @@ public struct LockScreenPlayerView: View {
     @State private var previousButtonTrigger: Int = 0
     @State private var nextButtonTrigger: Int = 0
     
-    // Animaciones de transición
-    @State private var artworkRotationY: Double = 0
-    @State private var heroArtworkRotationY: Double = 0
-    
     public init() {}
     
     private var isDemoPreview: Bool {
@@ -93,307 +89,69 @@ public struct LockScreenPlayerView: View {
         return Color(red: 0.18, green: 0.35, blue: 0.85)
     }
     
+    @Namespace private var stageNamespace
+    
+    /// Transformación compacto ⇄ pantalla completa: resorte sin rebote; con Reducir movimiento, fundido
+    private var stageAnimation: Animation {
+        isReduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.58, dampingFraction: 0.88)
+    }
+    
+    private func setFullscreen(_ value: Bool) {
+        if value { SoundFeedbackService.shared.playBubblePop() }
+        withAnimation(stageAnimation) {
+            appState.isLockScreenFullscreen = value
+        }
+    }
+    
+    /// La ventana cubre toda la pantalla bloqueada: el reproductor compacto se coloca en el hueco entre el
+    /// reloj y el bloque de usuario/Touch ID, y la pantalla completa ocupa todo. Así el paso de uno a otro es
+    /// una sola transformación continua (carátula y superficie compartidas) sin redimensionar ventanas.
+    /// Las zonas vacías son transparentes y los clics las atraviesan hacia la pantalla de inicio de sesión.
     public var body: some View {
-        ZStack {
-            if appState.lockScreenStyle == .ambientCanvas {
-                AmbientMusicCanvasView()
-            } else if appState.lockScreenStyle == .heroWidget {
-                heroWidgetView
-            } else {
-                compactCardView
-            }
+        GeometryReader { geo in
+            let height = geo.size.height
+            // Hueco disponible: debajo del reloj (~28%) y encima del usuario/Touch ID (~79%)
+            let regionTop = height * 0.28 - appState.lockScreenVerticalOffset
+            let regionBottom = height * 0.79 - appState.lockScreenVerticalOffset
+            let available = regionBottom - regionTop
+            let showsVolume = appState.lockScreenShowVolumeSlider
+            let heroArtwork = LockScreenHeroMetrics.artworkSize(availableHeight: available, showsVolume: showsVolume)
+            let namespace = isReduceMotion ? nil : stageNamespace
             
-            // Selector interactivo de ruta de audio (AirPods 4 / Altavoces / AirPlay)
-            if isShowingRoutePicker {
-                lockScreenRoutePickerOverlay
-            }
-            
-            // Modo debug con contornos y selector de renderizado
-            if appState.lockScreenDebugOutlines {
-                debugOutlinesAndHUD
-            }
-        }
-        .onChange(of: track.title + track.artist) { _, _ in
-            triggerArtworkFlipTransition()
-        }
-    }
-    
-    // MARK: - 1. Estilo Hero Widget (iPhone Lockscreen con Carátula Expandible)
-    
-    private var heroWidgetView: some View {
-        let hasVolume = appState.lockScreenShowVolumeSlider
-        let panelHeight = hasVolume
-            ? LockScreenPlayerMetrics.heroPanelHeightWithVolume
-            : LockScreenPlayerMetrics.heroPanelHeight
-            
-        return VStack(spacing: LockScreenPlayerMetrics.heroSpacing) {
-            Spacer(minLength: 0)
-            
-            // 1. Carátula Hero cuadrada 1:1 con sutil resplandor ambiental
-            if appState.isLockScreenArtworkExpanded && !isPrivacyMode {
-                heroArtworkWithAmbientGlow
-                    .transition(
-                        isReduceMotion
-                            ? .opacity
-                            : .asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.90)).combined(with: .offset(y: 12)),
-                                removal: .opacity.combined(with: .scale(scale: 0.90)).combined(with: .offset(y: 12))
-                            )
-                    )
-            }
-            
-            // 2. Tarjeta flotante con controles, scrubber y ecualizador
-            heroFloatingCardView
-        }
-        .frame(width: LockScreenPlayerMetrics.heroPanelWidth, height: panelHeight)
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: appState.isLockScreenArtworkExpanded)
-    }
-    
-    // MARK: - 1.1 Carátula Hero Cuadrada 1:1 con Resplandor Ambiental Clamped
-    
-    private var heroArtworkWithAmbientGlow: some View {
-        let size = LockScreenPlayerMetrics.heroArtworkSize // 220 pt
-        let cornerRadius = LockScreenPlayerMetrics.heroArtworkCornerRadius // 20 pt
-        
-        return ZStack {
-            // Resplandor ambiental suave (luminosidad y dispersión controladas)
-            if appState.lockScreenShowArtworkHalo && !isOLED {
-                RadialGradient(
-                    colors: [
-                        ambientGlowColor.opacity(0.38),
-                        ambientGlowColor.opacity(0.12),
-                        Color.clear
-                    ],
-                    center: .center,
-                    startRadius: 8,
-                    endRadius: 140
-                )
-                .frame(width: size + 70, height: size + 70)
-                .blur(radius: 28)
-                .allowsHitTesting(false)
-            }
-            
-            // Sombra suave propia de la silueta continua
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.black.opacity(0.001))
-                .shadow(
-                    color: Color.black.opacity(LockScreenPlayerMetrics.artworkShadowOpacity),
-                    radius: LockScreenPlayerMetrics.artworkShadowRadius,
-                    x: 0,
-                    y: LockScreenPlayerMetrics.artworkShadowY
-                )
-            
-            // Imagen de carátula cuadrada 1:1
-            if let artwork = track.artwork {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size, height: size)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(red: 0.12, green: 0.28, blue: 0.85), Color(red: 0.05, green: 0.10, blue: 0.45)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: size, height: size)
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(.system(size: 60, weight: .light))
-                            .foregroundColor(.white.opacity(0.45))
-                    )
-            }
-            
-            // Borde sutil de definición
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(
-                    isIncreaseContrast
-                        ? Color.white.opacity(0.45)
-                        : Color.white.opacity(0.14),
-                    lineWidth: isIncreaseContrast ? 1.5 : 0.8
-                )
-                .frame(width: size, height: size)
-        }
-        .frame(width: size, height: size)
-        .rotation3DEffect(.degrees(heroArtworkRotationY), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
-        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
-        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .onTapGesture {
-            SoundFeedbackService.shared.playBubblePop()
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.84)) {
-                appState.lockScreenStyle = .ambientCanvas
-                appState.isAmbientCanvasOpen = true
-            }
-        }
-        .help("Toca para abrir el Canvas a pantalla completa")
-    }
-    
-    // MARK: - 1.2 Tarjeta Flotante Hero (Controles + Miniatura Condicional)
-    
-    private var heroFloatingCardView: some View {
-        let cardWidth = LockScreenPlayerMetrics.heroCardWidth // 410 pt
-        let cardHeight = appState.lockScreenShowVolumeSlider
-            ? LockScreenPlayerMetrics.heroCardHeightWithVolume
-            : LockScreenPlayerMetrics.heroCardHeight
-        let cornerRadius = LockScreenPlayerMetrics.heroCardCornerRadius // 24 pt
-        
-        return ZStack {
-            // Sombra exterior continua
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.black.opacity(0.001))
-                .shadow(
-                    color: Color.black.opacity(LockScreenPlayerMetrics.cardShadowOpacity),
-                    radius: LockScreenPlayerMetrics.cardShadowRadius,
-                    x: 0,
-                    y: LockScreenPlayerMetrics.cardShadowY
-                )
-            
-            // Fondo Liquid Glass o Negro Puro OLED 100%
-            cardGlassBackground(cornerRadius: cornerRadius)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            
-            // Borde especular sutil
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(
-                    isIncreaseContrast
-                        ? Color.white.opacity(0.48)
-                        : (isOLED ? Color.white.opacity(0.14) : Color.white.opacity(0.16)),
-                    lineWidth: isIncreaseContrast ? 1.5 : 0.75
-                )
-            
-            // Contenido interior en rejilla armónica
-            HStack(spacing: appState.isLockScreenArtworkExpanded ? 0 : 14) {
-                // Miniatura cuadrada si la carátula grande está contraída
-                if !appState.isLockScreenArtworkExpanded {
-                    thumbnailArtworkView
-                        .transition(
-                            isReduceMotion
-                                ? .opacity
-                                : .asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.85)),
-                                    removal: .opacity.combined(with: .scale(scale: 0.85))
-                                )
-                        )
-                }
-                
-                // Columna de información, visualizador de audio, scrubber y controles
-                VStack(spacing: 6) {
-                    // Fila 1: Título, Artista + Mini Ecualizador Reactivo + Badge
-                    HStack(alignment: .center, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 1.5) {
-                            MarqueeText(
-                                isPrivacyMode ? "Reproduciendo" : (track.title.isEmpty ? "Sin reproducción" : track.title),
-                                fontSize: LockScreenPlayerMetrics.titleFontSize,
-                                fontWeight: LockScreenPlayerMetrics.titleFontWeight,
-                                color: .white
-                            )
-                            .frame(height: 18)
-                            
-                            MarqueeText(
-                                isPrivacyMode ? "Detalles ocultos" : (track.artist.isEmpty ? "Dynamic Notch" : track.artist),
-                                fontSize: LockScreenPlayerMetrics.artistFontSize,
-                                fontWeight: LockScreenPlayerMetrics.artistFontWeight,
-                                color: Color.white.opacity(LockScreenPlayerMetrics.artistOpacity)
-                            )
-                            .frame(height: 15)
-                        }
-                        
-                        Spacer(minLength: 4)
-                        
-                        // Barras reactivas al sonido en tiempo real (Paso audio reactivo)
-                        heroEqualizerView
-                            .padding(.trailing, 2)
-                        
-                        // Badge con icono nativo de la app fuente
-                        if !isPrivacyMode {
-                            appIconBadge(size: LockScreenPlayerMetrics.appIconSize, radius: LockScreenPlayerMetrics.appIconCornerRadius)
-                        }
+            ZStack {
+                if appState.isLockScreenFullscreen {
+                    AmbientMusicCanvasView(namespace: namespace) {
+                        setFullscreen(false)
                     }
-                    
-                    // Fila 2: Scrubber timeline con cifras tabulares
-                    timelineScrubberSection
-                    
-                    // Fila 3: Controles multimedia + Selector de audio dinámico (AirPods 4 / Altavoces)
-                    ZStack(alignment: .trailing) {
-                        mediaControlsCenter
-                        
-                        audioRouteButton
-                            .padding(.trailing, 2)
-                    }
-                    
-                    // Fila 4 opcional: Deslizador de volumen
-                    if appState.lockScreenShowVolumeSlider {
-                        volumeSliderRow
-                            .padding(.top, 2)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .frame(width: cardWidth, height: cardHeight)
-    }
-    
-    // MARK: - 1.3 Miniatura de Carátula (52 x 52 pt)
-    
-    private var thumbnailArtworkView: some View {
-        let size = LockScreenPlayerMetrics.heroThumbnailSize // 52 pt
-        let cornerRadius = LockScreenPlayerMetrics.heroThumbnailCornerRadius // 12 pt
-        
-        return ZStack {
-            if isPrivacyMode {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.12))
-                    .frame(width: size, height: size)
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(.system(size: 22, weight: .light))
-                            .foregroundColor(.white.opacity(0.60))
+                    .transition(.opacity)
+                } else if appState.lockScreenStyle != .compactCard, let artworkSize = heroArtwork {
+                    LockScreenHeroPlayer(
+                        artworkSize: artworkSize,
+                        namespace: namespace,
+                        onExpand: { setFullscreen(true) },
+                        isShowingRoutePicker: $isShowingRoutePicker
                     )
-            } else {
-                if let art = track.artwork {
-                    Image(nsImage: art)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: size, height: size)
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .position(x: geo.size.width / 2, y: (regionTop + regionBottom) / 2)
+                    .transition(.opacity)
                 } else {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.12, green: 0.28, blue: 0.85), Color(red: 0.05, green: 0.10, blue: 0.45)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: size, height: size)
-                        .overlay(
-                            Image(systemName: "music.note")
-                                .font(.system(size: 22, weight: .light))
-                                .foregroundColor(.white.opacity(0.40))
-                        )
+                    // Variante horizontal: estilo elegido o pantallas donde la vertical no cabe legible
+                    compactCardView
+                        .position(x: geo.size.width / 2, y: (regionTop + regionBottom) / 2)
+                        .transition(.opacity)
                 }
                 
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 0.6)
+                // Selector interactivo de ruta de audio (AirPods / Altavoces / AirPlay)
+                if isShowingRoutePicker {
+                    lockScreenRoutePickerOverlay
+                }
+                
+                // Modo debug con contornos y selector de renderizado
+                if appState.lockScreenDebugOutlines {
+                    debugOutlinesAndHUD
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .frame(width: size, height: size)
-        .rotation3DEffect(.degrees(artworkRotationY), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
-        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
-        .shadow(color: Color.black.opacity(0.24), radius: 6, x: 0, y: 3)
-        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .onTapGesture {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                appState.isLockScreenArtworkExpanded = true
-            }
-        }
-        .help("Toca para expandir la carátula")
     }
     
     // MARK: - 2. Estilo Tarjeta Horizontal Compacta (macOS Nativo)
@@ -416,18 +174,9 @@ public struct LockScreenPlayerView: View {
                     y: LockScreenPlayerMetrics.cardShadowY
                 )
             
-            // Fondo Liquid Glass o Negro Puro OLED 100%
-            cardGlassBackground(cornerRadius: cornerRadius)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            
-            // Borde sutil
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(
-                    isIncreaseContrast
-                        ? Color.white.opacity(0.50)
-                        : (isOLED ? Color.white.opacity(0.14) : Color.white.opacity(0.16)),
-                    lineWidth: isIncreaseContrast ? 1.5 : 0.75
-                )
+            // Fondo: negro OLED o Liquid Glass según el modo de la app (misma superficie que la vertical)
+            LockScreenSurface(cornerRadius: cornerRadius)
+                .lockMatched("lock.surface", isReduceMotion ? nil : stageNamespace)
             
             // Contenido en 2 columnas equilibradas
             HStack(spacing: 16) {
@@ -458,44 +207,6 @@ public struct LockScreenPlayerView: View {
             .padding(LockScreenPlayerMetrics.compactPadding)
         }
         .frame(width: cardWidth, height: cardHeight)
-    }
-    
-    // MARK: - 3. Cadena de Renderizado: OLED 100% Puro (#000000) o Liquid Glass
-    
-    @ViewBuilder
-    private func cardGlassBackground(cornerRadius: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        
-        ZStack {
-            if isOLED {
-                // Modo 100% Negro Puro OLED (#000000 opaco absoluto, cero transparencia)
-                shape.fill(Color.black)
-            } else if isReduceTransparency || appState.lockScreenRenderMode == .solidDark {
-                // Tier 4: Sólido Oscuro
-                Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.92)
-            } else if appState.lockScreenRenderMode == .privateBlur {
-                // Tier 3: CoreGraphics SkyLight Blur
-                Color.black.opacity(0.40)
-            } else if appState.lockScreenRenderMode == .visualEffect {
-                // Tier 2: NSVisualEffectView Detrás de Ventana
-                VisualEffectBackground(material: .hudWindow, blendingMode: .behindWindow, state: .active)
-            } else {
-                // Tier 1: Liquid Glass Nativo (.glassEffect en macOS 26+)
-                if #available(macOS 26.0, *) {
-                    GlassEffectContainer {
-                        Color.clear
-                            .glassEffect(Glass.regular, in: shape)
-                    }
-                } else {
-                    VisualEffectBackground(material: .hudWindow, blendingMode: .behindWindow, state: .active)
-                }
-            }
-            
-            // Atenuación uniforme adicional solo en modo vidrio para garantizar contraste sobre fondos claros
-            if !isOLED {
-                Color.black.opacity(appState.lockScreenDimmingOpacity)
-            }
-        }
     }
     
     // MARK: - Mini Ecualizador Reactivo al Sonido Real
@@ -823,17 +534,13 @@ public struct LockScreenPlayerView: View {
             }
         }
         .frame(width: size, height: size)
-        .rotation3DEffect(.degrees(artworkRotationY), axis: (x: 0, y: 1, z: 0))
+        .lockMatched("lock.artwork", isReduceMotion ? nil : stageNamespace)
         .scaleEffect(track.isPlaying ? 1.0 : LockScreenPlayerMetrics.pausedScale)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: track.isPlaying)
         .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 4)
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .onTapGesture {
-            SoundFeedbackService.shared.playBubblePop()
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.84)) {
-                appState.lockScreenStyle = .ambientCanvas
-                appState.isAmbientCanvasOpen = true
-            }
+            setFullscreen(true)
         }
         .help("Toca para abrir el Canvas a pantalla completa")
     }
@@ -866,22 +573,6 @@ public struct LockScreenPlayerView: View {
             
             if !isPrivacyMode {
                 appIconBadge(size: LockScreenPlayerMetrics.appIconSize, radius: LockScreenPlayerMetrics.appIconCornerRadius)
-            }
-        }
-    }
-    
-    // MARK: - Transición 3D de Rotación de Carátula al cambiar canción
-    
-    private func triggerArtworkFlipTransition() {
-        guard !isReduceMotion else { return }
-        withAnimation(.easeInOut(duration: 0.20)) {
-            artworkRotationY = 90
-            heroArtworkRotationY = 90
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.76)) {
-                artworkRotationY = 0
-                heroArtworkRotationY = 0
             }
         }
     }

@@ -85,7 +85,7 @@ public struct NotchBubbleBackground: View {
                     .clipShape(Circle())
                     .glassEffect(Glass.clear.interactive(), in: Circle())
                     .glassEffectTransition(.materialize)
-                    .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
+                    .environment(\.colorScheme, .dark)
             } else {
                 Circle()
                     .fill(Color.black)

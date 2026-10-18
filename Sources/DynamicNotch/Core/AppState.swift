@@ -273,9 +273,7 @@ public final class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: "notchAppearanceMode")
             DispatchQueue.main.async {
-                NotchWindowManager.shared.panel?.appearance = (self.effectiveAppearanceMode == .clearGlass)
-                    ? NSAppearance(named: .aqua)
-                    : NSAppearance(named: .darkAqua)
+                NotchWindowManager.shared.panel?.appearance = NSAppearance(named: .darkAqua) // siempre oscura: el vidrio clear en apariencia clara se ve esmerilado
             }
         }
     }
@@ -335,6 +333,9 @@ public final class AppState: ObservableObject {
     }
     
     @Published public var isAmbientCanvasOpen: Bool = false
+    /// Pantalla bloqueada: el reproductor está en pantalla completa (transitorio; al bloquear arranca según
+    /// `lockScreenStyle`)
+    @Published public var isLockScreenFullscreen: Bool = false
     
     public enum LockScreenRenderMode: String, CaseIterable, Identifiable {
         case pureOLED = "pureOLED" // 0. 100% Negro Puro OLED (#000000 opaco absoluto)

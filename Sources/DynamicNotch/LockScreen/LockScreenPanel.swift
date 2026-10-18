@@ -41,15 +41,6 @@ public final class LockScreenHostingView<Content: View>: NSHostingView<Content> 
     }
     
     public override func hitTest(_ point: NSPoint) -> NSView? {
-        if AppState.shared.lockScreenStyle == .heroWidget && !AppState.shared.isLockScreenArtworkExpanded {
-            let activeHeight = AppState.shared.lockScreenShowVolumeSlider
-                ? LockScreenPlayerMetrics.heroCardHeightWithVolume
-                : LockScreenPlayerMetrics.heroCardHeight
-            // En coordenadas AppKit, Y=0 está en la base inferior:
-            if point.y > (activeHeight + 14) {
-                return nil
-            }
-        }
         return super.hitTest(point)
     }
 }
