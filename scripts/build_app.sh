@@ -86,6 +86,10 @@ rm -rf "${STAGE_BUNDLE}"
 echo "✅ DynamicNotch.app creada y firmada exitosamente en: ${APP_BUNDLE}"
 killall -9 DynamicNotch 2>/dev/null || true
 sleep 0.3
-nohup "${MACOS_DIR}/DynamicNotch" >/dev/null 2>&1 &
-disown 2>/dev/null || true
+# Esperar a que la instancia anterior termine de cerrarse antes de abrir la nueva
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -x DynamicNotch >/dev/null || break
+    sleep 0.2
+done
+open "${APP_BUNDLE}" 2>/dev/null || { nohup "${MACOS_DIR}/DynamicNotch" >/dev/null 2>&1 & disown 2>/dev/null || true; }
 echo "🚀 DynamicNotch iniciado en segundo plano (instancia única)."
