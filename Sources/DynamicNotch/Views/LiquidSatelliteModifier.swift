@@ -98,11 +98,15 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     }
 
     public func body(content: Content) -> some View {
-        let m = min(1, max(0, max(merge, extraMerge)))
+        // `raw` puede bajar de 0 un instante: el resorte de desprendimiento sobrepasa el lugar de reposo y la
+        // gota se aleja un poco antes de asentarse (rebote sutil). Todo lo demás usa el valor acotado.
+        let raw = max(merge, extraMerge)
+        let m = min(1, max(0, raw))
         let bubbleRadius = bubbleDiameter / 2
         // Absorbida: el centro de la bolita queda concéntrico con el extremo del notch
         let mergedX = notchEndX
-        let x = restingX + (mergedX - restingX) * Self.easeInOut(m)
+        let travel = raw < 0 ? raw : Self.easeInOut(m)
+        let x = restingX + (mergedX - restingX) * travel
         
         // Forma de lágrima: mientras el cuello la sujeta, la bolita se estira HACIA el notch (anclada en su
         // lado exterior); la tensión es máxima justo antes de que el cuello se rompa
@@ -190,7 +194,16 @@ private struct LiquidEmergeModifier: ViewModifier, Animatable {
 
 public extension AnyTransition {
     /// La bolita brota del notch al aparecer y se reabsorbe en él al desaparecer.
+    /// - Desprendimiento: resorte con poco amortiguamiento → la gota se separa, sobrepasa apenas su lugar y se
+    ///   asienta (como mercurio que se suelta).
+    /// - Absorción: curva que ACELERA (como atraída por un imán) hasta tocar el notch; ahí la cápsula se abulta
+    ///   y rebota (ActivityCenter.pillImpulse).
     static var liquidSatellite: AnyTransition {
-        .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
+        .asymmetric(
+            insertion: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
+                .animation(.spring(response: 0.62, dampingFraction: 0.64)),
+            removal: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
+                .animation(.timingCurve(0.55, 0.0, 0.85, 0.35, duration: 0.34))
+        )
     }
 }

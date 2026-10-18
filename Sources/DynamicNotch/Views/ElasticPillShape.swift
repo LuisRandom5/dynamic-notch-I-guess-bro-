@@ -10,6 +10,9 @@ public struct ElasticPillShape: Shape {
     /// Con la forma pegada al bisel, ese tramo queda fuera de la ventana: el borde de contacto nunca cae en
     /// un subpíxel parcialmente cubierto (parpadeo de 1 px en monitores 1x durante el overscroll).
     public var topBleed: CGFloat
+    /// Impulso del borde derecho (pt) por la física de las bolitas: negativo = el borde retrocede (la gota se
+    /// desprende y la cápsula se recoge), positivo = se abulta (absorbe el volumen de la gota). Sin cambiar alto.
+    public var trailingImpulse: CGFloat = 0
     
     public init(
         topRadius: CGFloat = 0,
@@ -25,18 +28,19 @@ public struct ElasticPillShape: Shape {
         self.topBleed = topBleed
     }
     
-    public var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+    public var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>> {
         get {
             AnimatablePair(
                 AnimatablePair(topRadius, bottomRadius),
-                AnimatablePair(stretch, verticalStretch)
+                AnimatablePair(AnimatablePair(stretch, verticalStretch), trailingImpulse)
             )
         }
         set {
             topRadius = newValue.first.first
             bottomRadius = newValue.first.second
-            stretch = newValue.second.first
-            verticalStretch = newValue.second.second
+            stretch = newValue.second.first.first
+            verticalStretch = newValue.second.first.second
+            trailingImpulse = newValue.second.second
         }
     }
     
@@ -52,7 +56,7 @@ public struct ElasticPillShape: Shape {
         // Si stretch > 0 (derecha): borde izquierdo anclado en rect.minX, derecho avanza a rect.maxX + stretch
         // Si stretch < 0 (izquierda): borde derecho anclado en rect.maxX, izquierdo avanza a rect.minX + stretch
         let minX = stretch < 0 ? (rect.minX + stretch) : rect.minX
-        let maxX = stretch > 0 ? (rect.maxX + stretch) : rect.maxX
+        let maxX = (stretch > 0 ? (rect.maxX + stretch) : rect.maxX) + trailingImpulse
         let minY = rect.minY
         let maxY = rect.minY + activeHeight
         let width = maxX - minX

@@ -308,6 +308,7 @@ public struct NotchBolitaView: View {
     }
     
     private func handleTapGesture() {
+        center.lastSatelliteTapAt = Date()
         // La repisa no tiene tarjeta propia: su bolita abre la repisa del notch
         if activity.id == ShelfActivityProvider.activityId {
             activity.onTap?()

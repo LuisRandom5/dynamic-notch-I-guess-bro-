@@ -179,7 +179,8 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                     let isNearNotch = (point.y >= hitView.bounds.height - 100) && (abs(point.x - centerX) <= 260)
                     let detectionRect = hitView.hitAreaRect.insetBy(dx: -40, dy: -40)
                     // Un clic sobre una bolita satélite es de la bolita (abre su panel), no un tap al notch
-                    let isOnSatellite = hitView.dynamicHitPaths.contains { $0.contains(point) }
+                    // Con margen de 8 pt: el notch crece al pasar el cursor y empuja un poco a la bolita
+                    let isOnSatellite = hitView.dynamicHitPaths.contains { $0.boundingBox.insetBy(dx: -8, dy: -8).contains(point) }
                     if (detectionRect.contains(point) || isNearNotch) && !isOnSatellite &&
                         AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {
                         notchDragStartY = event.locationInWindow.y
@@ -212,8 +213,14 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                     let dist = hypot(currentX - notchDragStartX, currentY - notchDragStartY)
                     let duration = Date().timeIntervalSince(notchMouseDownTime)
                     if dist <= 10.0 && duration < 0.65 {
-                        DNDLogger.log("NotchPanel.sendEvent -> Tap directo detectado en Notch colapsado! Expandiendo...")
-                        DispatchQueue.main.async {
+                        // Se decide un instante después: si una bolita atendió este mismo clic (abrió su tarjeta), no
+                        // es un tap al notch (antes se abría también el reproductor debajo de la tarjeta)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            guard Date().timeIntervalSince(ActivityCenter.shared.lastSatelliteTapAt) > 0.4 else {
+                                DNDLogger.log("NotchPanel.sendEvent -> clic atendido por una bolita; no se expande el notch")
+                                return
+                            }
+                            DNDLogger.log("NotchPanel.sendEvent -> Tap directo detectado en Notch colapsado! Expandiendo...")
                             AppState.shared.expand()
                             AppState.shared.hapticService.triggerExpand()
                         }

@@ -659,7 +659,8 @@ public struct NotchContainerView: View {
                         stretch: 0,
                         verticalStretch: 0,
                         isExpanded: isSurfaceExpanded,
-                        topBleed: shapeTopBleed
+                        topBleed: shapeTopBleed,
+                        trailingImpulse: activityCenter.pillImpulse
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                     
@@ -848,7 +849,8 @@ public struct NotchContainerView: View {
                         .modifier(LiquidSatelliteModifier(
                             merge: isFusingThis ? activityCenter.fusionProgress : 0,
                             restingX: restingX,
-                            notchEndX: visibleHalfWidth - notchRadius,
+                            // El cuello nace del borde derecho real, que se recoge o abulta con la física
+                            notchEndX: visibleHalfWidth + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
                             notchRadius: notchRadius,
                             bubbleDiameter: bolitaDiam,
                             offsetY: bubbleOffsetY,

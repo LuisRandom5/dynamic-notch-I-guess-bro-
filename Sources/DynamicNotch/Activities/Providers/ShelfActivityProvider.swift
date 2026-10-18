@@ -41,10 +41,16 @@ public final class ShelfActivityProvider {
             bolitaVariant: .color(bgColor: .black, fgColor: Self.blue, iconName: "tray.full.fill", shortText: "\(visibleCount)"),
             tint: Self.blue,
             duration: nil,
-            onTap: {
-                withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
-                    AppState.shared.activeTab = .shelf
-                    AppState.shared.mode = .shelf
+            onTap: { [weak self] in
+                // Primero la gota se reabsorbe en el notch (acelera hacia él y la cápsula se abulta); la repisa
+                // se abre justo cuando llega, para que la bolita nunca quede encima de la repisa abierta
+                self?.lastCount = 0
+                ActivityCenter.shared.remove(id: Self.activityId)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+                    withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
+                        AppState.shared.activeTab = .shelf
+                        AppState.shared.mode = .shelf
+                    }
                 }
             }
         )

@@ -36,6 +36,14 @@ public final class ActivityCenter: ObservableObject {
     
     private var playbackObserver: AnyCancellable?
     
+    /// Física de las bolitas sobre el borde derecho de la cápsula (pt): se recoge al desprenderse una gota
+    /// y se abulta al absorberla, con rebote elástico (ver ElasticPillShape.trailingImpulse)
+    @Published public private(set) var pillImpulse: CGFloat = 0
+    private var impulseToken = 0
+    
+    /// Último clic atendido por una bolita: el panel lo consulta para no tomarlo también como tap al notch
+    public var lastSatelliteTapAt: Date = .distantPast
+    
     /// Cambio de rol escalonado de una misma actividad (notch ⇄ bolita). Si el notch cambiara de ancho
     /// mientras la bolita entra o sale, se encimarían; así primero termina un movimiento y luego empieza el otro:
     /// - hacia el notch: la bolita se reabsorbe y DESPUÉS el notch se expande con la actividad
@@ -358,6 +366,18 @@ public final class ActivityCenter: ObservableObject {
             newSecondaries.removeAll { $0.id == handoff.id || $0.id == displayedPrimary?.id }
         }
         
+        // Física: una gota nueva a la derecha se desprende (la cápsula retrocede); una que se va se absorbe
+        // (la cápsula se abulta al recibirla). Sólo con el notch cerrado y sin la bolita que se está fundiendo.
+        let oldRightId = secondaryActivities.first?.id
+        let newRightId = newSecondaries.first?.id
+        if oldRightId != newRightId {
+            if newRightId != nil && oldRightId == nil {
+                firePillImpulse(.detach)
+            } else if let gone = oldRightId, newRightId == nil, gone != fusingActivityId {
+                firePillImpulse(.absorb)
+            }
+        }
+        
         withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
             self.currentActivity = displayedPrimary
             self.secondaryActivities = newSecondaries
@@ -366,6 +386,39 @@ public final class ActivityCenter: ObservableObject {
         }
         
         NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
+    
+    private enum PillImpulse { case detach, absorb }
+    
+    /// Desprender: la cápsula se recoge 5 pt mientras el cuello se adelgaza y regresa con un rebote leve.
+    /// Absorber: cuando la gota llega (~0.3 s, acelera como atraída), la cápsula se abulta 7 pt y se asienta
+    /// con un pequeño sobrepaso elástico.
+    private func firePillImpulse(_ kind: PillImpulse) {
+        let mode = AppState.shared.mode
+        guard mode != .expanded && mode != .shelf, expandedActivity == nil,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        impulseToken += 1
+        let token = impulseToken
+        switch kind {
+        case .detach:
+            withAnimation(.easeOut(duration: 0.16)) { pillImpulse = -5 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
+                guard let self = self, self.impulseToken == token else { return }
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.58)) { self.pillImpulse = 0 }
+            }
+        case .absorb:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
+                guard let self = self, self.impulseToken == token else { return }
+                // Si mientras tanto el notch se desplegó (p. ej. la repisa), no abultar la tarjeta
+                let mode = AppState.shared.mode
+                guard mode != .expanded && mode != .shelf, self.expandedActivity == nil else { return }
+                withAnimation(.easeOut(duration: 0.10)) { self.pillImpulse = 7 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+                    guard self.impulseToken == token else { return }
+                    withAnimation(.spring(response: 0.40, dampingFraction: 0.52)) { self.pillImpulse = 0 }
+                }
+            }
+        }
     }
     
     private func beginRoleHandoff(id: String, toPrimary: Bool, duration: TimeInterval) {

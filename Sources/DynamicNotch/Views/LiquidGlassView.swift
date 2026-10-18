@@ -107,6 +107,8 @@ public struct DynamicNotchBackgroundView: View {
     public var verticalStretch: CGFloat
     public var isExpanded: Bool
     public var topBleed: CGFloat
+    /// Ver ElasticPillShape.trailingImpulse (física de desprendimiento/absorción de las bolitas)
+    public var trailingImpulse: CGFloat = 0
 
     public init(
         topRadius: CGFloat,
@@ -116,8 +118,10 @@ public struct DynamicNotchBackgroundView: View {
         stretch: CGFloat = 0,
         verticalStretch: CGFloat = 0,
         isExpanded: Bool = true,
-        topBleed: CGFloat = 0
+        topBleed: CGFloat = 0,
+        trailingImpulse: CGFloat = 0
     ) {
+        self.trailingImpulse = trailingImpulse
         self.topBleed = topBleed
         self.topRadius = topRadius
         self.bottomRadius = bottomRadius
@@ -135,13 +139,17 @@ public struct DynamicNotchBackgroundView: View {
     }
     
     public var body: some View {
-        let pillShape = ElasticPillShape(
-            topRadius: topRadius,
-            bottomRadius: bottomRadius,
-            stretch: stretch,
-            verticalStretch: verticalStretch,
-            topBleed: topBleed
-        )
+        let pillShape: ElasticPillShape = {
+            var shape = ElasticPillShape(
+                topRadius: topRadius,
+                bottomRadius: bottomRadius,
+                stretch: stretch,
+                verticalStretch: verticalStretch,
+                topBleed: topBleed
+            )
+            shape.trailingImpulse = trailingImpulse
+            return shape
+        }()
         
         // Accesibilidad: Si el usuario activó "Reducir transparencia" o "Aumentar contraste", usar Negro Puro OLED
         let mode = appState.effectiveAppearanceMode
