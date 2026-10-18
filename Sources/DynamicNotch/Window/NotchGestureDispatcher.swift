@@ -99,6 +99,17 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     // MARK: - Acciones
 
     public func gestureMoved(axis: GestureAxis, translation t: CGFloat, delta: CGFloat) -> Bool {
+        let triggered = route(axis: axis, translation: t, delta: delta)
+        // Desenfoque interactivo: crece con el recorrido (máximo a ~14 pt de dedos) y, si el gesto ya disparó
+        // la transformación, se queda completo hasta que se levanten los dedos (gestureEnded)
+        let hold: CGFloat = triggered ? 1 : min(1, abs(t) / 14)
+        if AppState.shared.gestureBlurHold != hold {
+            AppState.shared.gestureBlurHold = hold
+        }
+        return triggered
+    }
+
+    private func route(axis: GestureAxis, translation t: CGFloat, delta: CGFloat) -> Bool {
         let app = AppState.shared
 
         switch (context, axis) {
@@ -245,13 +256,18 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     public func gestureDiscreteStep(axis: GestureAxis, direction: CGFloat) -> Bool {
         context = resolveContext()
         // Un paso de rueda equivale a un swipe completo; sin estiramiento visual
-        let triggered = gestureMoved(axis: axis, translation: direction * 20, delta: direction * 20)
+        // Rueda clásica: sin fase de "levantar los dedos", así que no mantiene el desenfoque (basta el automático)
+        let triggered = route(axis: axis, translation: direction * 20, delta: direction * 20)
         resetOverscroll()
         return triggered
     }
 
     public func gestureEnded(triggered: Bool) {
         resetOverscroll()
+        // Dedos fuera del trackpad: el contenido vuelve a enfocarse mientras la forma termina de asentarse
+        withAnimation(.easeOut(duration: 0.32)) {
+            AppState.shared.gestureBlurHold = 0
+        }
     }
 
     // MARK: - Overscroll elástico

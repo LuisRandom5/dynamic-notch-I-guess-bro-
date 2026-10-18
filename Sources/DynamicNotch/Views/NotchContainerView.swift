@@ -672,7 +672,7 @@ public struct NotchContainerView: View {
                     mainModeContentView
                         .clipShape(containerPillShape)
                         // Estándar: el contenido se desenfoca un instante mientras la forma se transforma
-                        .morphBlur(on: morphKey)
+                        .morphBlur(on: morphKey, hold: appState.gestureBlurHold)
                     
                     // Zona táctil superior en el notch para cerrar al hacer click en el notch
                     topNotchCloseZone

@@ -113,6 +113,9 @@ public final class AppState: ObservableObject {
     @Published public var verticalOverscrollOffset: CGFloat = 0   // Estiramiento elástico hacia abajo (anclado arriba al notch)
     @Published public var contentVerticalOverscrollOffset: CGFloat = 0 // Desplazamiento vertical orgánico del contenido
     @Published public var isOverscrolling: Bool = false
+    /// Desenfoque mantenido por un gesto del trackpad en curso (0…1): sigue el recorrido de los dedos y se
+    /// queda al máximo desde que el gesto dispara el cambio hasta que el usuario levanta los dedos
+    @Published public var gestureBlurHold: CGFloat = 0
     
     // Volume HUD State
     @Published public var isVolumeHUDActive: Bool = false
