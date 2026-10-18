@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Network
 import AppKit
 
@@ -283,6 +284,16 @@ public final class AgentIPCService {
                 info = FrameHitchMonitor.shared.report(reset: reset)
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
+            
+        case ("POST", "/debug/drop-invite"):
+            // Diagnóstico: muestra la tarjeta de "suelta aquí" 4 s (para medir su zona activa con /debug/hit)
+            DispatchQueue.main.async {
+                withAnimation { AppState.shared.isDropInvitationActive = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    withAnimation { AppState.shared.isDropInvitationActive = false }
+                }
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
         case ("POST", "/debug/toggle-notch"):
             // Diagnóstico: abre o cierra el reproductor como si el usuario lo hiciera

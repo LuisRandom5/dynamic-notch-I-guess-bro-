@@ -175,9 +175,12 @@ public struct DynamicNotchBackgroundView: View {
                         // Velo SOBRE el vidrio (no tinte: en macOS 27 el tinte oscuro se dibuja como relleno sólido,
                         // cmux #5860; y no detrás: el vidrio refractaría negro).
                         // Las alas pasan sobre la barra de menús: piso de 30% (Apple sugiere ~35% sobre fondos claros)
+                        // Piso de 2 % (imperceptible): el vidrio lo compone macOS DETRÁS de la ventana, así que con
+                        // velo 0 los píxeles de la tarjeta quedaban 100 % transparentes y macOS dejaba pasar los
+                        // archivos arrastrados (y clics) a la ventana de abajo, salvo donde había texto o iconos
                         let veilOpacity = hasGlassWings
                             ? max(0.30, NotchGlassMetrics.veilOpacity(for: mode))
-                            : NotchGlassMetrics.veilOpacity(for: mode)
+                            : max(0.02, NotchGlassMetrics.veilOpacity(for: mode))
                         
                         // El vidrio aparece/desaparece con la transición nativa `materialize` (la lente se forma y
                         // se disuelve) en vez de un simple fundido de opacidad

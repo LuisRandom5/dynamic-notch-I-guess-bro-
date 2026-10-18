@@ -255,7 +255,10 @@ public final class DragDetectionProbe: ObservableObject {
                 if AppState.shared.enableShelfHaptics {
                     AppState.shared.hapticService.triggerSnap()
                 }
-            } else if euclidean > exitDist && AppState.shared.isDropInvitationActive && !AppState.shared.isDropSuccessAnimating {
+            } else if euclidean > exitDist && AppState.shared.isDropInvitationActive && !AppState.shared.isDropSuccessAnimating
+                        // Sólo se cierra si el cursor salió de la TARJETA: medir sólo la distancia al centro la
+                        // cerraba al moverse de lado sobre ella (zona útil = una franja del ancho del notch)
+                        && !NotchWindowManager.shared.visibleNotchScreenFrame.insetBy(dx: -30, dy: -30).contains(location) {
                 withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
                     AppState.shared.isDropInvitationActive = false
                 }
