@@ -145,11 +145,11 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                     .opacity(isGlass ? 0 : Double(attached))
                     .allowsHitTesting(false)
             )
-            // El icono se ve (comprimido) desde que asoma; sólo se cubre cuando ya está dentro del notch
+            // Dentro del notch no se ve nada; el icono (comprimido) aparece cuando la gota llega al borde
             .overlay(
                 Circle()
                     .fill(Color.black)
-                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.85) / 0.12)))
+                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.66) / 0.14)))
                     .allowsHitTesting(false)
             )
             .opacity(glassFade)

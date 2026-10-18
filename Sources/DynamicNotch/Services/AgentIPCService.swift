@@ -261,6 +261,13 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
             
+        case ("POST", "/debug/render-bubble"):
+            // Diagnóstico visual: renderiza cuadros del nacimiento de una bolita (modo negro) a /tmp
+            DispatchQueue.main.async {
+                BubbleFrameRenderer.renderSequence()
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("POST", "/debug/tap-shelf"):
             // Diagnóstico: simula el toque en la bolita de la repisa
             DispatchQueue.main.async {
