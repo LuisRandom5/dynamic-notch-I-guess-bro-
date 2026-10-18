@@ -24,17 +24,33 @@ public struct AgentInteractionView: View {
     private let expandedWidth: CGFloat = AgentActivityProvider.expandedWidth
     private let expandedHeight: CGFloat = AgentActivityProvider.expandedHeight
     
-    // Paleta de colores de Antigravity AI
-    private let accentGradient = LinearGradient(
-        colors: [
-            Color(red: 0.60, green: 0.35, blue: 1.00), // Vibrant Purple
-            Color(red: 0.18, green: 0.72, blue: 1.00)  // Cyan
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-    private let accentColor = Color(red: 0.60, green: 0.35, blue: 1.00)
-    private let cyanColor = Color(red: 0.18, green: 0.72, blue: 1.00)
+    /// Solicitudes de Claude Code (scripts/claude_permission_hook.py) usan la marca de Claude
+    private var isClaude: Bool { payload.title == "Claude" }
+    
+    // Paleta: Antigravity (violeta/celeste) o Claude (naranja)
+    private var accentGradient: LinearGradient {
+        LinearGradient(
+            colors: isClaude
+                ? [ClaudeMarkView.orange, Color(red: 0.93, green: 0.58, blue: 0.40)]
+                : [Color(red: 0.60, green: 0.35, blue: 1.00), Color(red: 0.18, green: 0.72, blue: 1.00)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+    private var accentColor: Color { isClaude ? ClaudeMarkView.orange : Color(red: 0.60, green: 0.35, blue: 1.00) }
+    private var cyanColor: Color { isClaude ? Color(red: 0.96, green: 0.72, blue: 0.58) : Color(red: 0.18, green: 0.72, blue: 1.00) }
+    
+    /// Icono del orbe: la marca de Claude o el símbolo según el tipo de solicitud
+    @ViewBuilder
+    private func orbIcon(size: CGFloat) -> some View {
+        if isClaude {
+            ClaudeSparkShape().fill(Color.white).frame(width: size * 1.15, height: size * 1.15)
+        } else {
+            Image(systemName: iconForType(payload.type))
+                .font(.system(size: size, weight: .semibold))
+                .foregroundColor(.white)
+        }
+    }
     
     public init(payload: AgentInteractionPayload) {
         self.payload = payload
@@ -73,9 +89,7 @@ public struct AgentInteractionView: View {
                     .frame(width: 42, height: 42)
                     .shadow(color: accentColor.opacity(0.50), radius: 8, x: 0, y: 2)
                 
-                Image(systemName: iconForType(payload.type))
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundColor(.white)
+                orbIcon(size: 19)
             }
             .frame(width: 44, height: 44)
             
@@ -236,9 +250,7 @@ public struct AgentInteractionView: View {
                         .fill(accentGradient)
                         .frame(width: 22, height: 22)
                     
-                    Image(systemName: iconForType(payload.type))
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
+                    orbIcon(size: 11)
                 }
                 
                 Text(payload.title)

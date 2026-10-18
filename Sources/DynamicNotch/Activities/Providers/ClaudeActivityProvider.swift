@@ -36,15 +36,40 @@ public struct ClaudeSessionState: Equatable {
     }
 }
 
+/// Uso de la suscripción de Claude reportado por la status line (scripts/claude_statusline.py).
+public struct ClaudeUsage: Equatable {
+    /// Porcentaje usado (0–100) del límite de la sesión de 5 h y del semanal; nil si Claude Code no lo reporta
+    public var fiveHourUsed: Double?
+    public var fiveHourResetsAt: Date?
+    public var sevenDayUsed: Double?
+    public var sevenDayResetsAt: Date?
+    public var updatedAt: Date
+}
+
 /// Convierte los reportes de Claude en la bolita satélite "Claude" (una por sesión) y su tarjeta de estado.
 public final class ClaudeActivityProvider: ObservableObject {
     public static let shared = ClaudeActivityProvider()
 
     /// Tamaño de la tarjeta al fusionarse con el notch
     public static let cardWidth: CGFloat = 440
-    public static let cardHeight: CGFloat = 196
+    public static let cardHeight: CGFloat = 216
 
     @Published public private(set) var sessions: [String: ClaudeSessionState] = [:]
+    @Published public private(set) var usage: ClaudeUsage?
+    
+    /// Aplica un reporte de uso de la status line (llamar en el hilo principal).
+    public func handleUsage(json: [String: Any]) {
+        func date(_ key: String) -> Date? {
+            (json[key] as? Double).map { Date(timeIntervalSince1970: $0) }
+        }
+        usage = ClaudeUsage(
+            fiveHourUsed: json["fiveHourUsed"] as? Double,
+            fiveHourResetsAt: date("fiveHourResetsAt"),
+            sevenDayUsed: json["sevenDayUsed"] as? Double,
+            sevenDayResetsAt: date("sevenDayResetsAt"),
+            updatedAt: Date()
+        )
+    }
 
     private var removalTimers: [String: Timer] = [:]
 

@@ -3,7 +3,12 @@
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"", "timeout": 3, "async": true }
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"",
+            "timeout": 3,
+            "async": true
+          }
         ]
       }
     ],
@@ -11,7 +16,12 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"", "timeout": 3, "async": true }
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"",
+            "timeout": 3,
+            "async": true
+          }
         ]
       }
     ],
@@ -19,30 +29,67 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"", "timeout": 3, "async": true }
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"",
+            "timeout": 3,
+            "async": true
+          }
         ]
       }
     ],
     "Notification": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"", "timeout": 3, "async": true }
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"",
+            "timeout": 3,
+            "async": true
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"", "timeout": 3, "async": true }
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"",
+            "timeout": 3,
+            "async": true
+          }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"", "timeout": 3, "async": true }
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_notch_hook.py\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_permission_hook.py\"",
+            "timeout": 60
+          }
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/claude_statusline.py\"",
+    "refreshInterval": 60
   }
 }

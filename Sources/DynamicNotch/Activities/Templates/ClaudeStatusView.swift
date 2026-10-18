@@ -53,6 +53,7 @@ public struct ClaudeStatusView: View {
             progressBar(state)
             stepRow(state)
             actionRow(state)
+            usageRow
             footer(state)
         }
         .padding(.horizontal, 20)
@@ -143,6 +144,46 @@ public struct ClaudeStatusView: View {
             .foregroundColor(.white.opacity(0.38))
     }
 
+    /// Uso restante de la sesión de 5 h (y semanal) de la suscripción, si Claude Code lo reporta.
+    @ViewBuilder
+    private var usageRow: some View {
+        if let usage = provider.usage, let used = usage.fiveHourUsed {
+            let remaining = max(0, min(100, 100 - used))
+            HStack(spacing: 8) {
+                Image(systemName: "gauge.with.dots.needle.33percent")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
+                    .frame(width: 14)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.10))
+                        Capsule()
+                            .fill(remaining < 15 ? Color.yellow : Color.white.opacity(0.75))
+                            .frame(width: max(3, geo.size.width * remaining / 100))
+                    }
+                }
+                .frame(width: 70, height: 4)
+                Text(usageText(remaining: remaining, usage: usage))
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.white.opacity(0.6))
+                    .lineLimit(1)
+            }
+        }
+    }
+    
+    private func usageText(remaining: Double, usage: ClaudeUsage) -> String {
+        var text = "Sesión: \(Int(remaining.rounded()))% libre"
+        if let reset = usage.fiveHourResetsAt, reset > Date() {
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            text += " · se reinicia \(formatter.string(from: reset))"
+        }
+        if let week = usage.sevenDayUsed {
+            text += " · semana \(Int(max(0, 100 - week).rounded()))%"
+        }
+        return text
+    }
+    
     // MARK: - Piezas
 
     private func percentLabel(_ state: ClaudeSessionState, size: CGFloat) -> some View {
