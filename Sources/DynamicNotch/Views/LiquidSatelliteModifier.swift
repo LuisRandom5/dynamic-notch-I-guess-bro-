@@ -114,19 +114,21 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         //  m ≈ 0.35 ya es un círculo completo unido por una cintura gruesa (forma de cacahuate)
         //  m ≈ 0.15 la cintura es un hilo · m = 0 separada en su lugar
         //  raw < 0  el resorte la pasa un poco: crece apenas por encima de su tamaño y se asienta
-        let grow = Self.smoothstep((1 - m) / 0.65)
-        // Fase B: la protuberancia nace estirada HACIA AFUERA (más ancha que alta) desde el borde del notch;
-        // al formarse el cuello ya es un círculo
-        let radiusScale: CGFloat = raw < 0 ? 1 + min(0.08, -raw * 0.6) : 0.55 + 0.45 * grow
-        let widthFactor = 1 + 0.18 * Self.smoothstep((m - 0.35) / 0.40)
-        // Tensión superficial: justo antes de que el hilo se corte (m 0.30 → 0.05) la gota se estira hacia
-        // el notch; al soltarse (raw < 0) tiembla como gelatina: se ensancha y se aplana un instante
-        let tension = (m > 0.05 && m < 0.30) ? sin(.pi * (0.30 - m) / 0.25) : 0
+        // Perfil de nacimiento (de tus cuadros del iPhone): la gota sale APRETADA Y LARGA, un óvalo bajo y
+        // estirado hacia afuera que lleva el icono comprimido, y sólo al final se recoge en un círculo perfecto.
+        //  m 0.80 → asoma · m 0.45 → óvalo largo y bajo · m 0.20 → casi círculo · m 0 → círculo
+        // Nace desde CERO dentro del extremo (m 1 → 0.78) para que el notch empiece siendo una cápsula limpia
+        let birth = Self.smoothstep((1 - m) / 0.22)
+        let heightScale: CGFloat = birth * (0.52 + 0.48 * Self.smoothstep((0.62 - m) / 0.50))
+        // El alargamiento crece mientras se separa (pico ≈ m 0.5) y se recoge al formar el círculo; al principio
+        // es moderado para que el bulto salga redondeado, no en punta
+        let elongation: CGFloat = 1 + 0.62 * Self.smoothstep((m - 0.14) / 0.32) * (1 - 0.7 * Self.smoothstep((m - 0.58) / 0.24))
+        // Tensión superficial justo antes del corte y temblor al soltarse (raw < 0)
+        let tension = (m > 0.05 && m < 0.26) ? sin(.pi * (0.26 - m) / 0.21) : 0
         let wobble: CGFloat = raw < 0 ? min(1, -raw / 0.06) : 0
-        let scaleX = radiusScale * widthFactor * (1 + 0.09 * tension + 0.07 * wobble)
-        let scaleY = radiusScale * (1 - 0.06 * tension - 0.06 * wobble)
-        let rest = bubbleDiameter / 2
-        let currentRadius = bubbleRadius * scaleY
+        let settle: CGFloat = raw < 0 ? 1 + min(0.06, -raw * 0.5) : 1
+        let scaleY = heightScale * settle * (1 - 0.05 * tension - 0.06 * wobble)
+        let scaleX = heightScale * elongation * settle * (1 + 0.07 * tension + 0.07 * wobble)
         
         // Mismo umbral que el cuello: el cuello aguanta casi hasta la posición de reposo
         let gapTravel = abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX))
@@ -156,7 +158,7 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
             .overlay(
                 Circle()
                     .fill(Color.black)
-                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.40) / 0.18)))
+                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.62) / 0.14)))
                     .allowsHitTesting(false)
             )
             .opacity(glassFade)
@@ -164,16 +166,15 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
             .background(
                 ZStack {
                     if drawsGlassDroplet {
-                        LiquidGlassDroplet(
-                            shape: LiquidDropletShape(
-                                notchCenterOffset: notchCenterOffset,
-                                notchRadius: notchRadius,
-                                bubbleRadius: bubbleRadius,
-                                maxDistance: maxDistance,
-                                scaleX: scaleX,
-                                scaleY: scaleY
-                            ),
-                            reach: abs(notchCenterOffset.x) + notchRadius + 12
+                        // Cristal: el MISMO contorno líquido, con el vidrio de las bolitas (sin la parte que ya
+                        // ocupa el notch, para no apilar vidrio)
+                        LiquidGlassContour(
+                            notchCenterOffset: notchCenterOffset,
+                            notchRadius: notchRadius,
+                            bubbleRadius: bubbleRadius,
+                            scaleX: scaleX,
+                            scaleY: scaleY,
+                            notchIsLeading: notchEndX < restingX
                         )
                         .opacity(glassFade)
                     } else if !isGlass && showsBridge && abs(raw) > 0.001 {
@@ -220,33 +221,71 @@ struct LiquidGooSilhouette: View {
     /// El notch está a la izquierda de la gota (bolita del lado derecho)
     let notchIsLeading: Bool
 
-    /// Radio del desenfoque: define hasta dónde se estira el cuello antes de romperse (~2× este valor)
-    static let gooBlur: CGFloat = 7
+    var body: some View {
+        let geometry = LiquidDropGeometry(
+            notchCenterOffset: notchCenterOffset, notchRadius: notchRadius, bubbleRadius: bubbleRadius,
+            scaleX: scaleX, scaleY: scaleY, notchIsLeading: notchIsLeading
+        )
+        LiquidContourShape(pillRect: geometry.pillRect, drop: geometry.dropRect, notchIsLeading: notchIsLeading)
+            .fill(Color.black)
+            .frame(width: geometry.size, height: geometry.size)
+            .allowsHitTesting(false)
+    }
+}
+
+/// Geometría compartida por el modo negro y el de cristal, en un lienzo cuadrado centrado en la gota
+struct LiquidDropGeometry {
+    let size: CGFloat
+    let pillRect: CGRect
+    let dropRect: CGRect
+
+    init(notchCenterOffset: CGPoint, notchRadius R: CGFloat, bubbleRadius: CGFloat, scaleX: CGFloat, scaleY: CGFloat, notchIsLeading: Bool) {
+        let reach = abs(notchCenterOffset.x) + R * 5 + bubbleRadius * 2 + 24
+        size = 2 * reach
+        let c = CGPoint(x: reach, y: reach)
+        let pillEnd = CGPoint(x: c.x + notchCenterOffset.x, y: c.y + notchCenterOffset.y)
+        // El cuerpo del notch se extiende HACIA DENTRO (lado opuesto a la gota)
+        let bodyLength = R * 4
+        pillRect = notchIsLeading
+            ? CGRect(x: pillEnd.x - bodyLength, y: pillEnd.y - R, width: bodyLength + R, height: 2 * R)
+            : CGRect(x: pillEnd.x - R, y: pillEnd.y - R, width: bodyLength + R, height: 2 * R)
+        let w = 2 * bubbleRadius * scaleX
+        let h = 2 * bubbleRadius * scaleY
+        dropRect = CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h)
+    }
+}
+
+/// La gota de cristal con el contorno líquido real
+private struct LiquidGlassContour: View {
+    let notchCenterOffset: CGPoint
+    let notchRadius: CGFloat
+    let bubbleRadius: CGFloat
+    let scaleX: CGFloat
+    let scaleY: CGFloat
+    let notchIsLeading: Bool
+
+    @ObservedObject private var appState = AppState.shared
+    @ObservedObject private var backdrop = BackdropBrightnessMonitor.shared
 
     var body: some View {
-        let reach = abs(notchCenterOffset.x) + notchRadius * 5 + bubbleRadius + 24
-        Canvas { context, size in
-            let c = CGPoint(x: size.width / 2, y: size.height / 2)
-            let R = notchRadius
-            let pillEnd = CGPoint(x: c.x + notchCenterOffset.x, y: c.y + notchCenterOffset.y)
-            // El cuerpo del notch se extiende HACIA DENTRO (lado opuesto a la gota) para que el campo del extremo
-            // sea el de una cápsula, no el de un círculo suelto
-            let bodyLength = R * 4
-            let pillRect = notchIsLeading
-                ? CGRect(x: pillEnd.x - bodyLength, y: pillEnd.y - R, width: bodyLength + R, height: 2 * R)
-                : CGRect(x: pillEnd.x - R, y: pillEnd.y - R, width: bodyLength + R, height: 2 * R)
-            let w = 2 * bubbleRadius * scaleX
-            let h = 2 * bubbleRadius * scaleY
-            let drop = CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h)
-
-            context.addFilter(.alphaThreshold(min: 0.5, color: .black))
-            context.addFilter(.blur(radius: Self.gooBlur))
-            context.drawLayer { layer in
-                layer.fill(Path(roundedRect: pillRect, cornerRadius: R), with: .color(.black))
-                layer.fill(Path(ellipseIn: drop), with: .color(.black))
+        let geometry = LiquidDropGeometry(
+            notchCenterOffset: notchCenterOffset, notchRadius: notchRadius, bubbleRadius: bubbleRadius,
+            scaleX: scaleX, scaleY: scaleY, notchIsLeading: notchIsLeading
+        )
+        let shape = LiquidContourShape(pillRect: geometry.pillRect, drop: geometry.dropRect, subtractPill: true)
+        ZStack {
+            if #available(macOS 26.0, *) {
+                Color.black.opacity(max(0.22, NotchGlassMetrics.veilOpacity(for: appState.effectiveAppearanceMode)))
+                    .clipShape(shape)
+                Color.clear
+                    .glassEffect(backdrop.isBackdropBright ? Glass.regular : Glass.clear, in: shape)
+                    .glassEffectTransition(.identity)
+            } else {
+                shape.fill(Color.black)
             }
         }
-        .frame(width: 2 * reach, height: 2 * reach)
+        .frame(width: geometry.size, height: geometry.size)
+        .environment(\.colorScheme, .dark)
         .allowsHitTesting(false)
     }
 }
