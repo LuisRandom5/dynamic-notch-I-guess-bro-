@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 import Combine
 import AppKit
 
@@ -19,7 +20,7 @@ public final class LyricsService: ObservableObject {
     public static let shared = LyricsService()
     
     @Published public private(set) var lines: [LyricLine] = []
-    @Published public private(set) var currentLineIndex: Int = 0
+    @Published public private(set) var currentLineIndex: Int = -1
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var hasSyncedLyrics: Bool = false
     @Published public private(set) var isInstrumental: Bool = false
@@ -30,6 +31,7 @@ public final class LyricsService: ObservableObject {
     
     // Caché en memoria para evitar re-descargas entre saltos de pista
     private var lyricsCache: [String: [LyricLine]] = [:]
+    private var cachedSyncedFlags: [String: Bool] = [:]
     
     private init() {
         observeMusicService()
@@ -52,7 +54,7 @@ public final class LyricsService: ObservableObject {
         guard !cleanTitle.isEmpty else {
             DispatchQueue.main.async {
                 self.lines = []
-                self.currentLineIndex = 0
+                self.currentLineIndex = -1
                 self.hasSyncedLyrics = false
                 self.isInstrumental = false
                 self.currentTrackKey = ""
@@ -68,9 +70,9 @@ public final class LyricsService: ObservableObject {
         if let cached = lyricsCache[key] {
             DispatchQueue.main.async {
                 self.lines = cached
-                self.hasSyncedLyrics = !cached.isEmpty
+                self.hasSyncedLyrics = self.cachedSyncedFlags[key] ?? false
                 self.isInstrumental = false
-                self.currentLineIndex = 0
+                self.currentLineIndex = -1
             }
             return
         }
@@ -80,74 +82,130 @@ public final class LyricsService: ObservableObject {
     
     public func fetchLyrics(title: String, artist: String, duration: Double, key: String) {
         isLoading = true
-        
-        // 1. Intentar consulta vía LRCLIB API
-        var components = URLComponents(string: "https://lrclib.net/api/get")
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "track_name", value: title),
-            URLQueryItem(name: "artist_name", value: artist)
-        ]
-        if duration > 10 {
-            queryItems.append(URLQueryItem(name: "duration", value: String(Int(duration))))
-        }
-        components?.queryItems = queryItems
-        
-        guard let url = components?.url else {
-            fallbackToAppleMusicOrDemo(title: title, artist: artist, key: key)
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 6.0
-        request.setValue("DynamicNotch/1.0 (macOS; github.com/LuisRandom5)", forHTTPHeaderField: "User-Agent")
-        
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
+            let cleanTitle = Self.cleanTitle(title)
+            let primaryArtist = Self.primaryArtist(artist)
             
-            if let data = data,
-               let http = response as? HTTPURLResponse, http.statusCode == 200,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                
-                let isInst = json["instrumental"] as? Bool ?? false
-                let synced = json["syncedLyrics"] as? String
-                let plain = json["plainLyrics"] as? String
-                
-                if let syncedStr = synced, !syncedStr.isEmpty {
-                    let parsed = Self.parseLRC(syncedStr)
-                    if !parsed.isEmpty {
-                        DispatchQueue.main.async {
-                            guard self.currentTrackKey == key else { return }
-                            self.lines = parsed
-                            self.hasSyncedLyrics = true
-                            self.isInstrumental = isInst
-                            self.isLoading = false
-                            self.lyricsCache[key] = parsed
-                        }
-                        return
-                    }
+            // 1. Coincidencia exacta (título original y limpio) → 2. búsqueda flexible eligiendo la versión
+            //    sincronizada cuya duración más se parezca a la de la canción que suena
+            var best: (synced: String?, plain: String?, instrumental: Bool)? = nil
+            for candidateTitle in Array(Set([title, cleanTitle])) {
+                if let found = self.requestGet(title: candidateTitle, artist: primaryArtist, duration: duration),
+                   found.synced != nil {
+                    best = found
+                    break
+                } else if best == nil, let found = self.requestGet(title: candidateTitle, artist: primaryArtist, duration: duration) {
+                    best = found
                 }
-                
-                if let plainStr = plain, !plainStr.isEmpty {
-                    let plainLines = Self.parsePlainLyrics(plainStr, duration: duration)
-                    DispatchQueue.main.async {
-                        guard self.currentTrackKey == key else { return }
-                        self.lines = plainLines
-                        self.hasSyncedLyrics = false
-                        self.isInstrumental = isInst
-                        self.isLoading = false
-                        self.lyricsCache[key] = plainLines
-                    }
-                    return
+            }
+            if best?.synced == nil, let searched = self.requestSearch(title: cleanTitle, artist: primaryArtist, duration: duration) {
+                if searched.synced != nil || best == nil {
+                    best = searched
                 }
             }
             
-            // Si LRCLIB no encontró o no hubo internet, intentar Apple Music local o demo estética
+            if let synced = best?.synced, !synced.isEmpty {
+                let parsed = Self.parseLRC(synced)
+                if !parsed.isEmpty {
+                    self.publish(parsed, synced: true, instrumental: best?.instrumental ?? false, key: key)
+                    return
+                }
+            }
+            if let plain = best?.plain, !plain.isEmpty {
+                // Sin tiempos: se muestra como letra fija, sin fingir sincronía
+                self.publish(Self.parsePlainLyrics(plain), synced: false, instrumental: best?.instrumental ?? false, key: key)
+                return
+            }
+            if best?.instrumental == true {
+                self.publish([], synced: false, instrumental: true, key: key)
+                return
+            }
             self.fallbackToAppleMusicOrDemo(title: title, artist: artist, key: key)
+        }
+    }
+    
+    private func publish(_ lines: [LyricLine], synced: Bool, instrumental: Bool, key: String) {
+        DispatchQueue.main.async {
+            guard self.currentTrackKey == key else { return }
+            self.lines = lines
+            self.hasSyncedLyrics = synced
+            self.isInstrumental = instrumental
+            self.isLoading = false
+            self.currentLineIndex = -1
+            self.lyricsCache[key] = lines
+            self.cachedSyncedFlags[key] = synced
+        }
+    }
+    
+    private func requestGet(title: String, artist: String, duration: Double) -> (synced: String?, plain: String?, instrumental: Bool)? {
+        var components = URLComponents(string: "https://lrclib.net/api/get")
+        var items = [URLQueryItem(name: "track_name", value: title), URLQueryItem(name: "artist_name", value: artist)]
+        if duration > 10 { items.append(URLQueryItem(name: "duration", value: String(Int(duration.rounded())))) }
+        components?.queryItems = items
+        guard let url = components?.url, let json = Self.fetchJSON(url) as? [String: Any] else { return nil }
+        return Self.entry(json)
+    }
+    
+    private func requestSearch(title: String, artist: String, duration: Double) -> (synced: String?, plain: String?, instrumental: Bool)? {
+        var components = URLComponents(string: "https://lrclib.net/api/search")
+        components?.queryItems = [URLQueryItem(name: "track_name", value: title), URLQueryItem(name: "artist_name", value: artist)]
+        guard let url = components?.url, let results = Self.fetchJSON(url) as? [[String: Any]], !results.isEmpty else { return nil }
+        // Preferir con letra sincronizada y duración cercana (±4 s); si no, la más cercana en duración
+        let scored = results.map { item -> (item: [String: Any], score: Double) in
+            let d = item["duration"] as? Double ?? 0
+            let durationGap = duration > 10 && d > 0 ? abs(d - duration) : 30
+            let hasSynced = (item["syncedLyrics"] as? String)?.isEmpty == false
+            return (item, (hasSynced ? 0 : 1000) + durationGap)
+        }
+        guard let best = scored.min(by: { $0.score < $1.score }) else { return nil }
+        if duration > 10, let d = best.item["duration"] as? Double, d > 0, abs(d - duration) > 8 { return nil }
+        return Self.entry(best.item)
+    }
+    
+    private static func entry(_ json: [String: Any]) -> (synced: String?, plain: String?, instrumental: Bool) {
+        (json["syncedLyrics"] as? String, json["plainLyrics"] as? String, json["instrumental"] as? Bool ?? false)
+    }
+    
+    private static func fetchJSON(_ url: URL) -> Any? {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6.0
+        request.setValue("DynamicNotch/1.0 (macOS; github.com/LuisRandom5)", forHTTPHeaderField: "User-Agent")
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: Any?
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            if let data = data, (response as? HTTPURLResponse)?.statusCode == 200 {
+                result = try? JSONSerialization.jsonObject(with: data)
+            }
+            semaphore.signal()
         }.resume()
+        _ = semaphore.wait(timeout: .now() + 7)
+        return result
+    }
+    
+    /// "Song (feat. X) - Remastered 2011" → "Song"
+    static func cleanTitle(_ title: String) -> String {
+        var t = title
+        for pattern in [#"\s*[\(\[](feat|ft|with|con)\.?[^\)\]]*[\)\]]"#,
+                        #"\s*[\(\[][^\)\]]*(remaster|version|versión|live|en vivo|edit|mix|explicit|mono|stereo)[^\)\]]*[\)\]]"#,
+                        #"\s+-\s+.*(remaster|version|versión|live|en vivo|edit|mix).*$"#] {
+            t = t.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    /// "Eminem, Dr. Dre & 50 Cent" → "Eminem"
+    static func primaryArtist(_ artist: String) -> String {
+        let separators = [",", " & ", " x ", " X ", " feat", " ft.", " y "]
+        var a = artist
+        for sep in separators {
+            if let r = a.range(of: sep) { a = String(a[..<r.lowerBound]) }
+        }
+        return a.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func fallbackToAppleMusicOrDemo(title: String, artist: String, key: String) {
-        // Consultar script de Apple Music si la app nativa Música está corriendo
+        // Última opción: la letra que Apple Music tenga guardada en la pista (sin tiempos)
         let appleMusicScript = """
         tell application "System Events"
             if exists (process "Music") then
@@ -160,37 +218,17 @@ public final class LyricsService: ObservableObject {
         end tell
         return ""
         """
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            var errorInfo: NSDictionary?
-            if let script = NSAppleScript(source: appleMusicScript) {
-                let res = script.executeAndReturnError(&errorInfo)
-                let lyrics = res.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if !lyrics.isEmpty {
-                    let parsed = Self.parsePlainLyrics(lyrics, duration: MusicService.shared.currentTrack.duration)
-                    DispatchQueue.main.async {
-                        guard self.currentTrackKey == key else { return }
-                        self.lines = parsed
-                        self.hasSyncedLyrics = false
-                        self.isInstrumental = false
-                        self.isLoading = false
-                        self.lyricsCache[key] = parsed
-                    }
-                    return
-                }
-            }
-            
-            // Demo visual por defecto para canciones sin letra o pruebas
-            let demo = Self.generateAestheticDemoLyrics(title: title, artist: artist)
-            DispatchQueue.main.async {
-                guard self.currentTrackKey == key else { return }
-                self.lines = demo
-                self.hasSyncedLyrics = true
-                self.isInstrumental = false
-                self.isLoading = false
+        var errorInfo: NSDictionary?
+        if let script = NSAppleScript(source: appleMusicScript) {
+            let res = script.executeAndReturnError(&errorInfo)
+            let lyrics = res.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !lyrics.isEmpty {
+                publish(Self.parsePlainLyrics(lyrics), synced: false, instrumental: false, key: key)
+                return
             }
         }
+        // Sin letra: nunca se inventa una (antes se mostraba una letra de demostración ajena a la canción)
+        publish([], synced: false, instrumental: false, key: key)
     }
     
     // MARK: - Parsers de Formato LRC
@@ -231,56 +269,72 @@ public final class LyricsService: ObservableObject {
         return result.sorted { $0.timestamp < $1.timestamp }
     }
     
-    public static func parsePlainLyrics(_ plain: String, duration: Double) -> [LyricLine] {
-        let rawLines = plain.components(separatedBy: "\n")
+    public static func parsePlainLyrics(_ plain: String) -> [LyricLine] {
+        plain.components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        
-        guard !rawLines.isEmpty else { return [] }
-        
-        let total = duration > 10 ? duration : 180.0
-        let step = total / Double(rawLines.count)
-        
-        var result: [LyricLine] = []
-        for (i, line) in rawLines.enumerated() {
-            result.append(LyricLine(timestamp: Double(i) * step, text: line))
-        }
-        return result
-    }
-    
-    public static func generateAestheticDemoLyrics(title: String, artist: String) -> [LyricLine] {
-        return [
-            LyricLine(timestamp: 2.0, text: "counting the boats as they turned for home"),
-            LyricLine(timestamp: 6.5, text: "Blue hour on the water"),
-            LyricLine(timestamp: 11.0, text: "every light is finding its way back"),
-            LyricLine(timestamp: 16.0, text: "hold the moment, hold it slower"),
-            LyricLine(timestamp: 21.5, text: "I can hear the city start to glow"),
-            LyricLine(timestamp: 26.0, text: "paper boats and silver weather"),
-            LyricLine(timestamp: 31.0, text: "all the roads we used to know"),
-            LyricLine(timestamp: 36.5, text: "silver tides under velvet skies"),
-            LyricLine(timestamp: 42.0, text: "echoes floating through the night")
-        ]
+            .map { LyricLine(timestamp: 0, text: $0) }
     }
     
     // MARK: - Sincronización en Tiempo Real
     
+    // Reloj de canción interpolado: MusicService reporta la posición en pasos de ~1 s; entre reportes
+    // se avanza con el reloj real para que el cambio de línea caiga en el momento justo.
+    private var anchorPosition: Double = 0
+    private var anchorTime: Double = CACurrentMediaTime()
+    private var lastReportedPosition: Double = -1
+    /// Las líneas aparecen un poco antes de cantarse, como en Apple Music
+    private static let lineLead: Double = 0.15
+    
+    /// Posición estimada de la canción (s), continua entre reportes.
+    public var estimatedPosition: Double {
+        let track = MusicService.shared.currentTrack
+        let now = CACurrentMediaTime()
+        let estimate = anchorPosition + (track.isPlaying ? now - anchorTime : 0)
+        return estimate
+    }
+    
     private func startSyncTimer() {
         syncTimer?.invalidate()
-        let t = Timer(timeInterval: 0.10, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             self?.updateCurrentLine()
         }
-        t.tolerance = 0.03
+        t.tolerance = 0.01
         RunLoop.main.add(t, forMode: .common)
         syncTimer = t
     }
     
+    private func updateClock() {
+        let track = MusicService.shared.currentTrack
+        let now = CACurrentMediaTime()
+        let estimate = anchorPosition + (now - anchorTime)
+        if !track.isPlaying {
+            // En pausa el reloj se congela en la última posición conocida
+            if track.playbackPosition != lastReportedPosition {
+                lastReportedPosition = track.playbackPosition
+                anchorPosition = track.playbackPosition
+            }
+            anchorTime = now
+            return
+        }
+        if track.playbackPosition != lastReportedPosition {
+            lastReportedPosition = track.playbackPosition
+            // Los reportes llegan cuantizados: sólo corregir si el estimado se desvió (adelantar/retroceder)
+            if abs(estimate - track.playbackPosition) > 1.2 {
+                anchorPosition = track.playbackPosition
+                anchorTime = now
+            }
+        }
+    }
+    
     private func updateCurrentLine() {
-        guard !lines.isEmpty else { return }
-        let currentPos = MusicService.shared.currentTrack.playbackPosition
+        updateClock()
+        guard hasSyncedLyrics, !lines.isEmpty else { return }
+        let position = estimatedPosition + Self.lineLead
         
-        var activeIndex = 0
+        var activeIndex = -1
         for (i, line) in lines.enumerated() {
-            if currentPos >= line.timestamp {
+            if position >= line.timestamp {
                 activeIndex = i
             } else {
                 break
@@ -292,8 +346,19 @@ public final class LyricsService: ObservableObject {
         }
     }
     
+    /// Segundos hasta la siguiente línea (para mostrar los puntos "•••" en partes instrumentales)
+    public var gapUntilNextLine: Double? {
+        let next = currentLineIndex + 1
+        guard hasSyncedLyrics, next < lines.count else { return nil }
+        return lines[next].timestamp - estimatedPosition
+    }
+    
     /// Salto interactivo a una línea específica
     public func seekToLine(_ line: LyricLine) {
+        guard hasSyncedLyrics else { return }
         MusicService.shared.seek(to: line.timestamp)
+        // Re-anclar el reloj al instante elegido para que la línea se ilumine de inmediato
+        anchorPosition = line.timestamp
+        anchorTime = CACurrentMediaTime()
     }
 }
