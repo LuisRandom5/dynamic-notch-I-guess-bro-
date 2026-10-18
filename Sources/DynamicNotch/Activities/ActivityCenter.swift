@@ -47,7 +47,9 @@ public final class ActivityCenter: ObservableObject {
     /// Alerta de la Isla Dinámica: ante una actualización importante (terminó, necesita atención), la
     /// actividad se expande un momento para mostrarla y regresa sola a su lugar. Sólo si nada más ocupa el
     /// notch (no interrumpe al usuario).
-    public func presentAlert(id: String, duration: TimeInterval = 4.0) {
+    public func presentAlert(id: String, duration: TimeInterval? = nil) {
+        guard AppState.shared.liveActivityAlertsEnabled else { return }
+        let duration = duration ?? AppState.shared.liveActivityAlertDuration
         guard let activity = activeActivities.first(where: { $0.id == id }),
               secondaryActivities.contains(where: { $0.id == id }),
               expandedActivity == nil, !isFusing,
@@ -94,7 +96,7 @@ public final class ActivityCenter: ObservableObject {
     
     /// Después del HUD de volumen/brillo, lo que había en el notch (reproductor, temporizador…) se queda
     /// escondido un momento antes de volver, como en la Isla Dinámica: el notch queda limpio y luego regresa.
-    public static let hudReturnDelay: TimeInterval = 3.0
+    public static var hudReturnDelay: TimeInterval { AppState.shared.hudReturnDelay }
     private var hudHoldUntil: Date = .distantPast
     private static let reabsorbDuration: TimeInterval = 0.50
     private static let notchSettleDuration: TimeInterval = 0.40
@@ -117,7 +119,7 @@ public final class ActivityCenter: ObservableObject {
     
     /// Actividades "de fondo" (temporizador, cronómetro) que viven como bolita mientras suena algo.
     private func yieldsToPlayback(_ activity: LiveActivity) -> Bool {
-        activity.kind == .timer && !activity.isUrgent && MusicService.shared.currentTrack.isPlaying
+        AppState.shared.timerYieldsToMusic && activity.kind == .timer && !activity.isUrgent && MusicService.shared.currentTrack.isPlaying
     }
     
     // MARK: - Publicación y Actualización

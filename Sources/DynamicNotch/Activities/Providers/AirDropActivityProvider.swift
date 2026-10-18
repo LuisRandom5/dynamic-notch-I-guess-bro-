@@ -59,7 +59,7 @@ public final class AirDropActivityProvider: ObservableObject {
         case (.receiving, true):
             // Si AirDropObserverService ya mostró la tarjeta del archivo, no volver a poner las alas encima
             // (antes se quedaban trabadas con el anillo lleno: nada las reemplazaba ni las retiraba)
-            closeAutoRevealedFinderWindow()
+            if AppState.shared.airDropReplacesNative { closeAutoRevealedFinderWindow() }
             guard Date().timeIntervalSince(lastReceivedCardAt) >= 4 else { return }
             // El anillo se completa al instante y se busca el archivo (hasta 2 s) para que la tarjeta abra
             // exactamente su ubicación

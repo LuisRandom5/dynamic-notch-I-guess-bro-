@@ -284,7 +284,7 @@ public struct NotchBolitaView: View {
             .animation(.spring(response: 0.30, dampingFraction: 0.70), value: isHolding)
             // Clic = abrir la app · mantener presionado (0.35 s) = expandir, como la Isla Dinámica del iPhone
             .highPriorityGesture(
-                LongPressGesture(minimumDuration: 0.35)
+                LongPressGesture(minimumDuration: appState.bubbleHoldDuration)
                     // La bolita se comprime mientras se mantiene, para que se sienta que va a pasar algo
                     .updating($isHolding) { pressing, state, _ in state = pressing }
                     .onEnded { _ in handleLongPress() }
@@ -336,6 +336,11 @@ public struct NotchBolitaView: View {
         }
         if center.expandedActivity?.id == activity.id {
             center.collapseExpandedActivity()
+            return
+        }
+        // Ajuste "Clic abre la app": apagado, el clic expande la tarjeta como antes
+        guard appState.bubbleTapOpensApp else {
+            handleLongPress()
             return
         }
         if let bundleId = sourceAppBundleId,

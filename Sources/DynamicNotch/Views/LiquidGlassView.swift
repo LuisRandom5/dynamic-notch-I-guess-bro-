@@ -159,7 +159,7 @@ public struct DynamicNotchBackgroundView: View {
             let notchWidth = ScreenService.shared.currentGeometry.width
             // Notch cerrado con actividad (música, temporizador…): la píldora es más ancha que la cámara y sus
             // lados ("alas") son de cristal; el centro sigue negro detrás de la cámara física
-            let hasGlassWings = !isExpanded && geo.size.width > notchWidth + 12
+            let hasGlassWings = appState.glassWingsEnabled && !isExpanded && geo.size.width > notchWidth + 12
             let showsGlass = isExpanded || hasGlassWings
             
             ZStack {

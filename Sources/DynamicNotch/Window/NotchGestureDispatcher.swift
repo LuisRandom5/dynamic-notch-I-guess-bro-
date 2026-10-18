@@ -34,6 +34,13 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     
     /// Sigue los dedos hacia arriba: devuelve false para seguir recibiendo movimientos (la decisión es al soltar)
     private func trackInteractiveClose(translation t: CGFloat, delta: CGFloat, onCommit: @escaping () -> Void) -> Bool {
+        // Ajuste apagado: cierre inmediato al deslizar hacia arriba (como antes)
+        guard AppState.shared.interactiveCloseEnabled else {
+            guard t <= -2.0 else { return false }
+            onCommit()
+            AppState.shared.hapticService.triggerSnap()
+            return true
+        }
         let progress = min(1, max(0, -t / Self.interactiveCloseDistance))
         AppState.shared.interactiveCollapseProgress = progress
         lastCloseDelta = delta
@@ -56,7 +63,7 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         guard pendingInteractiveClose != nil else { return }
         let commit = pendingInteractiveClose
         pendingInteractiveClose = nil
-        if let commit = commit, progress >= Self.interactiveCloseCommit || lastCloseDelta <= Self.interactiveCloseFlickDelta {
+        if let commit = commit, progress >= CGFloat(app.interactiveCloseThreshold) || lastCloseDelta <= Self.interactiveCloseFlickDelta {
             DNDLogger.log("Gestos: cierre interactivo completado (\(Int(progress * 100))%)")
             commit()
             // La escala del gesto regresa con EXACTAMENTE el resorte de la contracción y en el mismo instante
@@ -149,7 +156,8 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         switch context {
         case .expanded, .shelf: return true
         // Notch cerrado con música (o minimizado): deslizar de lado la esconde / la regresa
-        case .collapsed: return AppState.shared.mode == .compact || AppState.shared.isCompactMinimized
+        case .collapsed:
+            return AppState.shared.swipeToMinimizeMusic && (AppState.shared.mode == .compact || AppState.shared.isCompactMinimized)
         default: return false
         }
     }

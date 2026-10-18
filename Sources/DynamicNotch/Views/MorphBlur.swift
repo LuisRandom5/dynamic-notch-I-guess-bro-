@@ -25,9 +25,9 @@ public struct MorphBlurModifier<Key: Equatable>: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .blur(radius: reduceMotion ? 0 : max(blur, hold * radius))
+            .blur(radius: (reduceMotion || !AppState.shared.morphBlurEnabled) ? 0 : max(blur, hold * radius))
             .onChange(of: key) { _, _ in
-                guard !reduceMotion else { return }
+                guard !reduceMotion, AppState.shared.morphBlurEnabled else { return }
                 token += 1
                 let current = token
                 // Entra rápido (la forma empieza a moverse) y se aclara mientras la forma se asienta

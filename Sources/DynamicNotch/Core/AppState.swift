@@ -128,6 +128,94 @@ public final class AppState: ObservableObject {
     /// Como en la Isla Dinámica: deslizar de lado sobre el notch cerrado esconde la actividad de música
     /// (queda el notch limpio); otro deslizamiento, o el cambio de canción, la regresa
     @Published public var isCompactMinimized: Bool = false
+
+    // MARK: - Ajustes de comportamiento (pestañas Actividades, Gestos, Apariencia…)
+    /// La bolita se encoge cuando el cursor pasa por el notch
+    @Published public var bubbleShrinksOnNotchHover: Bool = UserDefaults.standard.object(forKey: "bubbleShrinksOnNotchHover") != nil
+        ? UserDefaults.standard.bool(forKey: "bubbleShrinksOnNotchHover") : true {
+        didSet { UserDefaults.standard.set(bubbleShrinksOnNotchHover, forKey: "bubbleShrinksOnNotchHover") }
+    }
+    /// Clic en una bolita abre su app (mantener presionado la expande), como el iPhone
+    @Published public var bubbleTapOpensApp: Bool = UserDefaults.standard.object(forKey: "bubbleTapOpensApp") != nil
+        ? UserDefaults.standard.bool(forKey: "bubbleTapOpensApp") : true {
+        didSet { UserDefaults.standard.set(bubbleTapOpensApp, forKey: "bubbleTapOpensApp") }
+    }
+    /// Segundos para \"mantener presionado\" una bolita
+    @Published public var bubbleHoldDuration: Double = UserDefaults.standard.object(forKey: "bubbleHoldDuration") != nil
+        ? UserDefaults.standard.double(forKey: "bubbleHoldDuration") : 0.35 {
+        didSet { UserDefaults.standard.set(bubbleHoldDuration, forKey: "bubbleHoldDuration") }
+    }
+    /// Alertas: una actualización importante expande la actividad un momento
+    @Published public var liveActivityAlertsEnabled: Bool = UserDefaults.standard.object(forKey: "liveActivityAlertsEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "liveActivityAlertsEnabled") : true {
+        didSet { UserDefaults.standard.set(liveActivityAlertsEnabled, forKey: "liveActivityAlertsEnabled") }
+    }
+    /// Segundos que se queda abierta una alerta
+    @Published public var liveActivityAlertDuration: Double = UserDefaults.standard.object(forKey: "liveActivityAlertDuration") != nil
+        ? UserDefaults.standard.double(forKey: "liveActivityAlertDuration") : 4.0 {
+        didSet { UserDefaults.standard.set(liveActivityAlertDuration, forKey: "liveActivityAlertDuration") }
+    }
+    /// Segundos de notch limpio tras el HUD de volumen/brillo
+    @Published public var hudReturnDelay: Double = UserDefaults.standard.object(forKey: "hudReturnDelay") != nil
+        ? UserDefaults.standard.double(forKey: "hudReturnDelay") : 3.0 {
+        didSet { UserDefaults.standard.set(hudReturnDelay, forKey: "hudReturnDelay") }
+    }
+    /// Ocultar el notch mientras se ve algo a pantalla completa
+    @Published public var hideNotchInFullScreen: Bool = UserDefaults.standard.object(forKey: "hideNotchInFullScreen") != nil
+        ? UserDefaults.standard.bool(forKey: "hideNotchInFullScreen") : true {
+        didSet { UserDefaults.standard.set(hideNotchInFullScreen, forKey: "hideNotchInFullScreen") }
+    }
+    /// El temporizador cede el notch a la música y sigue como bolita
+    @Published public var timerYieldsToMusic: Bool = UserDefaults.standard.object(forKey: "timerYieldsToMusic") != nil
+        ? UserDefaults.standard.bool(forKey: "timerYieldsToMusic") : true {
+        didSet { UserDefaults.standard.set(timerYieldsToMusic, forKey: "timerYieldsToMusic") }
+    }
+    /// Deslizar de lado sobre el notch cerrado esconde la música
+    @Published public var swipeToMinimizeMusic: Bool = UserDefaults.standard.object(forKey: "swipeToMinimizeMusic") != nil
+        ? UserDefaults.standard.bool(forKey: "swipeToMinimizeMusic") : true {
+        didSet { UserDefaults.standard.set(swipeToMinimizeMusic, forKey: "swipeToMinimizeMusic") }
+    }
+    /// Cerrar siguiendo los dedos al deslizar hacia arriba
+    @Published public var interactiveCloseEnabled: Bool = UserDefaults.standard.object(forKey: "interactiveCloseEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "interactiveCloseEnabled") : true {
+        didSet { UserDefaults.standard.set(interactiveCloseEnabled, forKey: "interactiveCloseEnabled") }
+    }
+    /// Recorrido mínimo (0…1) para que el cierre interactivo se complete
+    @Published public var interactiveCloseThreshold: Double = UserDefaults.standard.object(forKey: "interactiveCloseThreshold") != nil
+        ? UserDefaults.standard.double(forKey: "interactiveCloseThreshold") : 0.30 {
+        didSet { UserDefaults.standard.set(interactiveCloseThreshold, forKey: "interactiveCloseThreshold") }
+    }
+    /// Desenfoque del contenido mientras el notch se transforma
+    @Published public var morphBlurEnabled: Bool = UserDefaults.standard.object(forKey: "morphBlurEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "morphBlurEnabled") : true {
+        didSet { UserDefaults.standard.set(morphBlurEnabled, forKey: "morphBlurEnabled") }
+    }
+    /// Borde fino de color en modo oscuro (keyline)
+    @Published public var keylineEnabled: Bool = UserDefaults.standard.object(forKey: "keylineEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "keylineEnabled") : true {
+        didSet { UserDefaults.standard.set(keylineEnabled, forKey: "keylineEnabled") }
+    }
+    /// Alas de cristal en el notch cerrado con actividad
+    @Published public var glassWingsEnabled: Bool = UserDefaults.standard.object(forKey: "glassWingsEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "glassWingsEnabled") : true {
+        didSet { UserDefaults.standard.set(glassWingsEnabled, forKey: "glassWingsEnabled") }
+    }
+    /// Cristal Oscuro: vidrio regular sobre fondos claros
+    @Published public var adaptGlassToBrightBackdrop: Bool = UserDefaults.standard.object(forKey: "adaptGlassToBrightBackdrop") != nil
+        ? UserDefaults.standard.bool(forKey: "adaptGlassToBrightBackdrop") : true {
+        didSet { UserDefaults.standard.set(adaptGlassToBrightBackdrop, forKey: "adaptGlassToBrightBackdrop") }
+    }
+    /// Barras al tempo de la canción cuando el audio está protegido
+    @Published public var tempoFallbackEnabled: Bool = UserDefaults.standard.object(forKey: "tempoFallbackEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "tempoFallbackEnabled") : true {
+        didSet { UserDefaults.standard.set(tempoFallbackEnabled, forKey: "tempoFallbackEnabled") }
+    }
+    /// AirDrop: cerrar el aviso nativo y la ventana de Descargas que abre macOS (la animación propia se queda)
+    @Published public var airDropReplacesNative: Bool = UserDefaults.standard.object(forKey: "airDropReplacesNative") != nil
+        ? UserDefaults.standard.bool(forKey: "airDropReplacesNative") : true {
+        didSet { UserDefaults.standard.set(airDropReplacesNative, forKey: "airDropReplacesNative") }
+    }
+
     
     // Volume HUD State
     @Published public var isVolumeHUDActive: Bool = false

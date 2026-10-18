@@ -403,7 +403,7 @@ public struct NotchContainerView: View {
     
     /// Color de la keyline (nil = sin keyline): actividad principal, tarjeta abierta o la carátula de la música
     private var keylineColor: Color? {
-        guard backdropMonitor.isSystemDarkMode, appState.effectiveAppearanceMode == .pureOLED else { return nil }
+        guard appState.keylineEnabled, backdropMonitor.isSystemDarkMode, appState.effectiveAppearanceMode == .pureOLED else { return nil }
         if let activity = activityCenter.expandedActivity ?? activityCenter.currentActivity {
             return activity.tint
         }
@@ -882,7 +882,7 @@ public struct NotchContainerView: View {
             let notchRadius = visibleHeight / 2.0
             // Al pasar el cursor sólo crece el notch: la bolita se queda donde estaba (independiente) y se hace
             // un poco más pequeña, cediéndole protagonismo. Si el notch creciera mucho, nunca la toca (≥ 3 pt).
-            let isNotchHovered = scaleX > 1.001 && interactionState != .pressed
+            let isNotchHovered = scaleX > 1.001 && interactionState != .pressed && appState.bubbleShrinksOnNotchHover
             let restHalfWidth = max(cardExpandedWidth / 2.0, visibleHalfWidth + 3 - gap)
             let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
             // En cristal el cuello también existe: se dibuja como parte de la gota de vidrio (LiquidSatelliteModifier)

@@ -11,12 +11,15 @@ public struct SettingsView: View {
     @ObservedObject var lockScreenBridge = LockScreenSkyLightBridge.shared
     @ObservedObject var lockScreenManager = LockScreenManager.shared
     
-    @State private var selectedTab: SettingsTab = .appearance
+    /// Pestaña con la que se abre (diagnóstico: /debug/settings-snapshot la cambia)
+    public static var initialTab: SettingsTab = .appearance
+    @State private var selectedTab: SettingsTab = SettingsView.initialTab
     @State private var noiseGateDB: Double = Double(SpectrumMetrics.noiseGateDB)
     
     public enum SettingsTab: String, CaseIterable, Identifiable {
         case appearance = "Apariencia"
         case gestures = "Gestos"
+        case activities = "Actividades"
         case shelf = "Drag & Drop"
         case media = "Multimedia"
         case miniApps = "Mini-Apps"
@@ -28,6 +31,7 @@ public struct SettingsView: View {
             switch self {
             case .appearance: return "sparkles"
             case .gestures: return "hand.tap"
+            case .activities: return "circle.grid.2x1.fill"
             case .shelf: return "tray.and.arrow.down.fill"
             case .media: return "play.circle"
             case .miniApps: return "square.grid.2x2.fill"
@@ -82,22 +86,37 @@ public struct SettingsView: View {
                     switch selectedTab {
                     case .appearance:
                         appearanceSection
+                        appearanceExtras
                     case .gestures:
                         gesturesSection
+                        gesturesExtras
+                    case .activities:
+                        activitiesSection
                     case .shelf:
                         shelfSection
                     case .media:
                         mediaSection
+                        ToggleRow(
+                            title: "Barras al tempo de la canción con audio protegido",
+                            subtitle: "macOS entrega silencio con contenido protegido (Apple Music, Safari con DRM). En ese caso las barras laten al BPM real de la canción, calculado con su avance de iTunes.",
+                            isOn: $appState.tempoFallbackEnabled
+                        )
                     case .miniApps:
                         miniAppsSection
                     case .system:
+                        ToggleRow(
+                            title: "Reemplazar los avisos nativos de AirDrop",
+                            subtitle: "Cierra el aviso de macOS y la ventana de Descargas que se abre sola; el notch muestra su propia animación de envío y recepción.",
+                            isOn: $appState.airDropReplacesNative
+                        )
                         systemSection
                     }
                 }
                 .padding(24)
             }
         }
-        .frame(width: 620, height: 520)
+        // 7 pestañas: ancho suficiente para leer sus nombres completos
+        .frame(width: 800, height: 560)
         .background(VisualEffectBackground(material: .underWindowBackground, blendingMode: .behindWindow, state: .active))
     }
     
@@ -1605,13 +1624,205 @@ public struct SettingsView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.secondary)
                 Spacer()
-                Text("Versión 1.1.0 • Optimizado")
+                Text("Versión \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(.secondary.opacity(0.8))
             }
             .padding(.horizontal, 4)
             .padding(.top, 4)
         }
+    }
+}
+
+// MARK: - Ajustes nuevos (Actividades, extras de Apariencia y Gestos)
+
+extension SettingsView {
+    var activitiesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsGroupTitle("Bolitas", systemImage: "circle.grid.2x1.fill")
+            SliderRow(
+                title: "Tamaño de las bolitas",
+                subtitle: "0 = automático (el alto de la cápsula del notch, como el iPhone).",
+                value: Binding(get: { Double(appState.bolitaDiameter) }, set: { appState.bolitaDiameter = CGFloat($0) }),
+                range: 0...44, step: 1,
+                display: { $0 < 1 ? "Auto" : "\(Int($0)) pt" }
+            )
+            SliderRow(
+                title: "Separación del notch",
+                subtitle: "Espacio entre la cápsula y la bolita.",
+                value: Binding(get: { Double(appState.bolitaGap) }, set: { appState.bolitaGap = CGFloat($0) }),
+                range: 4...20, step: 1,
+                display: { "\(Int($0)) pt" }
+            )
+            ToggleRow(
+                title: "Clic abre la app (estilo iPhone)",
+                subtitle: "Clic en una bolita abre su app; mantener presionado la expande. Apagado: el clic expande la tarjeta.",
+                isOn: $appState.bubbleTapOpensApp
+            )
+            SliderRow(
+                title: "Tiempo para mantener presionado",
+                subtitle: "Cuánto hay que mantener presionada una bolita para expandirla.",
+                value: $appState.bubbleHoldDuration,
+                range: 0.2...0.8, step: 0.05,
+                display: { String(format: "%.2f s", $0) }
+            )
+            ToggleRow(
+                title: "La bolita se encoge al pasar por el notch",
+                subtitle: "Cuando el cursor está sobre el notch, sólo crece el notch; la bolita se queda y se hace un poco más pequeña.",
+                isOn: $appState.bubbleShrinksOnNotchHover
+            )
+            Button {
+                AnimationStudioWindow.shared.show()
+            } label: {
+                Label("Ajustar la animación en Animation Studio…", systemImage: "film.stack")
+            }
+            
+            SettingsGroupTitle("Comportamiento de la Isla Dinámica", systemImage: "sparkles.rectangle.stack")
+            ToggleRow(
+                title: "Alertas",
+                subtitle: "Una actualización importante (p. ej. Claude terminó una tarea larga) expande la actividad un momento y regresa sola.",
+                isOn: $appState.liveActivityAlertsEnabled
+            )
+            if appState.liveActivityAlertsEnabled {
+                SliderRow(
+                    title: "Duración de las alertas",
+                    subtitle: "Si el cursor está encima, la alerta se queda hasta que se vaya.",
+                    value: $appState.liveActivityAlertDuration,
+                    range: 2...8, step: 0.5,
+                    display: { String(format: "%.1f s", $0) }
+                )
+            }
+            SliderRow(
+                title: "Pausa tras volumen o brillo",
+                subtitle: "Tiempo con el notch limpio antes de que regrese el reproductor u otra actividad.",
+                value: $appState.hudReturnDelay,
+                range: 0...6, step: 0.5,
+                display: { String(format: "%.1f s", $0) }
+            )
+            ToggleRow(
+                title: "Ocultar el notch en pantalla completa",
+                subtitle: "Mientras ves un video o música a pantalla completa, el notch desaparece hasta que salgas.",
+                isOn: $appState.hideNotchInFullScreen
+            )
+            ToggleRow(
+                title: "El temporizador cede el notch a la música",
+                subtitle: "Con música sonando, el temporizador sigue como bolita en vivo.",
+                isOn: $appState.timerYieldsToMusic
+            )
+        }
+    }
+    
+    var appearanceExtras: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsGroupTitle("Detalles de la Isla", systemImage: "circle.dashed")
+            ToggleRow(
+                title: "Keyline en modo oscuro",
+                subtitle: "Con el Mac en modo oscuro y el notch en negro, un borde fino del color de lo que se muestra.",
+                isOn: $appState.keylineEnabled
+            )
+            ToggleRow(
+                title: "Alas de cristal en el notch cerrado",
+                subtitle: "En los modos de cristal, los lados del notch con actividad son Liquid Glass; el centro sigue negro detrás de la cámara.",
+                isOn: $appState.glassWingsEnabled
+            )
+            ToggleRow(
+                title: "Cristal Oscuro se adapta a fondos claros",
+                subtitle: "Sobre ventanas o fondos claros usa el vidrio regular, que se lee mejor (como \"Con tinte\" de iOS).",
+                isOn: $appState.adaptGlassToBrightBackdrop
+            )
+        }
+    }
+    
+    var gesturesExtras: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsGroupTitle("Transiciones", systemImage: "hand.draw")
+            ToggleRow(
+                title: "Cerrar siguiendo los dedos",
+                subtitle: "Al deslizar hacia arriba, el reproductor, la repisa o una tarjeta se recogen con tus dedos y se decide al soltar.",
+                isOn: $appState.interactiveCloseEnabled
+            )
+            if appState.interactiveCloseEnabled {
+                SliderRow(
+                    title: "Recorrido para cerrar",
+                    subtitle: "Qué tanto hay que deslizar antes de soltar para que se cierre (un deslizamiento rápido siempre cierra).",
+                    value: $appState.interactiveCloseThreshold,
+                    range: 0.15...0.7, step: 0.05,
+                    display: { "\(Int($0 * 100)) %" }
+                )
+            }
+            ToggleRow(
+                title: "Desenfoque al transformarse",
+                subtitle: "El contenido del notch se desenfoca un instante mientras cambia de forma, como en la Isla Dinámica.",
+                isOn: $appState.morphBlurEnabled
+            )
+            ToggleRow(
+                title: "Deslizar de lado para esconder la música",
+                subtitle: "Sobre el notch cerrado, deslizar de lado esconde las alas de la música; otro deslizamiento o una canción nueva las regresa.",
+                isOn: $appState.swipeToMinimizeMusic
+            )
+        }
+    }
+}
+
+private struct SettingsGroupTitle: View {
+    let title: String
+    let systemImage: String
+    init(_ title: String, systemImage: String) {
+        self.title = title
+        self.systemImage = systemImage
+    }
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(DesignTokens.blue)
+            Text(title)
+                .font(.system(size: 13.5, weight: .semibold))
+        }
+        .padding(.top, 6)
+    }
+}
+
+private struct SliderRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let display: (Double) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 13, weight: .medium))
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Text(display(value))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(DesignTokens.blue)
+                    .monospacedDigit()
+            }
+            // Continuo (sin marcas); el valor se redondea al paso indicado
+            Slider(value: Binding(
+                get: { value },
+                set: { value = step > 0 ? (($0 / step).rounded() * step) : $0 }
+            ), in: range)
+                .tint(DesignTokens.blue)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 

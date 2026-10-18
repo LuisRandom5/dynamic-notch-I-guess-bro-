@@ -146,7 +146,7 @@ public final class ClaudeActivityProvider: ObservableObject {
         // Sólo tareas largas (> 20 s): Apple pide alertar únicamente en actualizaciones esenciales
         if phase == .done && previous?.phase != .done && Date().timeIntervalSince(state.startedAt) > 20 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                ActivityCenter.shared.presentAlert(id: activityId, duration: 4.0)
+                ActivityCenter.shared.presentAlert(id: activityId)
             }
         }
     }

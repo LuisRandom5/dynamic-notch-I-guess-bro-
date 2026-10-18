@@ -67,7 +67,7 @@ public final class ProceduralMotionEngine {
             levels = current
         }
         var output = levels
-        if let tempo = SongTempoAnalyzer.shared.profile(for: key), track.isPlaying {
+        if AppState.shared.tempoFallbackEnabled, let tempo = SongTempoAnalyzer.shared.profile(for: key), track.isPlaying {
             if tempoArrivedAt == nil { tempoArrivedAt = now }
             let fade = Self.smoothstep((now - (tempoArrivedAt ?? now)) / 1.0)
             output = Self.beatLevels(organic: levels, tempo: tempo, fade: fade)

@@ -299,6 +299,15 @@ public final class AgentIPCService {
             DispatchQueue.main.async { AnimationStudioWindow.shared.snapshot() }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("POST", "/debug/settings-snapshot"):
+            let json = (try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any]) ?? [:]
+            let tabName = json["tab"] as? String ?? "Apariencia"
+            DispatchQueue.main.async {
+                let tab = SettingsView.SettingsTab(rawValue: tabName) ?? .appearance
+                SettingsWindowController.shared.snapshot(tab: tab, to: "/tmp/dn_settings.png")
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("POST", "/debug/studio"):
             // Abre el Animation Studio de las bolitas
             DispatchQueue.main.async { AnimationStudioWindow.shared.show() }

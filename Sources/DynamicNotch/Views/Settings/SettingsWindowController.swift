@@ -6,7 +6,7 @@ public final class SettingsWindowController: NSWindowController {
     
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -31,6 +31,19 @@ public final class SettingsWindowController: NSWindowController {
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    /// Diagnóstico: abre una pestaña y guarda una captura de la ventana (dibujada por la app)
+    public func snapshot(tab: SettingsView.SettingsTab, to path: String) {
+        SettingsView.initialTab = tab
+        window?.contentViewController = NSHostingController(rootView: SettingsView().environmentObject(AppState.shared))
+        show()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let view = self?.window?.contentView,
+                  let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
     }
     
     public func show() {

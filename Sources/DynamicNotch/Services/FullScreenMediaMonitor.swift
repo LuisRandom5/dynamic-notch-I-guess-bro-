@@ -32,7 +32,7 @@ public final class FullScreenMediaMonitor {
         guard MusicService.shared.currentTrack.isPlaying || isHidingNotch,
               let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
               let mainHeight = NSScreen.screens.first?.frame.height else { return }
-        let isPlaying = MusicService.shared.currentTrack.isPlaying
+        let isPlaying = MusicService.shared.currentTrack.isPlaying && AppState.shared.hideNotchInFullScreen
         let screenFrame = screen.frame
         queue.async { [weak self] in
             let fullScreen = Self.isFullScreen(screenFrame: screenFrame, mainHeight: mainHeight)

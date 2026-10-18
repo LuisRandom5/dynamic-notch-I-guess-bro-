@@ -45,7 +45,7 @@ public final class BackdropBrightnessMonitor: ObservableObject {
         guard let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
               let mainHeight = NSScreen.screens.first?.frame.height else { return }
         let screenFrame = screen.frame
-        let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass
+        let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass && AppState.shared.adaptGlassToBrightBackdrop
         let wallpaperBright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
         queue.async { [weak self] in
             self?.evaluate(screenFrame: screenFrame, mainHeight: mainHeight, adapts: adapts, wallpaperBright: wallpaperBright)

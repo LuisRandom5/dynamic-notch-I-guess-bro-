@@ -122,6 +122,8 @@ public final class MessagesObserverService: ObservableObject {
             // AirDrop: Dynamic Notch muestra su propia animación (AirDropTransferMonitor), así que el aviso
             // nativo de macOS se cierra al instante
             let isAirDrop = strings.contains { $0.lowercased().contains("airdrop") }
+            // Ajuste "Reemplazar avisos de AirDrop" apagado: el aviso nativo se respeta
+            if isAirDrop && !AppState.shared.airDropReplacesNative { continue }
             if isAirDrop {
                 let signature = strings.prefix(3).joined(separator: "|")
                 let now = Date()
