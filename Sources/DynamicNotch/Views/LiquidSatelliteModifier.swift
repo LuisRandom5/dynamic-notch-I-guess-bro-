@@ -108,14 +108,19 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         let travel = raw < 0 ? raw : Self.easeInOut(m)
         let x = restingX + (mergedX - restingX) * travel
         
-        // Forma de lágrima: mientras el cuello la sujeta, la bolita se estira HACIA el notch (anclada en su
-        // lado exterior); la tensión es máxima justo antes de que el cuello se rompa
-        let tension = m < 0.6 ? sin(.pi * min(1, m / 0.6)) : 0
-        let stretch = 1 + 0.20 * tension
-        let squash = 1 - 0.10 * tension
-        let towardNotch = notchEndX < restingX
-        let stretchAnchor = UnitPoint(x: towardNotch ? 1 : 0, y: 0.5)
+        // Perfil de nacimiento calcado de la Isla Dinámica (cuadro por cuadro):
+        //  m = 1    la gota nace DENTRO del extremo del notch, pequeña y muy apretada (un "(" del icono)
+        //  m ≈ 0.6  asoma un bulto aplanado, más bajo que la cápsula, con el icono comprimido a lo ancho
+        //  m ≈ 0.35 ya es un círculo completo unido por una cintura gruesa (forma de cacahuate)
+        //  m ≈ 0.15 la cintura es un hilo · m = 0 separada en su lugar
+        //  raw < 0  el resorte la pasa un poco: crece apenas por encima de su tamaño y se asienta
+        let grow = Self.smoothstep((1 - m) / 0.65)
+        let radiusScale: CGFloat = raw < 0 ? 1 + min(0.08, -raw * 0.6) : 0.42 + 0.58 * grow
+        let widthFactor = 0.5 + 0.5 * Self.smoothstep((0.8 - m) / 0.45)
+        let scaleX = radiusScale * widthFactor
+        let scaleY = radiusScale
         let rest = bubbleDiameter / 2
+        let currentRadius = bubbleRadius * scaleY
         
         // Mismo umbral que el cuello: el cuello aguanta casi hasta la posición de reposo
         let gapTravel = abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX))
@@ -140,16 +145,15 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                     .opacity(isGlass ? 0 : Double(attached))
                     .allowsHitTesting(false)
             )
-            // El contenido (anillo, icono) se conserva hasta que la bolita ya está casi dentro del notch;
-            // sólo entonces se cubre de negro para fundirse sin desvanecerse
+            // El icono se ve (comprimido) desde que asoma; sólo se cubre cuando ya está dentro del notch
             .overlay(
                 Circle()
                     .fill(Color.black)
-                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.62) / 0.30)))
+                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.85) / 0.12)))
                     .allowsHitTesting(false)
             )
             .opacity(glassFade)
-            .scaleEffect(x: stretch, y: squash, anchor: stretchAnchor)
+            .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
             .background(
                 ZStack {
                     if drawsGlassDroplet {
@@ -159,18 +163,18 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                                 notchRadius: notchRadius,
                                 bubbleRadius: bubbleRadius,
                                 maxDistance: maxDistance,
-                                stretch: stretch,
-                                squash: squash,
-                                notchIsLeading: towardNotch
+                                scaleX: scaleX,
+                                scaleY: scaleY
                             ),
                             reach: abs(notchCenterOffset.x) + notchRadius + 12
                         )
                         .opacity(glassFade)
                     } else if !isGlass {
+                        // El cuello une el extremo del notch con el tamaño ACTUAL de la gota (crece al salir)
                         MetaballBridgeShape(
                             notchCenter: CGPoint(x: rest + notchCenterOffset.x, y: rest + notchCenterOffset.y),
                             notchRadius: notchRadius,
-                            bubbleRadius: bubbleRadius,
+                            bubbleRadius: currentRadius,
                             maxDistance: maxDistance
                         )
                         .fill(Color.black)
@@ -195,30 +199,27 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
 
 // MARK: - Gota de cristal (bolita ∪ cuello)
 
-/// Bolita (estirada en lágrima, anclada en su lado exterior) unida con el cuello metaball hacia el notch,
-/// como una sola silueta. Coordenadas: el centro del rectángulo es el centro de la bolita.
+/// Gota (con su escala de nacimiento: comprimida al salir, plena al separarse) unida con el cuello metaball
+/// hacia el notch, como una sola silueta. Coordenadas: el centro del rectángulo es el centro de la bolita.
 struct LiquidDropletShape: Shape {
     var notchCenterOffset: CGPoint
     var notchRadius: CGFloat
     var bubbleRadius: CGFloat
     var maxDistance: CGFloat
-    var stretch: CGFloat
-    var squash: CGFloat
-    var notchIsLeading: Bool
+    var scaleX: CGFloat
+    var scaleY: CGFloat
 
     func path(in rect: CGRect) -> Path {
         let c = CGPoint(x: rect.midX, y: rect.midY)
         let r = bubbleRadius
-        let w = 2 * r * stretch
-        let h = 2 * r * squash
-        // Lágrima: se estira hacia el notch, con el lado exterior fijo
-        let ellipseX = notchIsLeading ? c.x + r - w : c.x - r
-        let drop = Path(ellipseIn: CGRect(x: ellipseX, y: c.y - h / 2, width: w, height: h))
+        let w = 2 * r * scaleX
+        let h = 2 * r * scaleY
+        let drop = Path(ellipseIn: CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h))
         let bubbleRect = CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)
         let neck = MetaballBridgeShape(
             notchCenter: CGPoint(x: r + notchCenterOffset.x, y: r + notchCenterOffset.y),
             notchRadius: notchRadius,
-            bubbleRadius: r,
+            bubbleRadius: r * scaleY,
             maxDistance: maxDistance
         ).path(in: CGRect(origin: .zero, size: bubbleRect.size))
             .offsetBy(dx: bubbleRect.minX, dy: bubbleRect.minY)
@@ -300,9 +301,10 @@ public extension AnyTransition {
     static var liquidSatellite: AnyTransition {
         .asymmetric(
             insertion: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                .animation(.spring(response: 0.62, dampingFraction: 0.64)),
+                .animation(.spring(response: 0.66, dampingFraction: 0.70)),
+            // Guardarse es lo mismo a la inversa: crece la cintura, la gota se encoge y se mete en el extremo
             removal: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                .animation(.timingCurve(0.55, 0.0, 0.85, 0.35, duration: 0.34))
+                .animation(.spring(response: 0.56, dampingFraction: 0.94))
         )
     }
 }

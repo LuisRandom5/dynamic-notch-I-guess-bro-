@@ -390,7 +390,7 @@ public final class ActivityCenter: ObservableObject {
     
     private enum PillImpulse { case detach, absorb }
     
-    /// Desprender: la cápsula se recoge 5 pt mientras el cuello se adelgaza y regresa con un rebote leve.
+    /// Desprender: el extremo se ensancha 6 pt para dejar salir la gota y regresa con un rebote leve.
     /// Absorber: cuando la gota llega (~0.3 s, acelera como atraída), la cápsula se abulta 7 pt y se asienta
     /// con un pequeño sobrepaso elástico.
     private func firePillImpulse(_ kind: PillImpulse) {
@@ -401,10 +401,12 @@ public final class ActivityCenter: ObservableObject {
         let token = impulseToken
         switch kind {
         case .detach:
-            withAnimation(.easeOut(duration: 0.16)) { pillImpulse = -5 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
+            // Como en la Isla Dinámica: el extremo se ensancha un poco para dejar salir la gota y, cuando la
+            // cintura se adelgaza, regresa con un pequeño retroceso elástico
+            withAnimation(.easeOut(duration: 0.18)) { pillImpulse = 6 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.58)) { self.pillImpulse = 0 }
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.62)) { self.pillImpulse = 0 }
             }
         case .absorb:
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in

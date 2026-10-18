@@ -144,9 +144,11 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
             pendingInteractiveClose = nil
         }
         let triggered = route(axis: axis, translation: t, delta: delta)
-        // Desenfoque interactivo: crece con el recorrido (máximo a ~14 pt de dedos) y, si el gesto ya disparó
-        // la transformación, se queda completo hasta que se levanten los dedos (gestureEnded)
-        let hold: CGFloat = triggered ? 1 : min(1, abs(t) / 14)
+        // Desenfoque interactivo SÓLO cuando hay transformación: el cierre que sigue a los dedos crece con el
+        // recorrido y, si el gesto ya disparó un cambio, se queda completo hasta levantar los dedos.
+        // El estiramiento de resorte (topar con pared: no hay más páginas) no se desenfoca.
+        let closing = AppState.shared.interactiveCollapseProgress
+        let hold: CGFloat = triggered ? 1 : (closing > 0 ? min(1, closing * 4) : 0)
         if AppState.shared.gestureBlurHold != hold {
             AppState.shared.gestureBlurHold = hold
         }
