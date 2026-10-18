@@ -34,6 +34,12 @@ public struct SpectrumTelemetryFrame {
 public final class AudioSpectrumEngine: ObservableObject {
     public static let shared = AudioSpectrumEngine()
     
+    /// Política de privacidad del producto: Dynamic Notch NO graba audio del sistema ni del micrófono.
+    /// Con esto en false ninguna ruta (Ajustes, laboratorio, restauración de UserDefaults) puede crear un
+    /// Process Tap ni abrir la entrada de audio, así que macOS nunca muestra el indicador morado/naranja.
+    /// El visualizador usa ProceduralMotionEngine.
+    public static let systemCaptureAllowed = false
+    
     // Estados públicos
     @Published public private(set) var isRunning: Bool = false
     @Published public private(set) var isRealAudioActive: Bool = false
@@ -165,6 +171,7 @@ public final class AudioSpectrumEngine: ObservableObject {
         } else {
             UserDefaults.standard.set(true, forKey: "enableSystemAudioTapV4")
         }
+        tapEnabled = tapEnabled && Self.systemCaptureAllowed
         self.enableSystemAudioTap = tapEnabled
         cleanupOrphanedAggregateDevicesAndTaps()
         if tapEnabled {
@@ -214,6 +221,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     // MARK: - Captura de Hardware (Micrófono / Entrada Predeterminada)
     private func setupHardwareInputCapture() {
+        guard Self.systemCaptureAllowed else { return }
         var devID = AudioObjectID(0)
         var size = UInt32(MemoryLayout<AudioObjectID>.size)
         var address = AudioObjectPropertyAddress(
@@ -318,7 +326,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     private func setupProcessTapCapture() {
         guard #available(macOS 14.2, *) else { return }
-        guard enableSystemAudioTap else { return }
+        guard Self.systemCaptureAllowed, enableSystemAudioTap else { return }
         
         // Evitar duplicar taps si ya está activo y corriendo
         if aggregateDeviceID != 0 && tapIOProcID != nil {

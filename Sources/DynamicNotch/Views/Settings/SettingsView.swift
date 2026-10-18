@@ -762,14 +762,16 @@ public struct SettingsView: View {
                 isOn: $appState.enableAirPodsAnimation
             )
             
-            ToggleRow(
-                title: "Captura de Audio del Sistema (Process Tap)",
-                subtitle: "Lee el audio del sistema vía CoreAudio. Al apagarlo, el visualizador usa simulación rítmica inteligente y el punto morado de macOS desaparece por completo.",
-                isOn: Binding(
-                    get: { spectrumEngine.enableSystemAudioTap },
-                    set: { spectrumEngine.enableSystemAudioTap = $0 }
+            if AudioSpectrumEngine.systemCaptureAllowed {
+                ToggleRow(
+                    title: "Captura de Audio del Sistema (Process Tap)",
+                    subtitle: "Lee el audio del sistema vía CoreAudio. Al apagarlo, el visualizador usa simulación rítmica inteligente y el punto morado de macOS desaparece por completo.",
+                    isOn: Binding(
+                        get: { spectrumEngine.enableSystemAudioTap },
+                        set: { spectrumEngine.enableSystemAudioTap = $0 }
+                    )
                 )
-            )
+            }
             
             visualizerStyleAndCalibrationCard
             
