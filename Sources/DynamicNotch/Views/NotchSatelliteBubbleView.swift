@@ -166,16 +166,8 @@ public struct NotchBolitaView: View {
         let ringDiameter = max(0, size - ringInset)
         
         ZStack {
-            // 1. Centro negro sólido OLED puro (#000)
-            Circle()
-                .fill(Color.black)
-                .frame(width: size, height: size)
-                .overlay(
-                    // Borde exterior fino y sutil que define la silueta sin estridencias
-                    Circle()
-                        .stroke(Color.white.opacity(0.12), lineWidth: 0.75)
-                )
-                .shadow(color: Color.black.opacity(0.40), radius: 3, x: 0, y: 1)
+            // 1. Fondo: negro OLED junto al notch negro, o el mismo Liquid Glass del notch desplegado
+            NotchBubbleBackground(size: size)
             
             // 2. Anillo de progreso fino y semántico (sólo si la actividad lo requiere)
             if showsProgressRing {

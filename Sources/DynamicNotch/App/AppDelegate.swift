@@ -9,6 +9,20 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Reducir transparencia / Aumentar contraste cambian el vidrio por negro OLED al instante (no sólo al
+        // reabrir la app): AppState.effectiveAppearanceMode los consulta en cada redibujo
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            let state = AppState.shared
+            state.objectWillChange.send()
+            NotchWindowManager.shared.panel?.appearance = (state.effectiveAppearanceMode == .clearGlass)
+                ? NSAppearance(named: .aqua)
+                : NSAppearance(named: .darkAqua)
+        }
+        
         let myPID = ProcessInfo.processInfo.processIdentifier
         let notifCenter = ImmediateNotificationCenter.shared
         

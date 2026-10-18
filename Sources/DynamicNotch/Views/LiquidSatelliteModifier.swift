@@ -85,6 +85,9 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     public var offsetY: CGFloat
     /// El puente negro sólo tiene sentido cuando el notch es negro (no sobre la tarjeta de vidrio)
     public var showsBridge: Bool
+    /// La bolita es de Liquid Glass (notch desplegado en cristal): el propio contenedor de vidrio la funde con
+    /// el notch, así que en vez de cubrirla de negro se disuelve al final de la absorción
+    public var isGlass: Bool = false
 
     /// Fusión extra que inyecta la transición de aparecer/desaparecer (ver `.liquidSatellite`)
     @Environment(\.liquidSatelliteExtraMerge) private var extraMerge
@@ -130,9 +133,10 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
             .overlay(
                 Circle()
                     .fill(Color.black)
-                    .opacity(Double(Self.smoothstep((m - 0.62) / 0.30)))
+                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.62) / 0.30)))
                     .allowsHitTesting(false)
             )
+            .opacity(isGlass ? 1 - Double(Self.smoothstep((m - 0.70) / 0.28)) : 1)
             .scaleEffect(x: stretch, y: squash, anchor: stretchAnchor)
             .background(
                 MetaballBridgeShape(

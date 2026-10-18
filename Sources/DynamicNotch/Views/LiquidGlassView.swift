@@ -147,44 +147,43 @@ public struct DynamicNotchBackgroundView: View {
             } else {
                 // MODO 2 (Cristal Oscuro) y MODO 3 (Cristal Claro): Liquid Glass Nativo de Apple (macOS 26+)
                 if #available(macOS 26.0, *) {
-                    // Probado con capturas en el laboratorio (GlassLabWindow): sólo Glass.clear se ve como vidrio
-                    // líquido; Glass.regular oscuro queda como esmerilado gris. El aspecto objetivo es el de los
-                    // módulos del Centro de Control: vidrio clear + velo gris ligero para que el texto se lea.
-                    let rawAmount: Double = (mode == .clearGlass)
-                        ? max(0.0, min(0.45, glassManager.uniformScrimOpacity))
-                        : max(0.0, min(0.85, appState.glassDarknessOpacity))
-                    
+                    // Probado con capturas en el laboratorio (GlassLabWindow): el aspecto objetivo es el de los
+                    // módulos del Centro de Control: vidrio clear + velo oscuro ligero para que el texto se lea.
                     // Velo SOBRE el vidrio (no tinte: en macOS 27 el tinte oscuro se dibuja como relleno sólido,
                     // cmux #5860; y no detrás: el vidrio refractaría negro). Con el slider por defecto (38%) ≈ 11%.
-                    let veilOpacity: Double = (mode == .clearGlass) ? rawAmount * 0.5 : rawAmount * 0.30
+                    let veilOpacity = NotchGlassMetrics.veilOpacity(for: mode)
                     let notchHeight = ScreenService.shared.currentGeometry.height
                     
-                    ZStack(alignment: .top) {
-                        Color.clear
-                            .glassEffect(Glass.clear, in: pillShape)
-                        
-                        Color.black.opacity(veilOpacity)
+                    // El vidrio aparece/desaparece con la transición nativa `materialize` (la lente se forma y
+                    // se disuelve) en vez de un simple fundido de opacidad
+                    if isExpanded {
+                        ZStack(alignment: .top) {
+                            Color.clear
+                                .glassEffect(Glass.clear, in: pillShape)
+                                .glassEffectTransition(.materialize)
+                            
+                            Color.black.opacity(veilOpacity)
+                                .clipShape(pillShape)
+                            
+                            // Franja superior a la altura de la cámara: funde el vidrio con el notch físico negro
+                            // para que la cámara no se vea como un hoyo en medio del cristal
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black.opacity(0.70), location: 0.0),
+                                    .init(color: .black.opacity(0.0), location: 1.0),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: notchHeight + 14)
+                            .frame(maxHeight: .infinity, alignment: .top)
                             .clipShape(pillShape)
-                        
-                        // Franja superior a la altura de la cámara: funde el vidrio con el notch físico negro
-                        // para que la cámara no se vea como un hoyo en medio del cristal
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black.opacity(0.70), location: 0.0),
-                                .init(color: .black.opacity(0.0), location: 1.0),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: notchHeight + 14)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                        .clipShape(pillShape)
+                        }
+                        .allowsHitTesting(false)
+                        .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
+                        .environment(\.controlActiveState, .key)
+                        .transition(.opacity)
                     }
-                    .allowsHitTesting(false)
-                    .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
-                    .environment(\.controlActiveState, .key)
-                    .opacity(isExpanded ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
                 } else {
                     // Fallback para versiones anteriores a macOS 26
                     let activeScrim = (mode == .darkGlass)
@@ -209,9 +208,9 @@ public struct DynamicNotchBackgroundView: View {
                 pillShape
                     .fill(Color.black)
                     .opacity(isExpanded ? 0.0 : 1.0)
-                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
             }
         }
+        .animation(.easeInOut(duration: 0.24), value: isExpanded)
         .environment(\.controlActiveState, .key)
         .allowsHitTesting(false)
     }

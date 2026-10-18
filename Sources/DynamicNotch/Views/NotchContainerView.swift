@@ -395,8 +395,23 @@ public struct NotchContainerView: View {
         return 3
     }
     
+    /// El notch muestra su superficie desplegada (vidrio en los modos de cristal, negro en OLED)
+    private var isSurfaceExpanded: Bool {
+        appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil
+    }
+    
+    /// El notch se ve como Liquid Glass ahora mismo: las bolitas pasan a ser del mismo vidrio
+    private var isGlassSurfaceVisible: Bool {
+        isSurfaceExpanded && appState.effectiveAppearanceMode != .pureOLED
+    }
+    
     public var body: some View {
-        notchContainerContent
+        // Un solo contenedor para todo el vidrio del notch (superficie + bolitas): se dibujan juntos y se
+        // funden de forma nativa al acercarse
+        NotchGlassContainer {
+            notchContainerContent
+        }
+            .environment(\.notchGlassSurfaceVisible, isGlassSurfaceVisible)
             .onPreferenceChange(NotchHitRegionsKey.self) { regions in
                 NotchWindowManager.shared.updateDynamicHitRegions(regions)
             }
@@ -640,7 +655,7 @@ public struct NotchContainerView: View {
                         darknessOpacity: appState.glassDarknessOpacity,
                         stretch: 0,
                         verticalStretch: 0,
-                        isExpanded: appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil,
+                        isExpanded: isSurfaceExpanded,
                         topBleed: shapeTopBleed
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
@@ -829,7 +844,8 @@ public struct NotchContainerView: View {
                             notchRadius: notchRadius,
                             bubbleDiameter: bolitaDiam,
                             offsetY: bubbleOffsetY,
-                            showsBridge: showsBridge && slotIndex == 0
+                            showsBridge: showsBridge && slotIndex == 0,
+                            isGlass: isGlassSurfaceVisible
                         ))
                         .zIndex(100 - Double(slotIndex))
                         .transition(reduceMotion ? .opacity : .liquidSatellite)
@@ -850,7 +866,8 @@ public struct NotchContainerView: View {
                         notchRadius: notchRadius,
                         bubbleDiameter: bolitaDiam,
                         offsetY: bubbleOffsetY,
-                        showsBridge: showsBridge
+                        showsBridge: showsBridge,
+                        isGlass: isGlassSurfaceVisible
                     ))
                     .zIndex(100)
                     .transition(reduceMotion ? .opacity : .liquidSatellite)

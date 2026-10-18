@@ -106,7 +106,7 @@ public struct NotchPlayerView: View {
                             }) {
                                 Image(systemName: "chevron.compact.up")
                                     .font(.system(size: 15, weight: .bold))
-                                    .foregroundColor(Color.white.opacity(0.60))
+                                    .foregroundStyle(.secondary)
                                     .frame(width: 28, height: 16)
                             }
                             .buttonStyle(.plain)
@@ -361,7 +361,7 @@ public struct NotchPlayerView: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                    .foregroundColor(Color.white.opacity(PlayerMetrics.timeOpacity))
+                    .foregroundStyle(.secondary) // vibrante sobre el vidrio
                     .shadow(
                         color: Color.black.opacity(GlassClearMetrics.textShadowOpacity),
                         radius: GlassClearMetrics.textShadowRadius,
@@ -422,7 +422,7 @@ public struct NotchPlayerView: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                    .foregroundColor(Color.white.opacity(PlayerMetrics.timeOpacity))
+                    .foregroundStyle(.secondary)
                     .shadow(
                         color: Color.black.opacity(GlassClearMetrics.textShadowOpacity),
                         radius: GlassClearMetrics.textShadowRadius,
@@ -494,7 +494,7 @@ public struct NotchPlayerView: View {
                     if !track.album.isEmpty {
                         Text(track.album)
                             .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(Color.white.opacity(0.40))
+                            .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
                     
@@ -514,7 +514,7 @@ public struct NotchPlayerView: View {
                 Text(formatTime(isSeeking ? seekPosition : track.playbackPosition))
                     .font(.system(size: PlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundColor(Color.white.opacity(PlayerMetrics.timeOpacity))
+                    .foregroundStyle(.secondary)
                     .frame(width: PlayerMetrics.timeWidth, alignment: .leading)
                 
                 GeometryReader { geo in
@@ -562,7 +562,7 @@ public struct NotchPlayerView: View {
                 Text("-" + formatTime(max(0, track.duration - (isSeeking ? seekPosition : track.playbackPosition))))
                     .font(.system(size: PlayerMetrics.timeFontSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundColor(Color.white.opacity(PlayerMetrics.timeOpacity))
+                    .foregroundStyle(.secondary)
                     .frame(width: PlayerMetrics.timeWidth, alignment: .trailing)
             }
             
@@ -823,7 +823,7 @@ public struct NotchPlayerView: View {
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundColor(Color.white.opacity(0.55))
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -883,7 +883,7 @@ public struct NotchPlayerView: View {
                     Text("Ajustes de sonido...")
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                 }
-                .foregroundColor(Color.white.opacity(0.45))
+                .foregroundStyle(.tertiary)
                 .padding(.top, 2)
             }
             .buttonStyle(.plain)
