@@ -21,6 +21,45 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
 
     private var context: Context = .collapsed
     private var hasTriggeredStretchHaptic = false
+    
+    // MARK: Cierre interactivo
+    /// Recorrido de dedos (pt) para cerrar por completo; al soltar se cierra si se pasó del 30 % o con un flick
+    private static let interactiveCloseDistance: CGFloat = 72
+    private static let interactiveCloseCommit: CGFloat = 0.30
+    private static let interactiveCloseFlickDelta: CGFloat = -3.0
+    private var pendingInteractiveClose: (() -> Void)?
+    private var lastCloseDelta: CGFloat = 0
+    
+    /// Sigue los dedos hacia arriba: devuelve false para seguir recibiendo movimientos (la decisión es al soltar)
+    private func trackInteractiveClose(translation t: CGFloat, delta: CGFloat, onCommit: @escaping () -> Void) -> Bool {
+        let progress = min(1, max(0, -t / Self.interactiveCloseDistance))
+        AppState.shared.interactiveCollapseProgress = progress
+        lastCloseDelta = delta
+        pendingInteractiveClose = progress > 0 ? onCommit : nil
+        return false
+    }
+    
+    /// Al soltar: completa el cierre (más allá del umbral o con un flick) o regresa con un resorte
+    private func finishInteractiveClose() {
+        let app = AppState.shared
+        let progress = app.interactiveCollapseProgress
+        guard progress > 0 || pendingInteractiveClose != nil else { return }
+        let commit = pendingInteractiveClose
+        pendingInteractiveClose = nil
+        if let commit = commit, progress >= Self.interactiveCloseCommit || lastCloseDelta <= Self.interactiveCloseFlickDelta {
+            DNDLogger.log("Gestos: cierre interactivo completado (\(Int(progress * 100))%)")
+            withAnimation(AnimationSpeedManager.shared.spring(response: 0.42, dampingFraction: 0.86)) {
+                app.interactiveCollapseProgress = 0
+            }
+            commit()
+            app.hapticService.triggerSnap()
+        } else {
+            // No llegó: regresa a su tamaño
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.72)) {
+                app.interactiveCollapseProgress = 0
+            }
+        }
+    }
 
     public init() {}
 
@@ -99,6 +138,11 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     // MARK: - Acciones
 
     public func gestureMoved(axis: GestureAxis, translation t: CGFloat, delta: CGFloat) -> Bool {
+        // Si los dedos regresan hacia abajo, el cierre interactivo se deshace con ellos
+        if axis == .vertical && t >= 0 && AppState.shared.interactiveCollapseProgress > 0 {
+            AppState.shared.interactiveCollapseProgress = 0
+            pendingInteractiveClose = nil
+        }
         let triggered = route(axis: axis, translation: t, delta: delta)
         // Desenfoque interactivo: crece con el recorrido (máximo a ~14 pt de dedos) y, si el gesto ya disparó
         // la transformación, se queda completo hasta que se levanten los dedos (gestureEnded)
@@ -114,12 +158,13 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
 
         switch (context, axis) {
         case (.expandedActivity, .vertical):
-            if t <= -1.0 {
-                DNDLogger.log("Gestos: swipe up en actividad expandida -> contrayendo")
-                ActivityCenter.shared.collapseExpandedActivity()
-                AgentActivityProvider.shared.collapseProgressHUD()
-                app.hapticService.triggerSnap()
-                return true
+            if t < 0 {
+                // Cierre interactivo: la tarjeta se encoge con los dedos y se decide al soltar
+                return trackInteractiveClose(translation: t, delta: delta) {
+                    DNDLogger.log("Gestos: swipe up en actividad expandida -> contrayendo")
+                    ActivityCenter.shared.collapseExpandedActivity()
+                    AgentActivityProvider.shared.collapseProgressHUD()
+                }
             }
 
         case (.notification(let quickReplyExpanded), .vertical):
@@ -201,20 +246,23 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
                     app.hapticService.triggerExpand()
                     return true
                 }
-            } else if t <= -2.0 {
+            } else if t < 0 {
                 if detail {
+                    guard t <= -2.0 else { return false }
                     DNDLogger.log("Gestos: swipe up -> cerrando detalle de volumen")
                     withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
                         app.isPlayerDetailExpanded = false
                         app.verticalOverscrollOffset = 0
                         app.contentVerticalOverscrollOffset = 0
                     }
-                } else {
+                    app.hapticService.triggerSnap()
+                    return true
+                }
+                // Cierre interactivo del reproductor: se encoge con los dedos y se decide al soltar
+                return trackInteractiveClose(translation: t, delta: delta) {
                     DNDLogger.log("Gestos: swipe up -> colapsando reproductor")
                     app.collapse()
                 }
-                app.hapticService.triggerSnap()
-                return true
             } else {
                 applyVerticalStretch(0)
             }
@@ -231,11 +279,12 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         case (.shelf, .vertical):
             if t > 0 {
                 applyVerticalStretch(t)
-            } else if t <= -2.0 {
-                DNDLogger.log("Gestos: swipe up en bandeja -> colapsando")
-                app.collapse()
-                app.hapticService.triggerSnap()
-                return true
+            } else if t < 0 {
+                // Cierre interactivo de la bandeja
+                return trackInteractiveClose(translation: t, delta: delta) {
+                    DNDLogger.log("Gestos: swipe up en bandeja -> colapsando")
+                    app.collapse()
+                }
             }
 
         case (.shelf, .horizontal):
@@ -263,6 +312,7 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     }
 
     public func gestureEnded(triggered: Bool) {
+        finishInteractiveClose()
         resetOverscroll()
         // Dedos fuera del trackpad: el contenido vuelve a enfocarse mientras la forma termina de asentarse
         withAnimation(.easeOut(duration: 0.32)) {

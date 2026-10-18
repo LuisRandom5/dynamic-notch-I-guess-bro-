@@ -116,6 +116,8 @@ public final class AppState: ObservableObject {
     /// Desenfoque mantenido por un gesto del trackpad en curso (0…1): sigue el recorrido de los dedos y se
     /// queda al máximo desde que el gesto dispara el cambio hasta que el usuario levanta los dedos
     @Published public var gestureBlurHold: CGFloat = 0
+    /// Cierre interactivo (0…1): el reproductor/repisa/tarjeta se encoge hacia el notch siguiendo los dedos
+    @Published public var interactiveCollapseProgress: CGFloat = 0
     
     // Volume HUD State
     @Published public var isVolumeHUDActive: Bool = false

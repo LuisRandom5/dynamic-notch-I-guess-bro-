@@ -751,6 +751,14 @@ public struct NotchContainerView: View {
             )
             .offset(y: containerOffsetY)
             .scaleEffect(x: scaleX, y: scaleY * dragScaleY, anchor: .top)
+            // Cierre interactivo: la tarjeta se recoge hacia el notch siguiendo los dedos (más alto que ancho,
+            // como si se guardara en la cámara) y su contenido se apaga un poco
+            .scaleEffect(
+                x: 1 - 0.22 * appState.interactiveCollapseProgress,
+                y: 1 - 0.52 * appState.interactiveCollapseProgress,
+                anchor: .top
+            )
+            .opacity(1 - 0.25 * Double(appState.interactiveCollapseProgress))
             .contentShape(containerPillShape)
             // Gesto de presión con anticipación en 3 fases cuando está colapsado y no hay actividad activa
             .modifier(PillGestureModifier(
