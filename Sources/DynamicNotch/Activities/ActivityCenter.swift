@@ -36,6 +36,19 @@ public final class ActivityCenter: ObservableObject {
     
     private var playbackObserver: AnyCancellable?
     
+    /// Cambio de rol escalonado de una misma actividad (notch ⇄ bolita). Si el notch cambiara de ancho
+    /// mientras la bolita entra o sale, se encimarían; así primero termina un movimiento y luego empieza el otro:
+    /// - hacia el notch: la bolita se reabsorbe y DESPUÉS el notch se expande con la actividad
+    /// - hacia la bolita: el notch se recoge y DESPUÉS la bolita brota de él
+    private struct RoleHandoff {
+        let id: String
+        let toPrimary: Bool
+        let until: Date
+    }
+    private var roleHandoff: RoleHandoff?
+    private static let reabsorbDuration: TimeInterval = 0.50
+    private static let notchSettleDuration: TimeInterval = 0.40
+    
     private init() {}
     
     /// Recalcula los roles cuando empieza o se detiene la música/video: un temporizador cede el notch
@@ -260,23 +273,54 @@ public final class ActivityCenter: ObservableObject {
         
         let primaryId = chosenPrimary?.id
         let remaining = sorted.filter { $0.id != primaryId }
+        let satelliteSlots = mode == .modeA ? maxSatellites : 1
+        var newSecondaries = Array(remaining.prefix(satelliteSlots))
+        let newOverflow = Array(remaining.dropFirst(satelliteSlots))
         
-        withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
-            self.currentActivity = chosenPrimary
-            switch mode {
-            case .modeA:
-                self.secondaryActivities = Array(remaining.prefix(maxSatellites))
-                self.overflowActivities = Array(remaining.dropFirst(maxSatellites))
-                self.overflowCount = self.overflowActivities.count
-                
-            case .modeB:
-                self.secondaryActivities = Array(remaining.prefix(1))
-                self.overflowActivities = Array(remaining.dropFirst(1))
-                self.overflowCount = self.overflowActivities.count
+        // Detección de un cambio de rol notch ⇄ bolita (ver RoleHandoff)
+        if let handoff = roleHandoff, handoff.until <= now { roleHandoff = nil }
+        if roleHandoff == nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            if let promoted = primaryId, secondaryActivities.contains(where: { $0.id == promoted }) {
+                beginRoleHandoff(id: promoted, toPrimary: true, duration: Self.reabsorbDuration)
+            } else if let demoted = currentActivity?.id, demoted != primaryId,
+                      newSecondaries.contains(where: { $0.id == demoted }) {
+                beginRoleHandoff(id: demoted, toPrimary: false, duration: Self.notchSettleDuration)
             }
         }
         
+        // Primer tiempo del cambio escalonado: la actividad que cambia de rol no está en ningún lado
+        var displayedPrimary = chosenPrimary
+        if let handoff = roleHandoff {
+            if handoff.toPrimary {
+                // El notch conserva lo que mostraba mientras la bolita se reabsorbe
+                displayedPrimary = currentActivity.flatMap { held in
+                    held.id == handoff.id ? nil : activeActivities.first(where: { $0.id == held.id })
+                }
+            }
+            newSecondaries.removeAll { $0.id == handoff.id || $0.id == displayedPrimary?.id }
+        }
+        
+        withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
+            self.currentActivity = displayedPrimary
+            self.secondaryActivities = newSecondaries
+            self.overflowActivities = newOverflow
+            self.overflowCount = newOverflow.count
+        }
+        
         NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
+    
+    private func beginRoleHandoff(id: String, toPrimary: Bool, duration: TimeInterval) {
+        let delay = AnimationSpeedManager.shared.adjustedDuration(duration)
+        let handoff = RoleHandoff(id: id, toPrimary: toPrimary, until: Date().addingTimeInterval(delay))
+        roleHandoff = handoff
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, self.roleHandoff?.until == handoff.until else { return }
+            self.roleHandoff = nil
+            // Segundo tiempo: la actividad ocupa su nuevo lugar (con la histéresis ya resuelta)
+            self.lastRoleChangeTime = .distantPast
+            self.recalculateRoles()
+        }
     }
     
     private func rescheduleTimer(for activity: LiveActivity) {

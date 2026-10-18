@@ -32,6 +32,8 @@ public final class MessagesObserverService: ObservableObject {
     private var knownRecords: [String: ChatRecord] = [:]
     private var lastBannerSignature: String = ""
     private var lastBannerAlertedAt: Date = .distantPast
+    private var triedAirDropCloseActions: Set<String> = []
+    private var loggedAirDropTree = false
     private var lastAirDropBannerSignature: String = ""
     private var isFirstCheck: Bool = true
     
@@ -121,15 +123,23 @@ public final class MessagesObserverService: ObservableObject {
             // nativo de macOS se cierra al instante
             let isAirDrop = strings.contains { $0.lowercased().contains("airdrop") }
             if isAirDrop {
-                let closed = dismissNativeBanner(win)
                 let signature = strings.prefix(3).joined(separator: "|")
                 if signature != lastAirDropBannerSignature {
                     lastAirDropBannerSignature = signature
-                    DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop \(closed ? "cerrado" : "NO se pudo cerrar"): \(strings.prefix(3))")
-                    if !closed {
-                        // Diagnóstico de una sola vez: estructura del aviso para saber qué acción lo cierra
-                        DNDLogger.log("MessagesObserverService: estructura del aviso de AirDrop ↓\n" + axTreeDescription(win))
-                    }
+                    triedAirDropCloseActions = []
+                    loggedAirDropTree = false
+                } else if !triedAirDropCloseActions.isEmpty && !loggedAirDropTree {
+                    // Sigue en pantalla aunque la acción "funcionó": registrar su estructura una vez para diagnóstico
+                    loggedAirDropTree = true
+                    DNDLogger.log("MessagesObserverService: el aviso de AirDrop sigue visible tras \(triedAirDropCloseActions); estructura ↓\n" + axTreeDescription(win))
+                }
+                // Cada intento usa una acción distinta: en macOS 27 algunas responden .success sin cerrar nada
+                if let used = dismissNativeBanner(win, skipping: triedAirDropCloseActions) {
+                    triedAirDropCloseActions.insert(used)
+                    DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop → \(used): \(strings.prefix(3))")
+                } else if triedAirDropCloseActions.isEmpty && !loggedAirDropTree {
+                    loggedAirDropTree = true
+                    DNDLogger.log("MessagesObserverService: aviso de AirDrop sin acción de cierre; estructura ↓\n" + axTreeDescription(win))
                 }
                 continue
             }
@@ -151,7 +161,7 @@ public final class MessagesObserverService: ObservableObject {
             }
             
             // Cerrar y descartar el banner nativo de macOS ÚNICAMENTE para las apps autorizadas a reemplazarlo
-            dismissNativeBanner(win)
+            _ = dismissNativeBanner(win)
             
             // Filtrar etiquetas del sistema
             let cleanStrings = strings.filter { s in
@@ -232,36 +242,40 @@ public final class MessagesObserverService: ObservableObject {
     }
     
     @discardableResult
-    private func dismissNativeBanner(_ elem: AXUIElement, depth: Int = 0) -> Bool {
-        if depth > 8 { return false }
+    /// Cierra un aviso nativo. Devuelve qué acción se usó ("rol/acción@identificador"), o nil si no hubo ninguna.
+    /// `skipping` excluye acciones ya intentadas que no lo cerraron.
+    private func dismissNativeBanner(_ elem: AXUIElement, skipping: Set<String> = [], depth: Int = 0) -> String? {
+        if depth > 8 { return nil }
+        func attr(_ name: String) -> String {
+            var ref: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, name as CFString, &ref)
+            return (ref as? String) ?? ""
+        }
+        let role = attr(kAXRoleAttribute)
+        let where_ = "\(role)#\(depth)@\(attr(kAXIdentifierAttribute))"
+        
         var actRef: CFArray?
         AXUIElementCopyActionNames(elem, &actRef)
         if let actions = actRef as? [String] {
             for a in actions {
                 let l = a.lowercased()
+                let key = "\(where_)/\(a.replacingOccurrences(of: "\n", with: " "))"
+                guard !skipping.contains(key) else { continue }
                 if Self.closeWords.contains(where: { l.contains($0) }) || a == "AXCancel" {
                     if AXUIElementPerformAction(elem, a as CFString) == .success {
-                        return true
+                        return key
                     }
                 }
             }
         }
         
-        var roleRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef) == .success,
-           let role = roleRef as? String, (role == "AXButton" || role == "AXPressable") {
-            var descRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
-            var titleRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
-            var idRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(elem, kAXIdentifierAttribute as CFString, &idRef)
-            let desc = ((descRef as? String) ?? "").lowercased()
-            let title = ((titleRef as? String) ?? "").lowercased()
-            let identifier = ((idRef as? String) ?? "").lowercased()
-            if Self.closeWords.contains(where: { desc.contains($0) || title.contains($0) || identifier.contains($0) }) {
+        if role == "AXButton" || role == "AXPressable" {
+            let label = [attr(kAXDescriptionAttribute), attr(kAXTitleAttribute), attr(kAXIdentifierAttribute)]
+                .joined(separator: " ").lowercased()
+            let key = "\(where_)/AXPress"
+            if !skipping.contains(key), Self.closeWords.contains(where: { label.contains($0) }) {
                 if AXUIElementPerformAction(elem, "AXPress" as CFString) == .success {
-                    return true
+                    return key
                 }
             }
         }
@@ -270,10 +284,10 @@ public final class MessagesObserverService: ObservableObject {
         if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
            let children = childrenRef as? [AXUIElement] {
             for c in children {
-                if dismissNativeBanner(c, depth: depth + 1) { return true }
+                if let used = dismissNativeBanner(c, skipping: skipping, depth: depth + 1) { return used }
             }
         }
-        return false
+        return nil
     }
     
     // MARK: - Canal 2: App Mensajes Abierta (com.apple.MobileSMS)

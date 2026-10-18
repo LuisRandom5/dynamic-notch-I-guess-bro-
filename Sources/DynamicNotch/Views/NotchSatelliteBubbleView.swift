@@ -70,18 +70,6 @@ public struct NotchBolitaView: View {
         activity.kind == .timer && timerProvider.hasActiveSession && !timerProvider.isRunning
     }
     
-    /// Texto compacto para la bolita: "0:45", "4:59", "12m", "1h05"
-    private var timerBubbleText: String {
-        let seconds = Int(timerProvider.mode == .countdown ? ceil(timerProvider.remainingTime) : timerProvider.stopwatchElapsed)
-        if seconds >= 3600 {
-            return String(format: "%dh%02d", seconds / 3600, (seconds % 3600) / 60)
-        }
-        if seconds >= 600 {
-            return "\(seconds / 60)m"
-        }
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-    
     /// Define si la bolita debe renderizar un anillo fino de progreso
     private var showsProgressRing: Bool {
         switch activity.kind {
@@ -216,16 +204,11 @@ public struct NotchBolitaView: View {
                 // Marca de Claude: respira mientras trabaja; el anillo pulsa si espera respuesta del usuario
                 ClaudeMarkView(size: size * 0.48, isAnimating: claudeSession?.phase == .working)
             } else if activity.kind == .timer && timerProvider.hasActiveSession {
-                // Cuenta en vivo dentro del anillo (temporizador: restante · cronómetro: transcurrido)
-                Text(timerBubbleText)
-                    .font(.system(size: timerBubbleText.count > 4 ? 6.5 : 7.5, weight: .bold, design: .rounded))
-                    .monospacedDigit()
+                // Sólo el icono: la bolita es una miniatura en vivo, el anillo ya dice cuánto falta
+                Image(systemName: timerProvider.mode == .countdown ? "timer" : "stopwatch")
+                    .font(.system(size: size * 0.40, weight: .semibold))
                     .foregroundColor(DesignTokens.orange)
                     .opacity(isTimerPaused ? 0.6 : 1)
-                    .contentTransition(.numericText(countsDown: timerProvider.mode == .countdown))
-                    .animation(.easeOut(duration: 0.2), value: timerBubbleText)
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
             } else if activity.kind == .recording {
                 // Punto de grabación circular rojo minimalista idéntico a iOS
                 Circle()

@@ -49,6 +49,9 @@ public final class AirDropActivityProvider: ObservableObject {
             // Envío: sin tarjeta. Las alas se ensanchan con la palomita (o la X) y el notch vuelve a su estado
             publishSendResult(success: success)
         case (.receiving, true):
+            // Si AirDropObserverService ya mostró la tarjeta del archivo, no volver a poner las alas encima
+            // (antes se quedaban trabadas con el anillo lleno: nada las reemplazaba ni las retiraba)
+            guard Date().timeIntervalSince(lastReceivedCardAt) >= 4 else { return }
             // El anillo se completa al instante y se busca el archivo (hasta 2 s) para que la tarjeta abra
             // exactamente su ubicación
             publishTransferActivity(progress: 1.0)
@@ -110,7 +113,8 @@ public final class AirDropActivityProvider: ObservableObject {
             center: nil,
             trailing: trailing,
             tint: blue,
-            duration: nil,
+            // En curso la retira el resultado (o el safetyTimer); ya completa, se retira sola por si nada la reemplaza
+            duration: progress >= 1 ? 4.0 : nil,
             customExpandedWidth: ScreenService.shared.currentGeometry.width + Self.progressExtraWidth
         )
         ActivityCenter.shared.publish(activity)
