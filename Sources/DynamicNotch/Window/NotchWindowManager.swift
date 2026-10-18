@@ -62,14 +62,46 @@ public final class NotchWindowManager: ObservableObject {
         setupScrollSwipeMonitors()
     }
     
+    // App que tenía el foco antes de que el panel tomara el teclado (Quick Reply / interacción del agente).
+    // Se reactiva al soltar el teclado para que el usuario siga escribiendo sin un clic extra.
+    private var previousFrontmostApp: NSRunningApplication?
+
+    /// App a la que se devolverá el foco al cerrar la entrada de teclado del notch (nil si no hay ninguna pendiente).
+    public var appToRestoreFocus: NSRunningApplication? { previousFrontmostApp }
+
     public func setAllowsKeyInput(_ allow: Bool) {
-        panel?.allowsKeyInput = allow
+        guard let panel = panel else { return }
         if allow {
-            panel?.makeKeyAndOrderFront(nil)
+            rememberFrontmostApp()
+            panel.allowsKeyInput = true
+            panel.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         } else {
-            panel?.resignKey()
+            // Si otra ventana propia (p. ej. Ajustes) tiene el foco, el usuario está ahí: no robarle el foco
+            let panelOwnsFocus = NSApp.keyWindow == nil || NSApp.keyWindow === panel
+            panel.allowsKeyInput = false
+            panel.resignKey()
+            restorePreviousApp(panelOwnsFocus: panelOwnsFocus)
         }
+    }
+
+    private func rememberFrontmostApp() {
+        // Si ya somos la app activa, la referencia guardada sigue siendo la correcta (llamadas repetidas al enfocar).
+        // Si no lo somos, la app frontal actual es a la que hay que volver (el usuario pudo cambiar de app entretanto).
+        guard !NSApp.isActive || previousFrontmostApp == nil else { return }
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        previousFrontmostApp = front
+    }
+
+    private func restorePreviousApp(panelOwnsFocus: Bool) {
+        guard let previous = previousFrontmostApp else { return }
+        previousFrontmostApp = nil
+        // Si el usuario ya se fue a otra app (o ésta se cerró), no arrebatarle el foco
+        guard NSApp.isActive, panelOwnsFocus, !previous.isTerminated else { return }
+        DNDLogger.log("NotchWindowManager: restaurando foco a \(previous.bundleIdentifier ?? "pid \(previous.processIdentifier)")")
+        NSApp.yieldActivation(to: previous)
+        previous.activate()
     }
     
     public func updateHitArea(width: CGFloat, height: CGFloat, satelliteRect: CGRect? = nil, leftSatelliteRect: CGRect? = nil) {

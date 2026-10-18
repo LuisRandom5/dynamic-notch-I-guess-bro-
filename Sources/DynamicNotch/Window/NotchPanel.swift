@@ -78,9 +78,7 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                 } else {
                     isTrackingNotifDrag = false
                     if !self.isKeyWindow {
-                        self.allowsKeyInput = true
-                        self.makeKey()
-                        NSApp.activate(ignoringOtherApps: true)
+                        NotchWindowManager.shared.setAllowsKeyInput(true)
                     }
                 }
             case .leftMouseDragged:
@@ -137,9 +135,7 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                 } else {
                     isTrackingNotifDrag = false
                     if !self.isKeyWindow {
-                        self.allowsKeyInput = true
-                        self.makeKey()
-                        NSApp.activate(ignoringOtherApps: true)
+                        NotchWindowManager.shared.setAllowsKeyInput(true)
                     }
                 }
                 

@@ -832,8 +832,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
             return
         }
         
-        // Guardar la app que el usuario tenía activa para no perder foco
-        let previousApp = NSWorkspace.shared.runningApplications.first(where: {
+        // Guardar la app que el usuario tenía activa para no perder foco.
+        // Mientras se escribe en el notch, la app activa es Dynamic Notch: usar la que guardó el panel al tomar el teclado.
+        let previousApp = NotchWindowManager.shared.appToRestoreFocus ?? NSWorkspace.shared.runningApplications.first(where: {
             $0.isActive && $0.bundleIdentifier != Bundle.main.bundleIdentifier
         })
         
