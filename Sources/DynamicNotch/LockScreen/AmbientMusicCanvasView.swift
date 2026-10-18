@@ -503,11 +503,10 @@ private struct AmbientArtworkBackground: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.04, green: 0.04, blue: 0.06)
-            if isOLED {
-                // Negro puro: respeta el modo OLED también en pantalla completa
-                Color.black
-            } else if #available(macOS 15.0, *) {
+            // Los colores de la carátula se conservan en todos los modos (como en el iPhone); en OLED el fondo
+            // base es negro puro y el velo es más profundo
+            (isOLED ? Color.black : Color(red: 0.04, green: 0.04, blue: 0.06))
+            if #available(macOS 15.0, *) {
                 // Rendimiento: la malla se dibuja UNA vez y lo que se mueve es la capa (escala, giro y desplazamiento
                 // con animaciones de Core Animation a la frecuencia de la pantalla). Antes se recalculaba la malla
                 // a pantalla completa 30 veces por segundo y todo se veía a ≤30 fps.
@@ -535,9 +534,7 @@ private struct AmbientArtworkBackground: View {
                 LinearGradient(colors: [primary, secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
                     .opacity(0.8)
             }
-            if !isOLED {
-                Color.black.opacity(0.38)
-            }
+            Color.black.opacity(isOLED ? 0.52 : 0.38)
         }
         // La malla escalada no debe salirse del marco (durante la transformación desde la tarjeta)
         .clipped()
