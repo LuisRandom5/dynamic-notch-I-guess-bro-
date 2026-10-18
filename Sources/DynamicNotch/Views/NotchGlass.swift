@@ -87,7 +87,9 @@ public struct NotchBubbleBackground: View {
                 Color.black.opacity(max(0.22, NotchGlassMetrics.veilOpacity(for: mode)))
                     .clipShape(Circle())
                     .glassEffect(backdrop.isBackdropBright ? Glass.regular : Glass.clear, in: Circle())
-                    .glassEffectTransition(.materialize)
+                    // Sin transición propia del vidrio: la bolita entra y sale con su animación líquida
+                    // (con `.materialize` el vidrio se disolvía aparte y quedaba un "fantasma" unos segundos)
+                    .glassEffectTransition(.identity)
                     .environment(\.colorScheme, .dark)
             } else {
                 Circle()

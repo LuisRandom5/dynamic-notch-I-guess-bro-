@@ -245,6 +245,29 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
             
+        case ("GET", "/debug/activities"):
+            // Diagnóstico: actividades activas, principal y bolitas
+            var info: [String: Any] = [:]
+            DispatchQueue.main.sync {
+                let center = ActivityCenter.shared
+                info = [
+                    "mode": "\(AppState.shared.mode)",
+                    "current": center.currentActivity?.id ?? "nil",
+                    "secondary": center.secondaryActivities.map(\.id),
+                    "active": center.activeActivities.map(\.id),
+                    "expanded": center.expandedActivity?.id ?? "nil",
+                    "fusing": center.fusingActivityId ?? "nil"
+                ]
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
+            
+        case ("POST", "/debug/tap-shelf"):
+            // Diagnóstico: simula el toque en la bolita de la repisa
+            DispatchQueue.main.async {
+                ActivityCenter.shared.activeActivities.first { $0.id == ShelfActivityProvider.activityId }?.onTap?()
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]
