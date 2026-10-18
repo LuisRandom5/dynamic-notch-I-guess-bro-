@@ -234,7 +234,8 @@ extension AirDropActivityProvider {
     fileprivate func snapshotFinderBeforeReceive() {
         finderWindowsBeforeReceive = Self.finderWindows()
         let front = NSWorkspace.shared.frontmostApplication
-        appBeforeReceive = front?.bundleIdentifier == "com.apple.finder" ? nil : front
+        let isOwnOrFinder = front?.bundleIdentifier == "com.apple.finder" || front?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+        appBeforeReceive = isOwnOrFinder ? nil : front
     }
 
     /// Al recibir de un dispositivo de la misma cuenta, macOS abre Descargas en Finder con el archivo.
@@ -242,13 +243,20 @@ extension AirDropActivityProvider {
     /// (nunca una que el usuario ya tuviera abierta) y se regresa a la app de antes.
     fileprivate func closeAutoRevealedFinderWindow() {
         finderGuardUntil = Date().addingTimeInterval(3)
+        DNDLogger.log("AirDropActivityProvider: recepción terminada, vigilando la ventana que abre Finder")
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         let titles: Set<String> = Set([downloads?.lastPathComponent, downloads.map { FileManager.default.displayName(atPath: $0.path) }].compactMap { $0 })
         pollForRevealedFinderWindow(titles: titles)
     }
 
     private func pollForRevealedFinderWindow(titles: Set<String>) {
-        guard Date() < finderGuardUntil else { return }
+        guard Date() < finderGuardUntil else {
+            if finderGuardUntil != .distantPast {
+                DNDLogger.log("AirDropActivityProvider: Finder no abrió ninguna ventana nueva de \(titles) (había \(finderWindowsBeforeReceive.count))")
+                finderGuardUntil = .distantPast
+            }
+            return
+        }
         let before = finderWindowsBeforeReceive
         let revealed = Self.finderWindows().first { window in
             guard !before.contains(where: { CFEqual($0, window) }) else { return false }
@@ -269,7 +277,9 @@ extension AirDropActivityProvider {
             DNDLogger.log("AirDropActivityProvider: cerrada la ventana de Descargas que abrió macOS")
         }
         finderGuardUntil = .distantPast
-        if let previous = appBeforeReceive, !previous.isTerminated {
+        // Sólo si Finder se quedó al frente: si no, no hay que devolverle nada a nadie
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder",
+           let previous = appBeforeReceive, !previous.isTerminated {
             previous.activate()
         }
     }
