@@ -12,6 +12,8 @@ public final class FullScreenMediaMonitor {
 
     @Published public private(set) var isHidingNotch = false
     private var timer: Timer?
+    /// La lista de ventanas se consulta fuera del hilo principal (cuesta decenas de ms)
+    private let queue = DispatchQueue(label: "com.luisrandom.DynamicNotch.FullScreen", qos: .utility)
 
     private init() {}
 
@@ -27,22 +29,31 @@ public final class FullScreenMediaMonitor {
     }
 
     private func evaluate() {
-        let shouldHide = MusicService.shared.currentTrack.isPlaying && isFullScreenOnNotchScreen()
-        guard shouldHide != isHidingNotch else { return }
-        isHidingNotch = shouldHide
-        DNDLogger.log("FullScreenMediaMonitor: \(shouldHide ? "pantalla completa con reproducción → notch oculto" : "fuera de pantalla completa → notch visible")")
-        NotchWindowManager.shared.setHiddenForFullScreen(shouldHide)
+        guard MusicService.shared.currentTrack.isPlaying || isHidingNotch,
+              let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
+              let mainHeight = NSScreen.screens.first?.frame.height else { return }
+        let isPlaying = MusicService.shared.currentTrack.isPlaying
+        let screenFrame = screen.frame
+        queue.async { [weak self] in
+            let fullScreen = Self.isFullScreen(screenFrame: screenFrame, mainHeight: mainHeight)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let shouldHide = isPlaying && fullScreen
+                guard shouldHide != self.isHidingNotch else { return }
+                self.isHidingNotch = shouldHide
+                DNDLogger.log("FullScreenMediaMonitor: \(shouldHide ? "pantalla completa con reproducción → notch oculto" : "fuera de pantalla completa → notch visible")")
+                NotchWindowManager.shared.setHiddenForFullScreen(shouldHide)
+            }
+        }
     }
 
-    private func isFullScreenOnNotchScreen() -> Bool {
-        guard let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
-              let mainHeight = NSScreen.screens.first?.frame.height else { return false }
+    private static func isFullScreen(screenFrame: CGRect, mainHeight: CGFloat) -> Bool {
         // Rectángulo de esa pantalla en coordenadas de CGWindowList (origen arriba a la izquierda)
         let screenRect = CGRect(
-            x: screen.frame.minX,
-            y: mainHeight - screen.frame.maxY,
-            width: screen.frame.width,
-            height: screen.frame.height
+            x: screenFrame.minX,
+            y: mainHeight - screenFrame.maxY,
+            width: screenFrame.width,
+            height: screenFrame.height
         )
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
         let menuBarVisible = windows.contains { info in

@@ -6,7 +6,7 @@ import AppKit
 @MainActor
 enum BubbleFrameRenderer {
     static func renderSequence() {
-        let merges: [CGFloat] = [1.0, 0.7, 0.55, 0.42, 0.3, 0.24, 0.18, 0.12, 0.07, 0.0, -0.03, -0.06]
+        let merges: [CGFloat] = [1.0, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.26, 0.18, 0.12, 0.05, 0.0, -0.05]
         let height: CGFloat = 34
         let pillWidth: CGFloat = 200
         let diameter: CGFloat = 34

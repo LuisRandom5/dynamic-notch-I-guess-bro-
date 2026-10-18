@@ -20,6 +20,9 @@ public final class BackdropBrightnessMonitor: ObservableObject {
     @Published public private(set) var isSystemDarkMode = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
 
     private var timer: Timer?
+    /// La lista de ventanas del sistema cuesta ~decenas de ms: se consulta fuera del hilo principal para no
+    /// robar cuadros a las animaciones del notch
+    private let queue = DispatchQueue(label: "com.luisrandom.DynamicNotch.Backdrop", qos: .utility)
     /// Zona que ocupa el notch desplegado (centrada arriba de la pantalla)
     private static let regionSize = CGSize(width: 520, height: 260)
 
@@ -27,8 +30,8 @@ public final class BackdropBrightnessMonitor: ObservableObject {
 
     public func start() {
         guard timer == nil else { return }
-        evaluate()
-        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in self?.evaluate() }
+        scheduleEvaluate()
+        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in self?.scheduleEvaluate() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         // El fondo de pantalla puede cambiar
@@ -37,13 +40,23 @@ public final class BackdropBrightnessMonitor: ObservableObject {
         }
     }
 
-    private func evaluate() {
+    private func scheduleEvaluate() {
+        // Datos de AppKit/estado en el hilo principal; la consulta pesada en segundo plano
         guard let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
               let mainHeight = NSScreen.screens.first?.frame.height else { return }
+        let screenFrame = screen.frame
+        let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass
+        let wallpaperBright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
+        queue.async { [weak self] in
+            self?.evaluate(screenFrame: screenFrame, mainHeight: mainHeight, adapts: adapts, wallpaperBright: wallpaperBright)
+        }
+    }
+    
+    private func evaluate(screenFrame: CGRect, mainHeight: CGFloat, adapts: Bool, wallpaperBright: Bool) {
         // Coordenadas de CGWindowList: origen arriba a la izquierda de la pantalla principal
         let region = CGRect(
-            x: screen.frame.midX - Self.regionSize.width / 2,
-            y: mainHeight - screen.frame.maxY,
+            x: screenFrame.midX - Self.regionSize.width / 2,
+            y: mainHeight - screenFrame.maxY,
             width: Self.regionSize.width,
             height: Self.regionSize.height
         )
@@ -63,15 +76,15 @@ public final class BackdropBrightnessMonitor: ObservableObject {
             let isDarkMode = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
             backdropBright = !isDarkMode
         } else {
-            backdropBright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
+            backdropBright = wallpaperBright
         }
         let dark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
-        if dark != isSystemDarkMode { isSystemDarkMode = dark }
         // Cristal Claro: siempre clear, sin adaptar
-        let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass
         let bright = adapts && backdropBright
-        if bright != isBackdropBright {
-            isBackdropBright = bright
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if dark != self.isSystemDarkMode { self.isSystemDarkMode = dark }
+            if bright != self.isBackdropBright { self.isBackdropBright = bright }
         }
     }
 }

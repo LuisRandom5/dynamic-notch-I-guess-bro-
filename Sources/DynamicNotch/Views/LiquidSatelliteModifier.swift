@@ -115,8 +115,10 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         //  m ≈ 0.15 la cintura es un hilo · m = 0 separada en su lugar
         //  raw < 0  el resorte la pasa un poco: crece apenas por encima de su tamaño y se asienta
         let grow = Self.smoothstep((1 - m) / 0.65)
-        let radiusScale: CGFloat = raw < 0 ? 1 + min(0.08, -raw * 0.6) : 0.42 + 0.58 * grow
-        let widthFactor = 0.5 + 0.5 * Self.smoothstep((0.8 - m) / 0.45)
+        // Fase B: la protuberancia nace estirada HACIA AFUERA (más ancha que alta) desde el borde del notch;
+        // al formarse el cuello ya es un círculo
+        let radiusScale: CGFloat = raw < 0 ? 1 + min(0.08, -raw * 0.6) : 0.55 + 0.45 * grow
+        let widthFactor = 1 + 0.18 * Self.smoothstep((m - 0.35) / 0.40)
         // Tensión superficial: justo antes de que el hilo se corte (m 0.30 → 0.05) la gota se estira hacia
         // el notch; al soltarse (raw < 0) tiembla como gelatina: se ensancha y se aplana un instante
         let tension = (m > 0.05 && m < 0.30) ? sin(.pi * (0.30 - m) / 0.25) : 0
@@ -149,11 +151,12 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                     .opacity(isGlass ? 0 : Double(attached))
                     .allowsHitTesting(false)
             )
-            // Dentro del notch no se ve nada; el icono (comprimido) aparece cuando la gota llega al borde
+            // Primero sólo se ve la protuberancia del propio notch; el anillo y el icono aparecen cuando la gota
+            // ya es un círculo (fase de cuello), no antes
             .overlay(
                 Circle()
                     .fill(Color.black)
-                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.66) / 0.14)))
+                    .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.40) / 0.18)))
                     .allowsHitTesting(false)
             )
             .opacity(glassFade)
@@ -173,16 +176,18 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                             reach: abs(notchCenterOffset.x) + notchRadius + 12
                         )
                         .opacity(glassFade)
-                    } else if !isGlass {
-                        // El cuello une el extremo del notch con el tamaño ACTUAL de la gota (crece al salir)
-                        MetaballBridgeShape(
-                            notchCenter: CGPoint(x: rest + notchCenterOffset.x, y: rest + notchCenterOffset.y),
+                    } else if !isGlass && showsBridge && abs(raw) > 0.001 {
+                        // Silueta líquida ÚNICA: el extremo del notch y la gota se dibujan juntos, se desenfocan y
+                        // se cortan por umbral (metaball). El propio borde del notch se abomba, forma un cuello
+                        // curvo que se adelgaza y se rompe solo; al regresar, el contacto se ensancha y se funde.
+                        LiquidGooSilhouette(
+                            notchCenterOffset: notchCenterOffset,
                             notchRadius: notchRadius,
-                            bubbleRadius: currentRadius,
-                            maxDistance: maxDistance
+                            bubbleRadius: bubbleRadius,
+                            scaleX: scaleX,
+                            scaleY: scaleY,
+                            notchIsLeading: notchEndX < restingX
                         )
-                        .fill(Color.black)
-                        .opacity(showsBridge ? 1 : 0)
                     }
                 }
                 .animation(nil, value: drawsGlassDroplet)
@@ -198,6 +203,51 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     private static func smoothstep(_ x: CGFloat) -> CGFloat {
         let t = min(1, max(0, x))
         return t * t * (3 - 2 * t)
+    }
+}
+
+// MARK: - Silueta líquida (metaball por desenfoque + umbral)
+
+/// El extremo del notch y la gota dibujados en un mismo lienzo, desenfocados y cortados por umbral de
+/// opacidad: donde sus campos se suman aparece un único contorno continuo (protuberancia → cuello → corte).
+/// Centro del lienzo = centro de la bolita.
+struct LiquidGooSilhouette: View {
+    let notchCenterOffset: CGPoint
+    let notchRadius: CGFloat
+    let bubbleRadius: CGFloat
+    let scaleX: CGFloat
+    let scaleY: CGFloat
+    /// El notch está a la izquierda de la gota (bolita del lado derecho)
+    let notchIsLeading: Bool
+
+    /// Radio del desenfoque: define hasta dónde se estira el cuello antes de romperse (~2× este valor)
+    static let gooBlur: CGFloat = 7
+
+    var body: some View {
+        let reach = abs(notchCenterOffset.x) + notchRadius * 5 + bubbleRadius + 24
+        Canvas { context, size in
+            let c = CGPoint(x: size.width / 2, y: size.height / 2)
+            let R = notchRadius
+            let pillEnd = CGPoint(x: c.x + notchCenterOffset.x, y: c.y + notchCenterOffset.y)
+            // El cuerpo del notch se extiende HACIA DENTRO (lado opuesto a la gota) para que el campo del extremo
+            // sea el de una cápsula, no el de un círculo suelto
+            let bodyLength = R * 4
+            let pillRect = notchIsLeading
+                ? CGRect(x: pillEnd.x - bodyLength, y: pillEnd.y - R, width: bodyLength + R, height: 2 * R)
+                : CGRect(x: pillEnd.x - R, y: pillEnd.y - R, width: bodyLength + R, height: 2 * R)
+            let w = 2 * bubbleRadius * scaleX
+            let h = 2 * bubbleRadius * scaleY
+            let drop = CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h)
+
+            context.addFilter(.alphaThreshold(min: 0.5, color: .black))
+            context.addFilter(.blur(radius: Self.gooBlur))
+            context.drawLayer { layer in
+                layer.fill(Path(roundedRect: pillRect, cornerRadius: R), with: .color(.black))
+                layer.fill(Path(ellipseIn: drop), with: .color(.black))
+            }
+        }
+        .frame(width: 2 * reach, height: 2 * reach)
+        .allowsHitTesting(false)
     }
 }
 

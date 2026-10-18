@@ -119,8 +119,26 @@ public final class CallDetectorService: ObservableObject {
         }
     }
     
+    /// Lista de apps abiertas en memoria: se refresca sólo cuando una app abre o cierra. Recorrerla cada
+    /// 0.35 s (y pedir el nombre de cada app) en el hilo principal se comía cuadros de las animaciones.
+    private var cachedRunningApps: [NSRunningApplication] = NSWorkspace.shared.runningApplications
+    private var appCacheObservers: [NSObjectProtocol] = []
+    
+    private var runningApps: [NSRunningApplication] { cachedRunningApps }
+    
+    private func observeRunningAppsChanges() {
+        guard appCacheObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            appCacheObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.cachedRunningApps = NSWorkspace.shared.runningApplications
+            })
+        }
+    }
+    
     public func startMonitoring() {
         guard isEnabled else { return }
+        observeRunningAppsChanges()
         registerDefaultDeviceListener()
         updateCurrentInputDeviceAndAttachListener()
         
@@ -307,8 +325,8 @@ public final class CallDetectorService: ObservableObject {
     // MARK: - Detección de Llamadas Entrantes en WhatsApp
     private func checkWhatsAppState() {
         guard !isScanningWhatsApp, !isCallDismissedByUser else { return }
-        guard let whatsApp = NSWorkspace.shared.runningApplications.first(where: {
-            ($0.bundleIdentifier?.lowercased().contains("whatsapp") ?? false) || ($0.localizedName?.lowercased().contains("whatsapp") ?? false)
+        guard let whatsApp = runningApps.first(where: {
+            $0.bundleIdentifier?.lowercased().contains("whatsapp") ?? false
         }) else { return }
         
         isScanningWhatsApp = true
@@ -407,7 +425,7 @@ public final class CallDetectorService: ObservableObject {
     private func checkFaceTimeState() {
         guard !isScanningFaceTime, !isCallDismissedByUser else { return }
         
-        let runningApps = NSWorkspace.shared.runningApplications
+        let runningApps = self.runningApps
         // Candidatos que pueden mostrar el banner o ventana de llamada FaceTime:
         // 1. App FaceTime nativa
         // 2. Servicios de notificación de FaceTime (FaceTimeNotificationCenterService, etc.)
@@ -566,8 +584,8 @@ public final class CallDetectorService: ObservableObject {
     // MARK: - Detección de Llamadas y Voz en Discord
     private func checkDiscordState() {
         guard !isScanningDiscord, !isCallDismissedByUser else { return }
-        guard let discordApp = NSWorkspace.shared.runningApplications.first(where: {
-            ($0.bundleIdentifier?.contains("discord") ?? false) || $0.localizedName == "Discord"
+        guard let discordApp = runningApps.first(where: {
+            ($0.bundleIdentifier?.contains("discord") ?? false)
         }) else { return }
         
         isScanningDiscord = true
@@ -714,20 +732,20 @@ public final class CallDetectorService: ObservableObject {
         }
         
         // 2. Si Discord está corriendo y activo, desconectar con AXPress
-        let runningApps = NSWorkspace.shared.runningApplications
-        if runningApps.contains(where: { ($0.bundleIdentifier?.contains("discord") ?? false) || $0.localizedName == "Discord" }) {
+        let runningApps = self.runningApps
+        if runningApps.contains(where: { ($0.bundleIdentifier?.contains("discord") ?? false) }) {
             CallActivityProvider.shared.disconnectDiscordNatively()
         }
         
         // 3. Si FaceTime está corriendo, desconectar con AXPress sin interferir en otras ventanas
-        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("facetime") ?? false) || $0.localizedName == "FaceTime" }) {
+        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("facetime") ?? false) }) {
             CallActivityProvider.shared.disconnectFaceTimeNatively()
         }
     }
     
     private func pressDiscordIncomingButton(accept: Bool) {
-        guard let app = NSWorkspace.shared.runningApplications.first(where: {
-            ($0.bundleIdentifier?.contains("discord") ?? false) || $0.localizedName == "Discord"
+        guard let app = runningApps.first(where: {
+            ($0.bundleIdentifier?.contains("discord") ?? false)
         }) else { return }
         
         DispatchQueue.global(qos: .userInitiated).async {
@@ -942,23 +960,23 @@ public final class CallDetectorService: ObservableObject {
     }
     
     private func detectActiveCallingApp() -> String {
-        let runningApps = NSWorkspace.shared.runningApplications
-        if runningApps.contains(where: { ($0.bundleIdentifier?.contains("facetime") ?? false) || $0.localizedName == "FaceTime" }) {
+        let runningApps = self.runningApps
+        if runningApps.contains(where: { ($0.bundleIdentifier?.contains("facetime") ?? false) }) {
             return "FaceTime Audio"
         }
-        if runningApps.contains(where: { ($0.bundleIdentifier?.contains("discord") ?? false) || $0.localizedName == "Discord" }) {
+        if runningApps.contains(where: { ($0.bundleIdentifier?.contains("discord") ?? false) }) {
             return "Discord"
         }
-        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("zoom") ?? false) || ($0.localizedName?.lowercased().contains("zoom") ?? false) }) {
+        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("zoom") ?? false) }) {
             return "Zoom"
         }
-        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("whatsapp") ?? false) || ($0.localizedName?.lowercased().contains("whatsapp") ?? false) }) {
+        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("whatsapp") ?? false) }) {
             return "WhatsApp"
         }
-        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("slack") ?? false) || ($0.localizedName?.lowercased().contains("slack") ?? false) }) {
+        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("slack") ?? false) }) {
             return "Slack Huddle"
         }
-        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("teams") ?? false) || ($0.localizedName?.lowercased().contains("teams") ?? false) }) {
+        if runningApps.contains(where: { ($0.bundleIdentifier?.lowercased().contains("teams") ?? false) }) {
             return "Microsoft Teams"
         }
         return "Llamada de Audio"

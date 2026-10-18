@@ -43,6 +43,9 @@ public struct StopwatchLap: Identifiable, Equatable {
 /// - Estado Expandido: Cronómetro/Temporizador gigante en naranja, controles de pausa/reanudar, vueltas y cancelar.
 /// - Basado en marcas de tiempo reales (`Date()`) sin desincronizaciones por throttling.
 public final class TimerActivityProvider: ObservableObject {
+    /// Cargado una sola vez: leer el sonido del disco al terminar el temporizador congelaba ~80 ms el notch
+    private static let endSound: NSSound? = NSSound(named: "Glass")
+    
     public static let shared = TimerActivityProvider()
     
     @Published public var mode: TimerMode = .countdown
@@ -345,7 +348,8 @@ public final class TimerActivityProvider: ObservableObject {
     /// Notificación de finalización de temporizador
     private func publishTimerEnded() {
         AppState.shared.hapticService.triggerExpand()
-        NSSound(named: "Glass")?.play()
+        Self.endSound?.stop()
+        Self.endSound?.play()
         
         if isExpandedCard {
             publishCurrentState()
