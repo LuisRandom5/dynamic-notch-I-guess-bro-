@@ -50,6 +50,58 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
     private var knownChatRecords: [String: ChatRecord] = [:]
     
+    // MARK: - Antiduplicados y antigüedad
+    
+    /// Huellas de mensajes ya notificados (contacto|texto|no leídos|hora) con su fecha; persisten 48 h entre reinicios.
+    private var notifiedFingerprints: [String: Double] = (UserDefaults.standard.dictionary(forKey: "whatsAppNotifiedFingerprints") as? [String: Double]) ?? [:]
+    private static let fingerprintLifetime: TimeInterval = 48 * 3600
+    private static let maxFingerprints = 400
+    
+    /// Registra el mensaje como notificado. Devuelve false si ya lo estaba.
+    @discardableResult
+    private func rememberNotified(contact: String, message: String, unread: Int, time: String = "") -> Bool {
+        let key = "\(contact.lowercased())|\(message.trimmingCharacters(in: .whitespacesAndNewlines))|\(unread)|\(time)"
+        let now = Date().timeIntervalSince1970
+        notifiedFingerprints = notifiedFingerprints.filter { now - $0.value < Self.fingerprintLifetime }
+        if notifiedFingerprints[key] != nil { return false }
+        notifiedFingerprints[key] = now
+        if notifiedFingerprints.count > Self.maxFingerprints {
+            let oldest = notifiedFingerprints.sorted { $0.value < $1.value }.prefix(notifiedFingerprints.count - Self.maxFingerprints)
+            oldest.forEach { notifiedFingerprints.removeValue(forKey: $0.key) }
+        }
+        UserDefaults.standard.set(notifiedFingerprints, forKey: "whatsAppNotifiedFingerprints")
+        return true
+    }
+    
+    /// ¿La hora que muestra la lista de chats es reciente (≤ 10 min)?
+    /// true = reciente · false = vieja ("Ayer", fecha, día de la semana o > 10 min) · nil = no se pudo leer.
+    func isRecentChatTime(_ raw: String) -> Bool? {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !text.isEmpty else { return nil }
+        let oldMarkers = ["ayer", "yesterday", "/", "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes",
+                          "sábado", "sabado", "domingo", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        if oldMarkers.contains(where: { text.contains($0) }) { return false }
+        if text == "hoy" || text == "today" || text == "ahora" || text == "now" { return true }
+        
+        // "8:48 p.m.", "8:48 pm", "20:48"
+        guard let match = text.range(of: #"(\d{1,2}):(\d{2})"#, options: .regularExpression) else { return nil }
+        let parts = text[match].split(separator: ":")
+        guard parts.count == 2, var hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        let isPM = text.contains("p.") || text.contains("pm") || text.contains("p. m")
+        let isAM = text.contains("a.") || text.contains("am") || text.contains("a. m")
+        if isPM && hour < 12 { hour += 12 }
+        if isAM && hour == 12 { hour = 0 }
+        
+        let calendar = Calendar.current
+        let now = Date()
+        guard var stamp = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) else { return nil }
+        if stamp.timeIntervalSince(now) > 120 {
+            // Una hora "del futuro" es de ayer
+            stamp = calendar.date(byAdding: .day, value: -1, to: stamp) ?? stamp
+        }
+        return now.timeIntervalSince(stamp) <= 10 * 60
+    }
+    
     private init() {
         if UserDefaults.standard.object(forKey: "enableWhatsAppWebObserver") == nil {
             self.isEnabled = true
@@ -432,14 +484,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
                 isMuted: isMuted,
                 lastAlertedAt: Date()
             )
-            // Si en el primer arranque ya hay un mensaje no leído nuevo y no silenciado, alertar
-            if unread > 0 && !isMuted {
-                let lowerMsg = msg.lowercased()
-                if lowerMsg != "escribiendo..." && lowerMsg != "typing..." && !msg.isEmpty {
-                    DNDLogger.log("WhatsAppWebObserverService: 🔔 MENSAJE NO LEÍDO AL INICIAR de '\(contact)': '\(msg)' (no leídos: \(unread), hora: \(time))")
-                    dispatchNotification(sender: contact, message: msg)
-                }
-            }
+            // Al arrancar sólo se toma la foto del estado actual: lo que ya estaba sin leer es viejo y no se
+            // notifica (antes cada arranque de la app volvía a mostrar mensajes de hace horas)
+            rememberNotified(contact: contact, message: msg, unread: unread, time: time)
             return
         }
         
@@ -459,7 +506,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
                 let isTyping = lowerMsg == "escribiendo..." || lowerMsg == "typing..."
                 
                 if !isFrontmostBrowser && !isOutgoing && !isTyping && !isMuted && !msg.isEmpty {
-                    if (prev.message != msg || prev.time != time) && Date().timeIntervalSince(prev.lastAlertedAt) >= 2.5 {
+                    if prev.message != msg && Date().timeIntervalSince(prev.lastAlertedAt) >= 2.5 {
                         DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE EN CHAT ACTIVO de '\(contact)': '\(msg)' (hora: \(time))")
                         knownChatRecords[contact] = ChatRecord(
                             message: msg,
@@ -468,18 +515,22 @@ public final class WhatsAppWebObserverService: ObservableObject {
                             isMuted: isMuted,
                             lastAlertedAt: Date()
                         )
-                        dispatchNotification(sender: contact, message: msg)
+                        dispatchNotification(sender: contact, message: msg, time: time)
                         return
                     }
                 }
                 
-                knownChatRecords[contact] = ChatRecord(
-                    message: msg,
-                    time: time,
-                    unreadCount: 0,
-                    isMuted: isMuted,
-                    lastAlertedAt: prev.lastAlertedAt
-                )
+                // "escribiendo..." no reemplaza el último mensaje real: si no, al terminar de escribir el
+                // mensaje viejo parecía nuevo y se volvía a notificar
+                if !isTyping {
+                    knownChatRecords[contact] = ChatRecord(
+                        message: msg,
+                        time: time,
+                        unreadCount: 0,
+                        isMuted: isMuted,
+                        lastAlertedAt: prev.lastAlertedAt
+                    )
+                }
             } else {
                 knownChatRecords[contact] = ChatRecord(
                     message: msg,
@@ -504,15 +555,18 @@ public final class WhatsAppWebObserverService: ObservableObject {
                 shouldAlert = true
             } else if msg != prev.message {
                 shouldAlert = true
-            } else if time != prev.time {
-                shouldAlert = true
             }
+            // (Un cambio SOLO de hora — "10:32" → "Ayer" a medianoche — no es un mensaje nuevo)
             
             if shouldAlert && Date().timeIntervalSince(prev.lastAlertedAt) < 2.5 && msg == prev.message {
                 shouldAlert = false
             }
         } else {
-            shouldAlert = true
+            // Chat que aparece por primera vez en la lista (scroll, recarga): sólo si su hora es reciente
+            shouldAlert = isRecentChatTime(time) == true
+        }
+        if shouldAlert && isRecentChatTime(time) == false {
+            shouldAlert = false // La hora del chat dice que el mensaje es viejo
         }
         
         knownChatRecords[contact] = ChatRecord(
@@ -525,7 +579,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         
         if shouldAlert {
             DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE DETECTADO de '\(contact)': '\(msg)' (no leídos: \(unread), hora: \(time))")
-            dispatchNotification(sender: contact, message: msg)
+            dispatchNotification(sender: contact, message: msg, unread: unread, time: time)
         }
     }
     
@@ -782,7 +836,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
 
     // MARK: - Despacho y Actualización de Notificaciones
-    private func dispatchNotification(sender: String, message: String) {
+    private func dispatchNotification(sender: String, message: String, unread: Int = 0, time: String = "") {
+        // Un mismo mensaje (contacto + texto + no leídos + hora) nunca se notifica dos veces, ni tras reiniciar
+        guard rememberNotified(contact: sender, message: message, unread: unread, time: time) else {
+            DNDLogger.log("WhatsAppWebObserverService: ⏭️ Ya notificado, se omite: '\(sender)': '\(message)'")
+            return
+        }
         DispatchQueue.main.async {
             if NotificationActivityProvider.shared.isNotificationActive &&
                 NotificationActivityProvider.shared.isQuickReplyExpanded {

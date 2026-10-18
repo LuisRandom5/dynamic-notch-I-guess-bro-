@@ -106,6 +106,17 @@ public final class NotificationActivityProvider: ObservableObject {
     }
     
     /// Actualiza en caliente el título, mensaje y avatar de la notificación activa sin parpadeo
+    /// Sólo tiene sentido responder si sabemos a QUIÉN: un remitente genérico ("WhatsApp") o un resumen
+    /// ("2 mensajes nuevos sin leer") no identifican un chat, así que se ofrece abrir la app en su lugar.
+    public static func canQuickReply(title: String, message: String) -> Bool {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t.isEmpty || t == "whatsapp" || t == "whatsapp web" || t == "mensajes" || t == "messages" { return false }
+        let m = message.lowercased()
+        let isSummary = m.range(of: #"^\d+\s+(mensajes|messages|chats)"#, options: .regularExpression) != nil
+            || m.contains("sin leer") || m.contains("unread") || m.contains("mensajes nuevos") || m.contains("new messages")
+        return !isSummary
+    }
+    
     public func updateActiveNotification(title: String, message: String, handle: String? = nil, avatar: NSImage? = nil, enableQuickReply: Bool? = nil) {
         guard let current = currentPayload else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -118,7 +129,7 @@ public final class NotificationActivityProvider: ObservableObject {
                 appName: current.appName,
                 appIcon: current.appIcon,
                 tintColor: current.tintColor,
-                enableQuickReply: enableQuickReply ?? current.enableQuickReply
+                enableQuickReply: (enableQuickReply ?? current.enableQuickReply) && Self.canQuickReply(title: title, message: message)
             )
         }
     }
@@ -239,6 +250,7 @@ public final class NotificationActivityProvider: ObservableObject {
         
         DNDLogger.log("NotificationActivityProvider.showNotification CALLED: title='\(title)', message='\(message)', handle='\(handle)'")
         let activityId = "notification_\(UUID().uuidString)"
+        let effectiveQuickReply = enableQuickReply && Self.canQuickReply(title: title, message: message)
         let resolvedHandle = handle.isEmpty ? title : handle
         
         // Generar avatar monograma instantáneo para jamás bloquear el hilo principal en ContactStore
@@ -292,7 +304,7 @@ public final class NotificationActivityProvider: ObservableObject {
             appName: appName,
             appIcon: appIcon,
             tintColor: tint,
-            enableQuickReply: enableQuickReply
+            enableQuickReply: effectiveQuickReply
         )
         self.currentPayload = payload
         setNotificationState(active: true, expanded: false, id: activityId)
@@ -312,7 +324,7 @@ public final class NotificationActivityProvider: ObservableObject {
             appName: appName,
             appIcon: appIcon,
             tintColor: tint,
-            enableQuickReply: enableQuickReply
+            enableQuickReply: effectiveQuickReply
         )
         
         let activity = LiveActivity(

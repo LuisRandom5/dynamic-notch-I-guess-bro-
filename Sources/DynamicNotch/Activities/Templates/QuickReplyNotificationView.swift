@@ -5,17 +5,28 @@ import AppKit
 /// Diseñada con estética Liquid Glass, esquinas amplias y despeje total del notch físico.
 public struct QuickReplyNotificationView: View {
     public let id: String
-    public let title: String
-    public let message: String
-    public let handle: String
-    public let avatar: NSImage?
+    private let initialTitle: String
+    private let initialMessage: String
+    private let initialHandle: String
+    private let initialAvatar: NSImage?
     public let appName: String
     public let appIcon: String
     public let tintColor: Color
-    public let enableQuickReply: Bool
+    private let initialQuickReply: Bool
     
     // Fuente de verdad única: el proveedor.
     @ObservedObject private var provider = NotificationActivityProvider.shared
+    
+    /// Datos en vivo: si el proveedor actualizó esta notificación (p. ej. descubrió el remitente real),
+    /// la vista los refleja en lugar de quedarse con los que tenía al crearse.
+    private var livePayload: NotificationPayload? {
+        provider.currentPayload?.id == id ? provider.currentPayload : nil
+    }
+    public var title: String { livePayload?.title ?? initialTitle }
+    public var message: String { livePayload?.message ?? initialMessage }
+    public var handle: String { livePayload?.handle ?? initialHandle }
+    public var avatar: NSImage? { livePayload?.avatar ?? initialAvatar }
+    public var enableQuickReply: Bool { livePayload?.enableQuickReply ?? initialQuickReply }
     private var isExpanded: Bool {
         provider.isQuickReplyExpanded && (provider.currentNotificationId == id || provider.currentNotificationId == nil)
     }
@@ -43,14 +54,14 @@ public struct QuickReplyNotificationView: View {
         enableQuickReply: Bool = true
     ) {
         self.id = id
-        self.title = title
-        self.message = message
-        self.handle = handle.isEmpty ? title : handle
-        self.avatar = avatar
+        self.initialTitle = title
+        self.initialMessage = message
+        self.initialHandle = handle.isEmpty ? title : handle
+        self.initialAvatar = avatar
         self.appName = appName
         self.appIcon = appIcon
         self.tintColor = tintColor
-        self.enableQuickReply = enableQuickReply
+        self.initialQuickReply = NotificationActivityProvider.canQuickReply(title: title, message: message) && enableQuickReply
     }
     
     public var body: some View {
