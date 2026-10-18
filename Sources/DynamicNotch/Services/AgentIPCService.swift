@@ -237,6 +237,14 @@ public final class AgentIPCService {
         case ("POST", "/progress"):
             handleProgressRequest(bodyData: bodyData, connection: connection)
             
+        case ("POST", "/claude"):
+            // Reportes de scripts/claude_notch_hook.py (Claude Code)
+            let json = (try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any]) ?? [:]
+            DispatchQueue.main.async {
+                ClaudeActivityProvider.shared.handle(json: json)
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("POST", "/tokens"), ("POST", "/credits"):
             handleTokensRequest(bodyData: bodyData, connection: connection)
             

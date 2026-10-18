@@ -135,6 +135,14 @@ public final class NotchWindowManager: ObservableObject {
             return
         }
         
+        // Actividad fusionada con el notch (p. ej. la tarjeta de Claude): toda su tarjeta debe ser clicable
+        if let expanded = ActivityCenter.shared.expandedActivity {
+            let w = ActivityCenter.shared.customCardWidth ?? expanded.customExpandedWidth ?? 430
+            let h = ActivityCenter.shared.customCardHeight ?? expanded.customExpandedHeight ?? 160
+            updateHitArea(width: w + 40, height: h + 50)
+            return
+        }
+        
         if AppState.shared.isDropInvitationActive {
             updateHitArea(width: 480, height: 160)
             return

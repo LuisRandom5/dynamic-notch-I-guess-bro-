@@ -18,6 +18,7 @@ public struct NotchBolitaView: View {
     @ObservedObject var appState = AppState.shared
     @ObservedObject var agentProvider = AgentActivityProvider.shared
     @ObservedObject var timerProvider = TimerActivityProvider.shared
+    @ObservedObject var claudeProvider = ClaudeActivityProvider.shared
     
     @State private var isHovered: Bool = false
     @State private var isPressed: Bool = false
@@ -45,6 +46,9 @@ public struct NotchBolitaView: View {
                 return timerProvider.progressRatio
             }
         }
+        if activity.kind == .claude, let session = claudeSession {
+            return session.progress
+        }
         if activity.kind == .agentAI {
             if agentProvider.satelliteProgress > 0 {
                 return max(0.02, min(1.0, agentProvider.satelliteProgress))
@@ -56,10 +60,16 @@ public struct NotchBolitaView: View {
         return 0.0
     }
     
+    /// Sesión de Claude que representa esta bolita (sólo para kind == .claude)
+    private var claudeSession: ClaudeSessionState? {
+        guard activity.kind == .claude else { return nil }
+        return claudeProvider.sessions[String(activity.id.dropFirst("claude_".count))]
+    }
+    
     /// Define si la bolita debe renderizar un anillo fino de progreso
     private var showsProgressRing: Bool {
         switch activity.kind {
-        case .timer:
+        case .timer, .claude:
             return true
         case .agentAI:
             return (agentProvider.isSatelliteActive || agentProvider.isActive) && agentProvider.satelliteProgress >= 0.02
@@ -83,6 +93,12 @@ public struct NotchBolitaView: View {
             return .orange
         case .agentAI:
             return Color(red: 0.72, green: 0.40, blue: 1.00)
+        case .claude:
+            switch claudeSession?.phase {
+            case .done: return Color(red: 0.35, green: 0.85, blue: 0.55)
+            case .waiting: return .yellow // Claude espera tu respuesta o un permiso
+            default: return ClaudeMarkView.orange
+            }
         case .download:
             return .cyan
         default:
@@ -103,6 +119,8 @@ public struct NotchBolitaView: View {
             return .orange
         case .agentAI:
             return Color(red: 0.76, green: 0.45, blue: 1.00)
+        case .claude:
+            return ClaudeMarkView.orange
         case .download:
             return .cyan
         case .music:
@@ -126,7 +144,7 @@ public struct NotchBolitaView: View {
             return "lock.shield.fill"
         case .timer:
             return "timer"
-        case .agentAI:
+        case .agentAI, .claude:
             return "sparkle"
         case .download:
             return "arrow.down"
@@ -176,7 +194,10 @@ public struct NotchBolitaView: View {
             }
             
             // 3. Contenido representativo centrado ópticamente
-            if activity.kind == .recording {
+            if activity.kind == .claude {
+                // Marca de Claude: respira mientras trabaja; el anillo pulsa si espera respuesta del usuario
+                ClaudeMarkView(size: size * 0.48, isAnimating: claudeSession?.phase == .working)
+            } else if activity.kind == .recording {
                 // Punto de grabación circular rojo minimalista idéntico a iOS
                 Circle()
                     .fill(Color(red: 0.98, green: 0.26, blue: 0.22))

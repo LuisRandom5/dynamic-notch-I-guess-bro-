@@ -14,6 +14,7 @@ public enum ActivityKind: String, CaseIterable, Identifiable {
     case vpn
     case download
     case agentAI
+    case claude
     case music
     case generic
     
@@ -23,7 +24,7 @@ public enum ActivityKind: String, CaseIterable, Identifiable {
         switch self {
         case .call, .recording: return 900
         case .timer: return 800
-        case .agentAI, .download, .vpn: return 700
+        case .agentAI, .claude, .download, .vpn: return 700
         case .music: return 500
         case .generic: return 600
         }
