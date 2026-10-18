@@ -22,6 +22,7 @@ public struct NotchBolitaView: View {
     
     @State private var isHovered: Bool = false
     @State private var isPressed: Bool = false
+    @GestureState private var isHolding: Bool = false
     @State private var hoverTimer: Timer?
     
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -266,7 +267,7 @@ public struct NotchBolitaView: View {
     }
     
     private var scaleAmount: CGFloat {
-        if isPressed { return 0.92 }
+        if isPressed || isHolding { return 0.92 }
         // Al pasar el cursor la bolita crece: invita a tocarla
         if isHovered { return 1.12 }
         return 1.0
@@ -280,10 +281,14 @@ public struct NotchBolitaView: View {
             .brightness(isHovered ? 0.04 : 0.0)
             .animation(.spring(response: 0.26, dampingFraction: 0.68), value: isHovered)
             .animation(.spring(response: 0.16, dampingFraction: 0.75), value: isPressed)
+            .animation(.spring(response: 0.30, dampingFraction: 0.70), value: isHolding)
+            // Clic = abrir la app · mantener presionado (0.35 s) = expandir, como la Isla Dinámica del iPhone
             .highPriorityGesture(
-                TapGesture().onEnded {
-                    handleTapGesture()
-                }
+                LongPressGesture(minimumDuration: 0.35)
+                    // La bolita se comprime mientras se mantiene, para que se sienta que va a pasar algo
+                    .updating($isHolding) { pressing, state, _ in state = pressing }
+                    .onEnded { _ in handleLongPress() }
+                    .exclusively(before: TapGesture().onEnded { handleTapGesture() })
             )
             .contextMenu {
                 bolitaContextMenu
@@ -294,7 +299,7 @@ public struct NotchBolitaView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityText)
-            .accessibilityHint("Haz clic para expandir en el notch")
+            .accessibilityHint("Haz clic para abrir la app; mantén presionado para expandir")
             .help(accessibilityText)
     }
     
@@ -308,14 +313,50 @@ public struct NotchBolitaView: View {
         return title
     }
     
+    /// App que abre un clic en la bolita (como en el iPhone: tocar una actividad abre su app)
+    private var sourceAppBundleId: String? {
+        switch activity.kind {
+        case .claude: return "com.anthropic.claudefordesktop"
+        case .timer: return "com.apple.clock"
+        case .agentAI: return "com.google.antigravity"
+        case .call: return "com.apple.FaceTime"
+        default: return nil
+        }
+    }
+    
+    /// Clic, como en el iPhone: abre la app de la actividad. Si la bolita no tiene app propia, hace lo de
+    /// mantener presionado (expandir), para que ningún clic quede muerto.
     private func handleTapGesture() {
         center.lastSatelliteTapAt = Date()
         center.cancelAlertAutoCollapse()
-        // La repisa no tiene tarjeta propia: su bolita abre la repisa del notch
+        // La repisa no tiene app ni tarjeta: su bolita abre la repisa del notch
         if activity.id == ShelfActivityProvider.activityId {
             activity.onTap?()
             return
         }
+        if center.expandedActivity?.id == activity.id {
+            center.collapseExpandedActivity()
+            return
+        }
+        if let bundleId = sourceAppBundleId,
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            isPressed = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { self.isPressed = false }
+            SoundFeedbackService.shared.playBubblePop()
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            return
+        }
+        if let onTap = activity.onTap {
+            onTap()
+            return
+        }
+        handleLongPress()
+    }
+    
+    /// Mantener presionado, como en el iPhone: la actividad se expande en su tarjeta
+    private func handleLongPress() {
+        center.lastSatelliteTapAt = Date()
+        center.cancelAlertAutoCollapse()
         if center.expandedActivity?.id == activity.id {
             center.collapseExpandedActivity()
             return
