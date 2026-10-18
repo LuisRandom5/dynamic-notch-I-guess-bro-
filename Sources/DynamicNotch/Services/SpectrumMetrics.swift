@@ -70,8 +70,8 @@ public struct SpectrumMetrics {
     
     // AGC multibanda: cada banda sigue su propio pico además del pico global,
     // para que bandas tenues (agudos en voz/podcast, graves en música clásica) usen todo el rango visual.
-    public static var perBandAGCAmount: Float = 0.55      // 0 = solo AGC global · 1 = solo AGC por banda
-    public static var perBandMaxBoostDB: Float = 18.0     // Una banda nunca se amplifica más de esto respecto al pico global
+    public static var perBandAGCAmount: Float = 0.80      // 0 = solo AGC global · 1 = solo AGC por banda
+    public static var perBandMaxBoostDB: Float = 26.0     // Una banda nunca se amplifica más de esto respecto al pico global
     public static var perBandReleaseDBPerSec: Float = 3.0 // Caída del pico por banda (lenta: no "respira" entre golpes)
     
     // Histéresis adaptativa: la banda ignora cambios menores que su propio nivel de fluctuación reciente
@@ -93,10 +93,11 @@ public struct SpectrumMetrics {
     
     public static var includeAppAudioInTap: Bool = true // Incluye por defecto el generador de calibración en el Process Tap
     
-    public static var gainMultiplier: Float = UserDefaults.standard.object(forKey: "spectrumGainMultiplier") != nil
-        ? UserDefaults.standard.float(forKey: "spectrumGainMultiplier")
-        : 1.08 {
-        didSet { UserDefaults.standard.set(gainMultiplier, forKey: "spectrumGainMultiplier") }
+    // Clave V2: una calibración vieja dejó guardada la ganancia en 0.62 y las barras nunca pasaban de la mitad
+    public static var gainMultiplier: Float = UserDefaults.standard.object(forKey: "spectrumGainMultiplierV2") != nil
+        ? UserDefaults.standard.float(forKey: "spectrumGainMultiplierV2")
+        : 1.10 {
+        didSet { UserDefaults.standard.set(gainMultiplier, forKey: "spectrumGainMultiplierV2") }
     }
     
     public static var bluetoothDelayMs: Double = UserDefaults.standard.object(forKey: "spectrumBluetoothDelayMs") != nil

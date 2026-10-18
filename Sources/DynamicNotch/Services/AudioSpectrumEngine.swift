@@ -165,6 +165,7 @@ public final class AudioSpectrumEngine: ObservableObject {
         let values: [Float]
     }
     private var delayQueue: [DelayedFrame] = []
+    private var lastDelayedOutput: [Float] = [0, 0, 0, 0, 0, 0]
     
     // Simulación suave cuando el modo simulado se activa manualmente en laboratorio
     private var simBeatClock: Double = 0.0
@@ -339,7 +340,57 @@ public final class AudioSpectrumEngine: ObservableObject {
         return uidStr.isEmpty ? nil : uidStr
     }
     
+    /// Retraso real entre que el tap recibe el audio y que se escucha (s). Con AirPods/Bluetooth son
+    /// ~0.15–0.25 s: sin compensarlo las barras se adelantan a lo que se oye.
+    private var outputLatencySec: Double = 0
+    
+    private func measureOutputLatency() {
+        var deviceID = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID) == noErr,
+              deviceID != 0 else { outputLatencySec = 0; return }
+        
+        func uint32(_ selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeOutput, object: AudioObjectID) -> UInt32 {
+            var value: UInt32 = 0
+            var valueSize = UInt32(MemoryLayout<UInt32>.size)
+            var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+            return AudioObjectGetPropertyData(object, &addr, 0, nil, &valueSize, &value) == noErr ? value : 0
+        }
+        var rate: Float64 = 0
+        var rateSize = UInt32(MemoryLayout<Float64>.size)
+        var rateAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        AudioObjectGetPropertyData(deviceID, &rateAddress, 0, nil, &rateSize, &rate)
+        let sampleRate = rate > 0 ? rate : 48_000
+        
+        // Latencia del dispositivo + margen de seguridad + búfer + latencia del primer stream de salida
+        var frames = uint32(kAudioDevicePropertyLatency, object: deviceID)
+            + uint32(kAudioDevicePropertySafetyOffset, object: deviceID)
+            + uint32(kAudioDevicePropertyBufferFrameSize, scope: kAudioObjectPropertyScopeGlobal, object: deviceID)
+        var streamsSize: UInt32 = 0
+        var streamsAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+        if AudioObjectGetPropertyDataSize(deviceID, &streamsAddress, 0, nil, &streamsSize) == noErr, streamsSize > 0 {
+            var streams = [AudioStreamID](repeating: 0, count: Int(streamsSize) / MemoryLayout<AudioStreamID>.size)
+            if AudioObjectGetPropertyData(deviceID, &streamsAddress, 0, nil, &streamsSize, &streams) == noErr, let first = streams.first {
+                frames += uint32(kAudioStreamPropertyLatency, scope: kAudioObjectPropertyScopeGlobal, object: first)
+            }
+        }
+        var latency = Double(frames) / sampleRate
+        
+        // Bluetooth: CoreAudio no siempre reporta el retraso del códec; usar al menos el típico de AirPods
+        let transport = uint32(kAudioDevicePropertyTransportType, scope: kAudioObjectPropertyScopeGlobal, object: deviceID)
+        let isBluetooth = transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+        if isBluetooth { latency = max(latency, 0.17) }
+        outputLatencySec = min(0.40, latency)
+        DNDLogger.log("AudioSpectrumEngine: retraso de salida \(Int(outputLatencySec * 1000)) ms\(isBluetooth ? " (Bluetooth)" : "") → barras sincronizadas a lo que se oye")
+    }
+    
     private func setupProcessTapCapture() {
+        measureOutputLatency()
         guard #available(macOS 14.2, *) else { return }
         guard Self.systemCaptureAllowed, enableSystemAudioTap else { return }
         
@@ -1068,13 +1119,15 @@ public final class AudioSpectrumEngine: ObservableObject {
         // ETAPA 2: PONDERACIÓN PSICOACÚSTICA 1/f (RUIDO ROSA REAL BALANCEADO)
         // Calibrado para dar un nivel armónico uniforme entre graves y agudos sin saturación
         // -------------------------------------------------------------
+        // La música pierde energía hacia los agudos (~4–5 dB por octava): sin compensarlo, las barras de
+        // medios-altos y agudos se quedaban casi en cero. Inclinación de +17 dB repartida entre las 6 bandas.
         let pinkNoiseWeights: [Float] = [
-            1.25,  // Banda 0: Sub-Bass (60 - 150 Hz, fc=95 Hz)   ->  +1.9 dB
-            1.18,  // Banda 1: Bass (150 - 400 Hz, fc=245 Hz)     ->  +1.4 dB
-            1.10,  // Banda 2: Low-Mids (400 - 1000 Hz, fc=632 Hz)->  +0.8 dB
-            1.12,  // Banda 3: High-Mids (1.0 - 2.5 kHz, fc=1.6k) ->  +1.0 dB
-            1.18,  // Banda 4: Presence (2.5 - 6.0 kHz, fc=3.9k)  ->  +1.4 dB
-            1.24   // Banda 5: Brilliance (6.0 - 14.0 kHz, fc=9.2k)->  +1.9 dB
+            1.00,  // Banda 0: Sub-Bass (60 - 150 Hz)       0 dB
+            1.26,  // Banda 1: Bass (150 - 400 Hz)         +2 dB
+            1.78,  // Banda 2: Low-Mids (400 - 1000 Hz)    +5 dB
+            2.82,  // Banda 3: High-Mids (1.0 - 2.5 kHz)   +9 dB
+            4.47,  // Banda 4: Presence (2.5 - 6.0 kHz)   +13 dB
+            7.08   // Banda 5: Brilliance (6.0 - 14 kHz)  +17 dB
         ]
         
         var weightedEnergies: [Float] = [0, 0, 0, 0, 0, 0]
@@ -1151,9 +1204,11 @@ public final class AudioSpectrumEngine: ObservableObject {
                 }
                 
                 // 1) Nivel espectral continuo dentro de la ventana AGC de esta banda (0.0 ... 1.0),
-                //    28 dB debajo de su pico de referencia
-                let floorDB = max(closeThreshold, bandReferenceDB[i] - 28.0)
-                let dynamicRange: Float = max(16.0, bandReferenceDB[i] - floorDB)
+                //    15 dB debajo de su pico de referencia
+                // Ventana de 15 dB: los golpes llegan arriba y los huecos regresan abajo (con 28 dB las barras
+                // vivían entre 25% y 50% y se veían como un bloque que no seguía la canción)
+                let floorDB = max(closeThreshold, bandReferenceDB[i] - 15.0)
+                let dynamicRange: Float = max(10.0, bandReferenceDB[i] - floorDB)
                 let sustainedRatio = max(0.0, min(1.15, (db - floorDB) / dynamicRange))
                 
                 // 2) Contraste dinámico de transitorio (onset) en esta banda específica
@@ -1419,16 +1474,19 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     // MARK: - Manejo de Retardo Bluetooth y Publicación Thread-Safe
     private func publishProcessedMagnitudes(_ levels: [Float], timestamp: Double, isSilent: Bool) {
-        let delaySec = SpectrumMetrics.bluetoothDelayMs / 1000.0
+        // Retrasar lo que se ve hasta el momento en que realmente se oye (latencia de la salida + ajuste manual)
+        let delaySec = outputLatencySec + SpectrumMetrics.bluetoothDelayMs / 1000.0
         
         var outputLevels = levels
         if delaySec > 0.005 {
             delayQueue.append(DelayedFrame(timestamp: timestamp, values: levels))
             let targetTime = timestamp - delaySec
-            while let first = delayQueue.first, first.timestamp < targetTime {
+            outputLevels = lastDelayedOutput
+            while let first = delayQueue.first, first.timestamp <= targetTime {
                 outputLevels = first.values
                 delayQueue.removeFirst()
             }
+            lastDelayedOutput = outputLevels
         }
         
         os_unfair_lock_lock(&lock)
@@ -1476,6 +1534,31 @@ public final class AudioSpectrumEngine: ObservableObject {
     }
     
     // MARK: - Lectura desde la UI (a 60 fps, < 0.05 ms con os_unfair_lock)
+    /// Diagnóstico para GET /debug/audio: de dónde salen las barras en este momento
+    public func debugSnapshot() -> [String: Any] {
+        os_unfair_lock_lock(&lock)
+        let live = currentMagnitudes
+        let lastTime = lastIOProcTimestamp
+        let lastNonZero = lastNonZeroSampleTime
+        let lastLive = lastLiveOutputTime
+        os_unfair_lock_unlock(&lock)
+        let now = CFAbsoluteTimeGetCurrent()
+        return [
+            "isPlaying": MusicService.shared.currentTrack.isPlaying,
+            "enableSystemAudioTap": enableSystemAudioTap,
+            "tapRunning": tapIOProcID != nil,
+            "isSimulatedMode": isSimulatedMode,
+            "secondsSinceCallback": now - lastTime,
+            "secondsSinceNonZero": now - lastNonZero,
+            "secondsSinceLiveOutput": now - lastLive,
+            "proceduralBlend": proceduralBlend,
+            "agcPeakDB": agcPeakDB,
+            "bandPeakDB": bandPeakDB,
+            "liveMagnitudes": live,
+            "output": getMagnitudes()
+        ]
+    }
+    
     public func getMagnitudes() -> [Float] {
         // 1. Modo Simulación forzado explícitamente en el laboratorio de diagnóstico
         if isSimulatedMode {
