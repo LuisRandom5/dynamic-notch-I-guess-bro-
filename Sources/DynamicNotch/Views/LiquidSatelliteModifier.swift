@@ -117,8 +117,12 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         let grow = Self.smoothstep((1 - m) / 0.65)
         let radiusScale: CGFloat = raw < 0 ? 1 + min(0.08, -raw * 0.6) : 0.42 + 0.58 * grow
         let widthFactor = 0.5 + 0.5 * Self.smoothstep((0.8 - m) / 0.45)
-        let scaleX = radiusScale * widthFactor
-        let scaleY = radiusScale
+        // Tensión superficial: justo antes de que el hilo se corte (m 0.30 → 0.05) la gota se estira hacia
+        // el notch; al soltarse (raw < 0) tiembla como gelatina: se ensancha y se aplana un instante
+        let tension = (m > 0.05 && m < 0.30) ? sin(.pi * (0.30 - m) / 0.25) : 0
+        let wobble: CGFloat = raw < 0 ? min(1, -raw / 0.06) : 0
+        let scaleX = radiusScale * widthFactor * (1 + 0.09 * tension + 0.07 * wobble)
+        let scaleY = radiusScale * (1 - 0.06 * tension - 0.06 * wobble)
         let rest = bubbleDiameter / 2
         let currentRadius = bubbleRadius * scaleY
         
