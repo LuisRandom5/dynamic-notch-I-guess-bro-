@@ -343,6 +343,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // Iniciar servidor local de interacción con herramientas de IA (Antigravity / dnotch)
         AgentIPCService.shared.start()
         
+        // El temporizador cede el notch a la música/video (y vuelve cuando se detiene)
+        ActivityCenter.shared.startObservingPlayback()
+        
         // Precalentar la canalización de Liquid Glass en GPU para evitar saltos en el primer despliegue
         if #available(macOS 26.0, *) {
             DispatchQueue.main.async {

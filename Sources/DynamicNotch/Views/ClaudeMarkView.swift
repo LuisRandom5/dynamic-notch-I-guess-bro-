@@ -42,34 +42,41 @@ public struct ClaudeSparkShape: Shape {
 }
 
 /// Marca de Claude lista para usarse en la bolita, las alas y la tarjeta del notch.
+///
+/// El giro lento y la "respiración" mientras Claude trabaja son animaciones de Core Animation
+/// (repeatForever) sobre una forma fija: corren en el GPU a la frecuencia de la pantalla (60/120 Hz)
+/// sin redibujar la forma ni tocar el hilo principal en cada cuadro.
 public struct ClaudeMarkView: View {
     public static let orange = Color(red: 0.851, green: 0.467, blue: 0.341) // #D97757
-
+    
     public let size: CGFloat
     public let isAnimating: Bool
-
+    
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
+    @State private var spin = false
+    @State private var breathe = false
+    
     public init(size: CGFloat, isAnimating: Bool = false) {
         self.size = size
         self.isAnimating = isAnimating
     }
-
+    
+    private var active: Bool { isAnimating && !reduceMotion }
+    
     public var body: some View {
-        if isAnimating && !reduceMotion {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                mark(phase: t / 2.4)
-                    .rotationEffect(.degrees((t * 9).truncatingRemainder(dividingBy: 360)))
-            }
-        } else {
-            mark(phase: 0)
-        }
-    }
-
-    private func mark(phase: Double) -> some View {
-        ClaudeSparkShape(phase: phase)
+        ClaudeSparkShape(phase: 0)
             .fill(Self.orange)
             .frame(width: size, height: size)
+            .scaleEffect(active && !breathe ? 0.9 : 1.0)
+            .animation(active ? .easeInOut(duration: 1.25).repeatForever(autoreverses: true) : .easeOut(duration: 0.3), value: breathe)
+            .rotationEffect(.degrees(spin ? 360 : 0))
+            .animation(active ? .linear(duration: 18).repeatForever(autoreverses: false) : .easeOut(duration: 0.3), value: spin)
+            .onAppear { update(active) }
+            .onChange(of: active) { _, isActive in update(isActive) }
+    }
+    
+    private func update(_ isActive: Bool) {
+        spin = isActive
+        breathe = isActive
     }
 }

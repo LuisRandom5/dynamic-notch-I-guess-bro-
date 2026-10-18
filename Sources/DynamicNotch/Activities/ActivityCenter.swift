@@ -34,7 +34,28 @@ public final class ActivityCenter: ObservableObject {
     private var lastRoleChangeTime: Date = Date.distantPast
     private let hysteresisDuration: TimeInterval = 3.0 // 3s de estabilidad de rol
     
+    private var playbackObserver: AnyCancellable?
+    
     private init() {}
+    
+    /// Recalcula los roles cuando empieza o se detiene la música/video: un temporizador cede el notch
+    /// (y pasa a bolita) mientras algo suena, y lo recupera cuando se detiene.
+    /// Se llama una vez al arrancar, después de crear los servicios.
+    public func startObservingPlayback() {
+        guard playbackObserver == nil else { return }
+        playbackObserver = MusicService.shared.$currentTrack
+            .map(\.isPlaying)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.recalculateRoles()
+            }
+    }
+    
+    /// Actividades "de fondo" (temporizador, cronómetro) que viven como bolita mientras suena algo.
+    private func yieldsToPlayback(_ activity: LiveActivity) -> Bool {
+        activity.kind == .timer && !activity.isUrgent && MusicService.shared.currentTrack.isPlaying
+    }
     
     // MARK: - Publicación y Actualización
     
@@ -201,6 +222,10 @@ public final class ActivityCenter: ObservableObject {
         let primaryCandidates = sorted.filter { activity in
             if activity.kind == .claude {
                 // Claude vive siempre como bolita satélite; se integra al notch sólo cuando el usuario la toca
+                return false
+            }
+            if yieldsToPlayback(activity) {
+                // La música o el video toman el notch; el temporizador sigue visible como bolita en vivo
                 return false
             }
             if activity.kind == .agentAI {
