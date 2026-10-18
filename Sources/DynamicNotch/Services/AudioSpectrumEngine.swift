@@ -342,7 +342,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     /// Retraso real entre que el tap recibe el audio y que se escucha (s). Con AirPods/Bluetooth son
     /// ~0.15–0.25 s: sin compensarlo las barras se adelantan a lo que se oye.
-    private var outputLatencySec: Double = 0
+    public private(set) var outputLatencySec: Double = 0
     
     private func measureOutputLatency() {
         var deviceID = AudioObjectID(0)

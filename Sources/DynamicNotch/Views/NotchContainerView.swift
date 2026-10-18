@@ -322,7 +322,9 @@ public struct NotchContainerView: View {
     private var scaleX: CGFloat {
         if interactionState == .pressed && appState.mode != .expanded && appState.mode != .shelf {
             return NotchTuning.pressScaleX
-        } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
+        } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil && !isCollapsing {
+            // Mientras se cierra no aplica la expansión de hover: si el cursor sigue encima, el notch crecía a
+            // media contracción (el "espasmo")
             return appState.heartbeatScaleX
         }
         return 1.0
@@ -331,7 +333,7 @@ public struct NotchContainerView: View {
     private var scaleY: CGFloat {
         if interactionState == .pressed && appState.mode != .expanded && appState.mode != .shelf {
             return NotchTuning.pressScaleY
-        } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil {
+        } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil && !isCollapsing {
             return appState.heartbeatScaleY
         }
         return 1.0
@@ -400,7 +402,9 @@ public struct NotchContainerView: View {
     
     /// Cambia cada vez que el notch se transforma (abre/cierra, cambia de página, de tarjeta o de actividad)
     private var morphKey: String {
-        "\(appState.mode)|\(appState.activeTab)|\(appState.isPlayerDetailExpanded)|\(activityCenter.expandedActivity?.id ?? "-")|\(activityCenter.currentActivity?.id ?? "-")|\(agentProvider.isProgressHUDExpanded)"
+        // Reproductor y repisa cuentan como la misma "página abierta": cambiar entre ellas no desenfoca
+        let page = (appState.mode == .expanded || appState.mode == .shelf) ? "open" : "\(appState.mode)"
+        return "\(page)|\(appState.isPlayerDetailExpanded)|\(activityCenter.expandedActivity?.id ?? "-")|\(activityCenter.currentActivity?.id ?? "-")|\(agentProvider.isProgressHUDExpanded)"
     }
     
     /// El notch muestra su superficie desplegada (vidrio en los modos de cristal, negro en OLED)
@@ -670,9 +674,10 @@ public struct NotchContainerView: View {
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                     
                     mainModeContentView
-                        .clipShape(containerPillShape)
-                        // Estándar: el contenido se desenfoca un instante mientras la forma se transforma
+                        // Estándar: el contenido se desenfoca un instante mientras la forma se transforma.
+                        // Primero el desenfoque y DESPUÉS el recorte: el desenfoque nunca se sale de la forma
                         .morphBlur(on: morphKey, hold: appState.gestureBlurHold)
+                        .clipShape(containerPillShape)
                     
                     // Zona táctil superior en el notch para cerrar al hacer click en el notch
                     topNotchCloseZone
@@ -758,7 +763,6 @@ public struct NotchContainerView: View {
                 y: 1 - 0.52 * appState.interactiveCollapseProgress,
                 anchor: .top
             )
-            .opacity(1 - 0.25 * Double(appState.interactiveCollapseProgress))
             .contentShape(containerPillShape)
             // Gesto de presión con anticipación en 3 fases cuando está colapsado y no hay actividad activa
             .modifier(PillGestureModifier(

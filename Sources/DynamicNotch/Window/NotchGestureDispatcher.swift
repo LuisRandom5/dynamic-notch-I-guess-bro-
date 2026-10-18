@@ -48,10 +48,17 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         pendingInteractiveClose = nil
         if let commit = commit, progress >= Self.interactiveCloseCommit || lastCloseDelta <= Self.interactiveCloseFlickDelta {
             DNDLogger.log("Gestos: cierre interactivo completado (\(Int(progress * 100))%)")
-            withAnimation(AnimationSpeedManager.shared.spring(response: 0.42, dampingFraction: 0.86)) {
-                app.interactiveCollapseProgress = 0
-            }
             commit()
+            // La escala del gesto regresa con EXACTAMENTE el resorte de la contracción y en el mismo instante
+            // (la forma empieza a cerrarse a los 40 ms): así nunca crece mientras se cierra
+            DispatchQueue.main.asyncAfter(deadline: .now() + AnimationSpeedManager.shared.adjustedDuration(0.04)) {
+                withAnimation(AnimationSpeedManager.shared.spring(
+                    response: ExitAnimationMetrics.compactMorphResponse,
+                    dampingFraction: ExitAnimationMetrics.compactMorphDamping
+                )) {
+                    app.interactiveCollapseProgress = 0
+                }
+            }
             app.hapticService.triggerSnap()
         } else {
             // No llegó: regresa a su tamaño
@@ -148,7 +155,8 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         // recorrido y, si el gesto ya disparó un cambio, se queda completo hasta levantar los dedos.
         // El estiramiento de resorte (topar con pared: no hay más páginas) no se desenfoca.
         let closing = AppState.shared.interactiveCollapseProgress
-        let hold: CGFloat = triggered ? 1 : (closing > 0 ? min(1, closing * 4) : 0)
+        // Cambiar de página (reproductor ⇄ repisa, gesto horizontal) tampoco se desenfoca
+        let hold: CGFloat = (triggered && axis == .vertical) ? 1 : (closing > 0 ? min(1, closing * 4) : 0)
         if AppState.shared.gestureBlurHold != hold {
             AppState.shared.gestureBlurHold = hold
         }

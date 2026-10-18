@@ -318,11 +318,21 @@ public final class LyricsService: ObservableObject {
             return
         }
         if track.playbackPosition != lastReportedPosition {
-            lastReportedPosition = track.playbackPosition
-            // Los reportes llegan cuantizados: sólo corregir si el estimado se desvió (adelantar/retroceder)
-            if abs(estimate - track.playbackPosition) > 1.2 {
-                anchorPosition = track.playbackPosition
+            let reported = track.playbackPosition
+            // MusicService rellena entre lecturas reales sumando +1 s con un temporizador: esos pasos no
+            // marcan el instante real, así que se ignoran (sólo cuentan las lecturas de la app de música)
+            let isSyntheticTick = abs(reported - lastReportedPosition - 1.0) < 0.0001
+            lastReportedPosition = reported
+            guard !isSyntheticTick else { return }
+            let error = reported - estimate
+            if abs(error) > 1.0 {
+                // Salto (búsqueda, cambio de canción): re-anclar
+                anchorPosition = reported
                 anchorTime = now
+            } else {
+                // Lectura real: corregir con suavidad hacia ella. Antes sólo se corregía con > 1.2 s de
+                // error y la letra podía ir hasta un segundo adelantada o atrasada sin arreglarse nunca
+                anchorPosition += error * 0.35
             }
         }
     }
@@ -330,7 +340,9 @@ public final class LyricsService: ObservableObject {
     private func updateCurrentLine() {
         updateClock()
         guard hasSyncedLyrics, !lines.isEmpty else { return }
-        let position = estimatedPosition + Self.lineLead
+        // Lo que se OYE va atrasado respecto a la reproducción por la latencia de la salida (AirPods ~170 ms):
+        // la letra se sincroniza con lo que se oye
+        let position = estimatedPosition - AudioSpectrumEngine.shared.outputLatencySec + Self.lineLead
         
         var activeIndex = -1
         for (i, line) in lines.enumerated() {

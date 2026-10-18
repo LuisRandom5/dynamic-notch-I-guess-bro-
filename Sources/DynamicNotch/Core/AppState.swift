@@ -100,7 +100,14 @@ public final class AppState: ObservableObject {
         }
     }
     @Published public var isShelfDragTargeted: Bool = false
-    @Published public var isDropInvitationActive: Bool = false
+    @Published public var isDropInvitationActive: Bool = false {
+        // La zona activa de la ventana debe crecer con la tarjeta de "suelta aquí": si no, sólo se podía
+        // soltar en un cuadro del tamaño del notch cerrado, al centro
+        didSet {
+            guard oldValue != isDropInvitationActive else { return }
+            DispatchQueue.main.async { NotchWindowManager.shared.updateHitAreaForCurrentState() }
+        }
+    }
     @Published public var isDropSuccessAnimating: Bool = false
     @Published public var trackpadDragOffset: CGFloat = 0
     @Published public var trackpadDragOffsetY: CGFloat = 0
