@@ -147,35 +147,44 @@ public struct DynamicNotchBackgroundView: View {
             } else {
                 // MODO 2 (Cristal Oscuro) y MODO 3 (Cristal Claro): Liquid Glass Nativo de Apple (macOS 26+)
                 if #available(macOS 26.0, *) {
-                    // En Cristal Claro: slider 0% = 0.0 absoluto (Glass.clear 100% puro sin tinte ni velo).
-                    // En Cristal Oscuro: Glass.regular con profundidad oscura modulable mediante .tint() nativo
-                    // sin pintar jamás una plasta negra opaca encima de los reflejos especulares del vidrio.
+                    // Probado con capturas en el laboratorio (GlassLabWindow): sólo Glass.clear se ve como vidrio
+                    // líquido; Glass.regular oscuro queda como esmerilado gris. El aspecto objetivo es el de los
+                    // módulos del Centro de Control: vidrio clear + velo gris ligero para que el texto se lea.
                     let rawAmount: Double = (mode == .clearGlass)
                         ? max(0.0, min(0.45, glassManager.uniformScrimOpacity))
                         : max(0.0, min(0.85, appState.glassDarknessOpacity))
                     
-                    // macOS 27 cambió cómo se compone el tinte del vidrio: un tinte oscuro casi opaco se dibuja
-                    // como relleno sólido y el vidrio deja de verse translúcido (ver cmux #5860). Allí la
-                    // profundidad la da sólo la apariencia oscura; en macOS 26 se conserva un tinte suave.
-                    let suppressesTint = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
-                    let nativeTintOpacity: Double = suppressesTint
-                        ? 0.0
-                        : ((mode == .clearGlass) ? (rawAmount * 0.35) : (rawAmount * 0.45))
-                    let baseGlass: Glass = (mode == .clearGlass) ? Glass.clear : Glass.regular
-                    let configuredGlass: Glass = (nativeTintOpacity > 0.001)
-                        ? baseGlass.tint(Color.black.opacity(nativeTintOpacity))
-                        : baseGlass
+                    // Velo SOBRE el vidrio (no tinte: en macOS 27 el tinte oscuro se dibuja como relleno sólido,
+                    // cmux #5860; y no detrás: el vidrio refractaría negro). Con el slider por defecto (38%) ≈ 11%.
+                    let veilOpacity: Double = (mode == .clearGlass) ? rawAmount * 0.5 : rawAmount * 0.30
+                    let notchHeight = ScreenService.shared.currentGeometry.height
                     
-                    // Sin relleno negro detrás: el vidrio refracta lo que tiene atrás, y un fondo negro lo
-                    // convierte en "plástico gris". Tampoco GlassEffectContainer: con una sola forma no hace
-                    // falta y saca el vidrio del recorte de su contenedor.
-                    Color.clear
-                        .glassEffect(configuredGlass, in: pillShape)
-                        .allowsHitTesting(false)
-                        .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
-                        .environment(\.controlActiveState, .key)
-                        .opacity(isExpanded ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.18), value: isExpanded)
+                    ZStack(alignment: .top) {
+                        Color.clear
+                            .glassEffect(Glass.clear, in: pillShape)
+                        
+                        Color.black.opacity(veilOpacity)
+                            .clipShape(pillShape)
+                        
+                        // Franja superior a la altura de la cámara: funde el vidrio con el notch físico negro
+                        // para que la cámara no se vea como un hoyo en medio del cristal
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black.opacity(0.70), location: 0.0),
+                                .init(color: .black.opacity(0.0), location: 1.0),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: notchHeight + 14)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .clipShape(pillShape)
+                    }
+                    .allowsHitTesting(false)
+                    .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
+                    .environment(\.controlActiveState, .key)
+                    .opacity(isExpanded ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
                 } else {
                     // Fallback para versiones anteriores a macOS 26
                     let activeScrim = (mode == .darkGlass)
