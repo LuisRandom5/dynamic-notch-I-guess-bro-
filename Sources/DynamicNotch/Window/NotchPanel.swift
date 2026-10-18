@@ -304,8 +304,8 @@ public final class NotchHostingView<Content: View>: NSHostingView<Content> {
 
 public final class NotchHitTestView: NSView {
     public var hitAreaRect: CGRect = .zero
-    public var satelliteHitAreaRect: CGRect? = nil
-    public var leftSatelliteHitAreaRect: CGRect? = nil
+    /// Zonas interactivas que las vistas SwiftUI reportan por sí mismas (bolitas satélite, +N…), en coordenadas de esta vista.
+    public private(set) var dynamicHitPaths: [CGPath] = []
     private var trackingArea: NSTrackingArea?
     
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
@@ -344,25 +344,31 @@ public final class NotchHitTestView: NSView {
         // Devolver DIRECTAMENTE self (NotchHitTestView) para que AppKit entregue los eventos de arrastre a self
         if isDragging {
             let isNearDropZone = point.y >= (bounds.height - 320) && abs(point.x - (bounds.width / 2.0)) <= 320
-            if isNearDropZone || hitAreaRect.contains(point) || (satelliteHitAreaRect?.contains(point) == true) || (leftSatelliteHitAreaRect?.contains(point) == true) {
+            if isNearDropZone || isInsideInteractiveArea(point) {
                 return self
             }
         }
         
         // 2. Si el punto está dentro del área visible activa del notch o en las bolitas satélite disjuntas:
         // Delegar SIEMPRE a la jerarquía SwiftUI (NotchHostingView) para que funcionen los clics, botones y gestos
-        if hitAreaRect.contains(point) || (satelliteHitAreaRect?.contains(point) == true) || (leftSatelliteHitAreaRect?.contains(point) == true) {
+        if isInsideInteractiveArea(point) {
             return super.hitTest(point) ?? subviews.first ?? self
         }
         
         return nil
     }
     
-    public func updateHitArea(_ rect: CGRect, satelliteRect: CGRect? = nil, leftSatelliteRect: CGRect? = nil) {
+    public func isInsideInteractiveArea(_ point: NSPoint) -> Bool {
+        hitAreaRect.contains(point) || dynamicHitPaths.contains { $0.contains(point) }
+    }
+    
+    public func updateHitArea(_ rect: CGRect) {
         self.hitAreaRect = rect
-        self.satelliteHitAreaRect = satelliteRect
-        self.leftSatelliteHitAreaRect = leftSatelliteRect
         updateTrackingAreas()
+    }
+    
+    public func updateDynamicHitRegions(_ regions: [NotchHitRegion]) {
+        dynamicHitPaths = regions.map { $0.path(inContainerOfHeight: bounds.height) }
     }
     
     public override func updateTrackingAreas() {
@@ -406,42 +412,8 @@ public final class NotchHitTestView: NSView {
     public override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         
-        // 1. Clic en la burbuja satélite desprendida de la Dynamic Island (hit test explícito o geométrico)
-        if let satRect = satelliteHitAreaRect, satRect.contains(point) {
-            DNDLogger.log("NotchHitTestView.mouseDown: Tap en la burbuja satélite detectado -> alternando HUD de IA")
-            DispatchQueue.main.async {
-                AgentActivityProvider.shared.toggleProgressHUD()
-            }
-            return
-        }
-        
-        // Comprobación geométrica robusta de las bolitas satélite secundarias (tolerancia de 12 pt)
-        let center = ActivityCenter.shared
-        if !center.secondaryActivities.isEmpty && center.expandedActivity == nil {
-            let satSize = AppState.shared.bolitaDiameter
-            let gap = AppState.shared.bolitaGap
-            let geom = ScreenService.shared.currentGeometry
-            let wingExtra: CGFloat = (!AppState.shared.shelfItems.isEmpty && AppState.shared.showShelfBadgeInNotch) ? 24 : 0
-            let notchCardWidth: CGFloat = (AppState.shared.mode == .compact)
-                ? (geom.width + 104 + (wingExtra * 2))
-                : (!AppState.shared.shelfItems.isEmpty ? (geom.width + 96) : geom.width)
-            
-            let satY = bounds.height - geom.height - 4
-            let rightCount = center.secondaryActivities.count + (center.overflowCount > 0 ? 1 : 0)
-            let totalRightWidth = CGFloat(rightCount) * (satSize + 8) + gap
-            let satX = (bounds.width / 2.0) + (notchCardWidth / 2.0) + gap
-            let rightSatRect = CGRect(x: satX - 10, y: satY - 10, width: totalRightWidth + 20, height: satSize + 20)
-            
-            if rightSatRect.contains(point) {
-                DNDLogger.log("NotchHitTestView.mouseDown: Tap directo en área de bolitas satélite -> alternando HUD de IA")
-                DispatchQueue.main.async {
-                    AgentActivityProvider.shared.toggleProgressHUD()
-                }
-                return
-            }
-        }
-        
-        // 2. Clic en el cuerpo principal del Notch
+        // Las bolitas satélite manejan su propio tap en SwiftUI (NotchBolitaView)
+        // Clic en el cuerpo principal del Notch
         if hitAreaRect.contains(point) {
             // Si el Notch está colapsado (idle o compact) y no hay actividad modal activa, expandir al dar tap
             if AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {

@@ -104,55 +104,18 @@ public final class NotchWindowManager: ObservableObject {
         previous.activate()
     }
     
-    public func updateHitArea(width: CGFloat, height: CGFloat, satelliteRect: CGRect? = nil, leftSatelliteRect: CGRect? = nil) {
+    public func updateHitArea(width: CGFloat, height: CGFloat) {
         guard let hitView = hitTestView else { return }
         
         // In macOS coordinates, (0,0) is bottom-left
-        let viewWidth = hitView.bounds.width
-        let viewHeight = hitView.bounds.height
-        
-        let originX = (viewWidth - width) / 2
-        let originY = viewHeight - height
-        
-        let activeRect = CGRect(x: originX, y: originY, width: width, height: height)
-        
-        var effSatelliteRect = satelliteRect
-        var effLeftSatelliteRect = leftSatelliteRect
-        let center = ActivityCenter.shared
-        let appState = AppState.shared
-        
-        // Calcular rectángulos de interacción para las bolitas satélite (si no hay tarjeta expandida)
-        if center.expandedActivity == nil {
-            let satSize = appState.bolitaDiameter
-            let gap = appState.bolitaGap
-            let satY = viewHeight - ScreenService.shared.currentGeometry.height - 4
-            let rightCount = center.secondaryActivities.count + (center.overflowCount > 0 ? 1 : 0)
-            
-            // cardWidth real del notch en este modo (idéntico a NotchContainerView)
-            let notchCardWidth: CGFloat
-            switch appState.mode {
-            case .idle:
-                notchCardWidth = !appState.shelfItems.isEmpty ? (ScreenService.shared.currentGeometry.width + 96) : ScreenService.shared.currentGeometry.width
-            case .compact:
-                let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
-                notchCardWidth = ScreenService.shared.currentGeometry.width + 104 + (wingExtra * 2)
-            case .expanded, .shelf:
-                notchCardWidth = NotchTuning.expandedWidth
-            }
-            
-            if effSatelliteRect == nil && rightCount > 0 {
-                let totalRightWidth = CGFloat(rightCount) * (satSize + 8) + gap
-                let satX = (viewWidth / 2.0) + (notchCardWidth / 2.0) + gap
-                effSatelliteRect = CGRect(x: satX - 8, y: satY - 8, width: totalRightWidth + 16, height: satSize + 16)
-            }
-            
-            if effLeftSatelliteRect == nil && appState.satelliteLocation == .bothSides && center.secondaryActivities.count >= 2 {
-                let satX = (viewWidth / 2.0) - (notchCardWidth / 2.0) - gap - satSize
-                effLeftSatelliteRect = CGRect(x: satX - 8, y: satY - 8, width: satSize + 16, height: satSize + 16)
-            }
-        }
-        
-        hitView.updateHitArea(activeRect, satelliteRect: effSatelliteRect, leftSatelliteRect: effLeftSatelliteRect)
+        let originX = (hitView.bounds.width - width) / 2
+        let originY = hitView.bounds.height - height
+        hitView.updateHitArea(CGRect(x: originX, y: originY, width: width, height: height))
+    }
+    
+    /// Recibe las zonas que reportan las vistas SwiftUI (`.notchHitRegion`) y las aplica al hit-test del panel.
+    public func updateDynamicHitRegions(_ regions: [String: NotchHitRegion]) {
+        hitTestView?.updateDynamicHitRegions(Array(regions.values))
     }
     
     public func updateHitAreaForCurrentState() {

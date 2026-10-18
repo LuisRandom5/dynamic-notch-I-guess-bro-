@@ -385,6 +385,9 @@ public struct NotchContainerView: View {
     
     public var body: some View {
         notchContainerContent
+            .onPreferenceChange(NotchHitRegionsKey.self) { regions in
+                NotchWindowManager.shared.updateDynamicHitRegions(regions)
+            }
     }
     
     private var snapStretch: CGFloat {
@@ -820,6 +823,7 @@ public struct NotchContainerView: View {
                             x: currentX,
                             y: max(0, (geometry.height - bolitaDiam) / 2.0)
                         )
+                        .notchHitRegion("satellite.\(activity.id)")
                         .zIndex(100 - Double(slotIndex))
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: -18)),
@@ -849,6 +853,7 @@ public struct NotchContainerView: View {
                         x: currentX,
                         y: max(0, (geometry.height - bolitaDiam) / 2.0)
                     )
+                    .notchHitRegion("satellite.\(leftActivity.id)")
                     .zIndex(100)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: 18)),
@@ -868,6 +873,7 @@ public struct NotchContainerView: View {
                         x: restingX,
                         y: max(0, (geometry.height - bolitaDiam) / 2.0)
                     )
+                    .notchHitRegion("satellite.overflow")
                     .zIndex(90)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .center).combined(with: .opacity),
