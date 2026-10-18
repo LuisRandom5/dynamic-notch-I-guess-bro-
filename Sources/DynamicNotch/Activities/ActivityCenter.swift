@@ -403,21 +403,22 @@ public final class ActivityCenter: ObservableObject {
         case .detach:
             // Como en la Isla Dinámica: el extremo se ensancha un poco para dejar salir la gota y, cuando la
             // cintura se adelgaza, regresa con un pequeño retroceso elástico
-            withAnimation(.easeOut(duration: 0.18)) { pillImpulse = 6 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            // Tiempos al doble, al ritmo de la gota (ver AnyTransition.liquidSatellite)
+            withAnimation(.easeOut(duration: 0.36)) { pillImpulse = 6 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.44) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
-                withAnimation(.spring(response: 0.46, dampingFraction: 0.62)) { self.pillImpulse = 0 }
+                withAnimation(.spring(response: 0.92, dampingFraction: 0.62)) { self.pillImpulse = 0 }
             }
         case .absorb:
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
                 // Si mientras tanto el notch se desplegó (p. ej. la repisa), no abultar la tarjeta
                 let mode = AppState.shared.mode
                 guard mode != .expanded && mode != .shelf, self.expandedActivity == nil else { return }
-                withAnimation(.easeOut(duration: 0.10)) { self.pillImpulse = 7 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+                withAnimation(.easeOut(duration: 0.20)) { self.pillImpulse = 7 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
                     guard self.impulseToken == token else { return }
-                    withAnimation(.spring(response: 0.40, dampingFraction: 0.52)) { self.pillImpulse = 0 }
+                    withAnimation(.spring(response: 0.80, dampingFraction: 0.52)) { self.pillImpulse = 0 }
                 }
             }
         }
