@@ -80,6 +80,10 @@ public final class AgentActivityProvider: ObservableObject {
     // Estado de la Burbuja Satélite Dinámica (Estilo Dynamic Island Multi-Actividad)
     @Published public private(set) var isSatelliteActive: Bool = false
     @Published public var isProgressHUDExpanded: Bool = false
+    
+    /// Hay una tarjeta de pregunta/permiso del agente en pantalla.
+    /// `isActive` también es true mientras sólo se muestra la bolita de progreso, que no debe capturar gestos.
+    public var isInteractionActive: Bool { isActive && currentPayload != nil }
     @Published public private(set) var satelliteProgress: Double = 0.0
     @Published public private(set) var currentProgressStep: String = ""
     
