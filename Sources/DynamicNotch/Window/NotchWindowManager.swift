@@ -104,6 +104,17 @@ public final class NotchWindowManager: ObservableObject {
         previous.activate()
     }
     
+    /// Si el cursor está sobre el notch, vuelve a la flecha (al cambiar de canción el cursor de texto de otra
+    /// app se quedaba puesto sin que el ratón se moviera)
+    public func resetCursorIfOverNotch() {
+        guard let panel = panel, let hitView = hitTestView else { return }
+        let windowPoint = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let point = hitView.convert(windowPoint, from: nil)
+        if hitView.isInsideInteractiveArea(point) {
+            NSCursor.arrow.set()
+        }
+    }
+    
     public func updateHitArea(width: CGFloat, height: CGFloat) {
         guard let hitView = hitTestView else { return }
         

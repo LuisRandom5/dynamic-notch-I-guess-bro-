@@ -393,6 +393,7 @@ public final class NotchHitTestView: NSView {
         let options: NSTrackingArea.Options = [
             .mouseEnteredAndExited,
             .mouseMoved,
+            .cursorUpdate,
             .activeAlways,
             .inVisibleRect
         ]
@@ -412,8 +413,22 @@ public final class NotchHitTestView: NSView {
         AppState.shared.handleMouseLeave()
     }
     
+    /// Sobre el notch el cursor siempre es la flecha. Como el panel nunca es la ventana activa, macOS dejaba
+    /// el último cursor que puso otra app (p. ej. el de texto de la ventana de abajo tras cambiar de canción).
+    public override func cursorUpdate(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if isInsideInteractiveArea(point) {
+            NSCursor.arrow.set()
+        } else {
+            super.cursorUpdate(with: event)
+        }
+    }
+    
     public override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if isInsideInteractiveArea(point) && NSCursor.current != NSCursor.arrow {
+            NSCursor.arrow.set()
+        }
         let isInside = hitAreaRect.contains(point)
         if isInside && !AppState.shared.isHovered {
             AppState.shared.handleMouseEnter()

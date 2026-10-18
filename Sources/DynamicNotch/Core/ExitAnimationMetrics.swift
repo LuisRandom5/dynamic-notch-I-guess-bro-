@@ -23,7 +23,7 @@ public struct ExitAnimationMetrics {
     public static let shapeOpenDamping: Double = 0.90
     
     // Morphing hacia la píldora compacta con música activa
-    public static let compactMorphResponse: Double = 0.44      // response 0.44 (curva orgánica continua)
+    public static let compactMorphResponse: Double = 0.52      // response 0.52 (cierre un poco más pausado, curva orgánica continua)
     public static let compactMorphDamping: Double = 0.86       // damping 0.86 (asentamiento sedoso estilo Apple)
     
     // Notificaciones Card (Carga MagSafe / Batería Baja / AirDrop / Pop-ups grandes)

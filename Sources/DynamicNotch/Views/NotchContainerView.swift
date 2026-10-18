@@ -980,6 +980,9 @@ public struct NotchContainerView: View {
         .onChange(of: appState.mode) { _, newMode in
             handleModeChange(newMode)
         }
+        .onChange(of: musicService.currentTrack.title) { _, _ in
+            NotchWindowManager.shared.resetCursorIfOverNotch()
+        }
         .onAppear {
             appState.requestCollapse = {
                 performCollapse()
@@ -1349,8 +1352,10 @@ public struct NotchContainerView: View {
             appState.setHoverState(false)
         } else if mode == .compact {
             interactionState = .collapsed
-            isCollapsing = false
             isTransitioningFromActivity = false
+            // `isCollapsing` NO se limpia aquí: el modo pasa a compacto a los 40 ms del cierre, con la forma
+            // aún contrayéndose. Limpiarlo a media contracción reactivaba la expansión de hover, cambiaba el
+            // fondo/sombra y el resorte (el "espasmo"); performCollapse lo limpia al asentarse.
         } else {
             performCollapse()
         }
@@ -1486,8 +1491,8 @@ public struct NotchContainerView: View {
             self.appState.hapticService.triggerSnap()
         }
         
-        // Reseteo limpio al asentarse la animación (~0.48 s)
-        let totalTime = speedManager.adjustedDuration(0.48)
+        // Reseteo limpio al asentarse la animación (~0.58 s)
+        let totalTime = speedManager.adjustedDuration(0.58)
         DispatchQueue.main.asyncAfter(deadline: .now() + totalTime) {
             guard self.isCollapsing else { return }
             withAnimation(.easeInOut(duration: 0.15)) {
