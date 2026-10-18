@@ -112,7 +112,7 @@ public final class AirDropObserverService {
     private func checkForRecentAirDropFiles() {
         let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory() + "/Downloads")
         
-        let resourceKeys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey]
+        let resourceKeys: Set<URLResourceKey> = [.addedToDirectoryDateKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey, .isDirectoryKey]
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: downloadsURL,
             includingPropertiesForKeys: Array(resourceKeys),
@@ -121,11 +121,11 @@ public final class AirDropObserverService {
         
         let now = Date()
         
-        // Buscar archivos modificados en los últimos 20 segundos
+        // Archivos LLEGADOS en los últimos 20 s (fecha de llegada, no de modificación)
         let recentFiles = contents.compactMap { url -> (URL, Date, Int64)? in
-            guard let values = try? url.resourceValues(forKeys: resourceKeys),
-                  let modDate = values.contentModificationDate,
-                  now.timeIntervalSince(modDate) < 20.0 else {
+            guard let values = try? url.resourceValues(forKeys: resourceKeys) else { return nil }
+            let modDate = [values.addedToDirectoryDate, values.creationDate, values.contentModificationDate].compactMap { $0 }.max() ?? .distantPast
+            guard now.timeIntervalSince(modDate) < 20.0 else {
                 return nil
             }
             let isDir = values.isDirectory ?? false
@@ -150,6 +150,30 @@ public final class AirDropObserverService {
                 break
             }
         }
+    }
+    
+    /// Busca el archivo recibido por AirDrop más reciente (marca `sharingd`, llegado hace ≤ maxAge s) en
+    /// Descargas y Escritorio. Usa la fecha de LLEGADA a la carpeta, no la de modificación (AirDrop puede
+    /// conservar la fecha original del archivo).
+    public func findRecentlyReceivedFile(maxAge: TimeInterval = 20) -> (url: URL, size: Int64)? {
+        let fm = FileManager.default
+        let folders = [fm.urls(for: .downloadsDirectory, in: .userDomainMask).first,
+                       fm.urls(for: .desktopDirectory, in: .userDomainMask).first].compactMap { $0 }
+        let keys: Set<URLResourceKey> = [.addedToDirectoryDateKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey, .isDirectoryKey]
+        let now = Date()
+        var best: (url: URL, size: Int64, date: Date)?
+        for folder in folders {
+            guard let contents = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { continue }
+            for url in contents {
+                guard let v = try? url.resourceValues(forKeys: keys), v.isDirectory != true else { continue }
+                let arrival = [v.addedToDirectoryDate, v.creationDate, v.contentModificationDate].compactMap { $0 }.max() ?? .distantPast
+                guard now.timeIntervalSince(arrival) <= maxAge, isAirDropFile(path: url.path) else { continue }
+                if best == nil || arrival > best!.date {
+                    best = (url, Int64(v.fileSize ?? 0), arrival)
+                }
+            }
+        }
+        return best.map { ($0.url, $0.size) }
     }
     
     private func isAirDropFile(path: String) -> Bool {

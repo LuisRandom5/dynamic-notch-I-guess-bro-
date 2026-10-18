@@ -32,6 +32,7 @@ public final class MessagesObserverService: ObservableObject {
     private var knownRecords: [String: ChatRecord] = [:]
     private var lastBannerSignature: String = ""
     private var lastBannerAlertedAt: Date = .distantPast
+    private var lastAirDropBannerSignature: String = ""
     private var isFirstCheck: Bool = true
     
     private init() {
@@ -120,8 +121,16 @@ public final class MessagesObserverService: ObservableObject {
             // nativo de macOS se cierra al instante
             let isAirDrop = strings.contains { $0.lowercased().contains("airdrop") }
             if isAirDrop {
-                DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop cerrado: \(strings.prefix(3))")
-                dismissNativeBanner(win)
+                let closed = dismissNativeBanner(win)
+                let signature = strings.prefix(3).joined(separator: "|")
+                if signature != lastAirDropBannerSignature {
+                    lastAirDropBannerSignature = signature
+                    DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop \(closed ? "cerrado" : "NO se pudo cerrar"): \(strings.prefix(3))")
+                    if !closed {
+                        // Diagnóstico de una sola vez: estructura del aviso para saber qué acción lo cierra
+                        DNDLogger.log("MessagesObserverService: estructura del aviso de AirDrop ↓\n" + axTreeDescription(win))
+                    }
+                }
                 continue
             }
             
@@ -198,6 +207,30 @@ public final class MessagesObserverService: ObservableObject {
         return false
     }
     
+    /// Palabras de las acciones/botones que cierran un aviso (español e inglés)
+    private static let closeWords = ["cerrar", "close", "dismiss", "descartar", "borrar", "clear", "eliminar"]
+    
+    /// Texto con la estructura de Accesibilidad de un elemento (roles, textos, identificadores y acciones)
+    private func axTreeDescription(_ elem: AXUIElement, depth: Int = 0) -> String {
+        guard depth <= 8 else { return "" }
+        func attr(_ name: String) -> String {
+            var ref: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, name as CFString, &ref)
+            return (ref as? String) ?? ""
+        }
+        var acts: CFArray?
+        AXUIElementCopyActionNames(elem, &acts)
+        let actions = (acts as? [String] ?? []).map { $0.replacingOccurrences(of: "\n", with: " ") }
+        var line = String(repeating: "  ", count: depth)
+            + "\(attr("AXRole")) [\(attr("AXSubrole"))] id='\(attr("AXIdentifier"))' t='\(attr("AXTitle"))' d='\(attr("AXDescription"))' acts=\(actions)\n"
+        var children: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &children)
+        for child in (children as? [AXUIElement] ?? []) {
+            line += axTreeDescription(child, depth: depth + 1)
+        }
+        return line
+    }
+    
     @discardableResult
     private func dismissNativeBanner(_ elem: AXUIElement, depth: Int = 0) -> Bool {
         if depth > 8 { return false }
@@ -206,7 +239,7 @@ public final class MessagesObserverService: ObservableObject {
         if let actions = actRef as? [String] {
             for a in actions {
                 let l = a.lowercased()
-                if l.contains("cerrar") || l.contains("close") || l.contains("dismiss") || a == "AXCancel" {
+                if Self.closeWords.contains(where: { l.contains($0) }) || a == "AXCancel" {
                     if AXUIElementPerformAction(elem, a as CFString) == .success {
                         return true
                     }
@@ -221,10 +254,12 @@ public final class MessagesObserverService: ObservableObject {
             AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
             var titleRef: CFTypeRef?
             AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
+            var idRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(elem, kAXIdentifierAttribute as CFString, &idRef)
             let desc = ((descRef as? String) ?? "").lowercased()
             let title = ((titleRef as? String) ?? "").lowercased()
-            if desc.contains("cerrar") || desc.contains("close") || desc.contains("dismiss") ||
-               title.contains("cerrar") || title.contains("close") || title.contains("dismiss") {
+            let identifier = ((idRef as? String) ?? "").lowercased()
+            if Self.closeWords.contains(where: { desc.contains($0) || title.contains($0) || identifier.contains($0) }) {
                 if AXUIElementPerformAction(elem, "AXPress" as CFString) == .success {
                     return true
                 }

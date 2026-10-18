@@ -97,25 +97,40 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     public func body(content: Content) -> some View {
         let m = min(1, max(0, max(merge, extraMerge)))
         let bubbleRadius = bubbleDiameter / 2
-        // Absorbida: el centro de la bolita queda casi concéntrico con el extremo del notch
+        // Absorbida: el centro de la bolita queda concéntrico con el extremo del notch
         let mergedX = notchEndX
         let x = restingX + (mergedX - restingX) * Self.easeInOut(m)
+        
         // Forma de lágrima: mientras el cuello la sujeta, la bolita se estira HACIA el notch (anclada en su
-        // lado exterior); la tensión es máxima justo antes de que el cuello se rompa (m ≈ 0.15–0.35)
+        // lado exterior); la tensión es máxima justo antes de que el cuello se rompa
         let tension = m < 0.6 ? sin(.pi * min(1, m / 0.6)) : 0
         let stretch = 1 + 0.20 * tension
         let squash = 1 - 0.10 * tension
-        let towardNotch = notchEndX < restingX // la bolita está a la derecha del extremo del notch
+        let towardNotch = notchEndX < restingX
         let stretchAnchor = UnitPoint(x: towardNotch ? 1 : 0, y: 0.5)
         let rest = bubbleDiameter / 2
-
+        
+        // Mismo umbral que el cuello: el cuello aguanta casi hasta la posición de reposo
+        let gapTravel = abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX))
+        let maxDistance = notchRadius + bubbleRadius + gapTravel * 0.92
+        let distance = abs(x - notchEndX)
+        // Cuánto está unida la bolita al notch (0 separada · 1 cuello pleno)
+        let attached = showsBridge ? Self.smoothstep((maxDistance - distance) / (maxDistance * 0.30)) : 0
+        
         return content
-            // Al entrar al notch, el contenido de la bolita (anillo, icono, borde) se cubre de negro:
-            // el cuerpo se funde negro sobre negro en lugar de desvanecerse
+            // Sin costuras: mientras comparten superficie, el borde fino de la bolita se funde con el negro
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.black, lineWidth: 1.4)
+                    .opacity(Double(attached))
+                    .allowsHitTesting(false)
+            )
+            // El contenido (anillo, icono) se conserva hasta que la bolita ya está casi dentro del notch;
+            // sólo entonces se cubre de negro para fundirse sin desvanecerse
             .overlay(
                 Circle()
                     .fill(Color.black)
-                    .opacity(Double(Self.smoothstep((m - 0.35) / 0.45)))
+                    .opacity(Double(Self.smoothstep((m - 0.62) / 0.30)))
                     .allowsHitTesting(false)
             )
             .scaleEffect(x: stretch, y: squash, anchor: stretchAnchor)
@@ -124,8 +139,7 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                     notchCenter: CGPoint(x: rest + (notchEndX - x), y: rest + (notchRadius - (offsetY + bubbleRadius))),
                     notchRadius: notchRadius,
                     bubbleRadius: bubbleRadius,
-                    // El cuello aguanta casi hasta la posición de reposo: se rompe al final, como una gota
-                    maxDistance: notchRadius + bubbleRadius + abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX)) * 0.92
+                    maxDistance: maxDistance
                 )
                 .fill(Color.black)
                 .opacity(showsBridge ? 1 : 0)
@@ -133,7 +147,7 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
             )
             .offset(x: x, y: offsetY)
     }
-
+    
     private static func easeInOut(_ t: CGFloat) -> CGFloat {
         t * t * (3 - 2 * t)
     }

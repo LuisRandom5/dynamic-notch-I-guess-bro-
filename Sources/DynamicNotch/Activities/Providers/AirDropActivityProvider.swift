@@ -49,18 +49,41 @@ public final class AirDropActivityProvider: ObservableObject {
             // Envío: sin tarjeta. Las alas se ensanchan con la palomita (o la X) y el notch vuelve a su estado
             publishSendResult(success: success)
         case (.receiving, true):
-            // La tarjeta con el archivo la muestra AirDropObserverService al ver el archivo en Descargas.
-            // Si en 2.5 s no apareció (otra carpeta de destino), mostrar una tarjeta genérica.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-                guard let self = self, Date().timeIntervalSince(self.lastReceivedCardAt) > 4 else { return }
-                let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-                self.publishCompletedCard(fileName: "Toca para abrir Descargas", sender: "AirDrop", fileURL: downloads)
-            }
+            // El anillo se completa al instante y se busca el archivo (hasta 2 s) para que la tarjeta abra
+            // exactamente su ubicación
+            publishTransferActivity(progress: 1.0)
+            locateReceivedFile(attempt: 0)
         case (.receiving, false):
             publishSendResult(success: false, title: "No se recibió")
         }
     }
 
+    private func locateReceivedFile(attempt: Int) {
+        // AirDropObserverService ya pudo mostrar la tarjeta con el archivo
+        if Date().timeIntervalSince(lastReceivedCardAt) < 4 { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let found = AirDropObserverService.shared.findRecentlyReceivedFile()
+            DispatchQueue.main.async {
+                guard let self = self, Date().timeIntervalSince(self.lastReceivedCardAt) >= 4 else { return }
+                if let found = found {
+                    DNDLogger.log("AirDropActivityProvider: archivo recibido en \(found.url.path)")
+                    self.publishCompletedCard(
+                        fileName: found.url.lastPathComponent,
+                        sender: "AirDrop",
+                        fileSize: ByteCountFormatter.string(fromByteCount: found.size, countStyle: .file),
+                        fileURL: found.url
+                    )
+                } else if attempt < 8 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self.locateReceivedFile(attempt: attempt + 1) }
+                } else {
+                    // No llegó a Descargas ni al Escritorio (p. ej. se guardó en Fotos): no fingir una ubicación
+                    DNDLogger.log("AirDropActivityProvider: archivo recibido no encontrado en Descargas/Escritorio")
+                    self.publishCompletedCard(fileName: "Guardado por AirDrop", sender: "AirDrop", fileURL: nil, opensPhotos: true)
+                }
+            }
+        }
+    }
+    
     /// Inicia una transferencia simulada (menú de pruebas)
     public func startSimulatedTransfer(fileName: String = "Proyecto Final.zip", sender: String = "iPhone de Luis") {
         transferTimer?.invalidate()
@@ -120,7 +143,7 @@ public final class AirDropActivityProvider: ObservableObject {
     }
 
     /// Tarjeta de "recibido": al tocarla abre la ubicación del archivo en Finder
-    public func publishCompletedCard(fileName: String, sender: String, fileSize: String? = nil, fileURL: URL? = nil) {
+    public func publishCompletedCard(fileName: String, sender: String, fileSize: String? = nil, fileURL: URL? = nil, opensPhotos: Bool = false) {
         lastReceivedCardAt = Date()
         let blue = Self.blue
 
@@ -142,8 +165,8 @@ public final class AirDropActivityProvider: ObservableObject {
                     .liveActivityTitle()
                 Text(subtitleText)
                     .liveActivitySubtitle()
-                if fileURL != nil {
-                    Text("Toca para ver en Finder")
+                if fileURL != nil || opensPhotos {
+                    Text(fileURL != nil ? "Toca para ver en Finder" : "Toca para abrir Fotos")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(blue.opacity(0.95))
                 }
@@ -167,11 +190,12 @@ public final class AirDropActivityProvider: ObservableObject {
             duration: 5.0,
             onTap: {
                 if let url = fileURL {
+                    // Abre Finder con el archivo seleccionado
                     NSWorkspace.shared.activateFileViewerSelecting([url])
-                    ActivityCenter.shared.dismissWithAnimation(id: Self.activityId)
-                } else {
-                    AppState.shared.expand()
+                } else if opensPhotos, let photos = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Photos") {
+                    NSWorkspace.shared.openApplication(at: photos, configuration: NSWorkspace.OpenConfiguration())
                 }
+                ActivityCenter.shared.dismissWithAnimation(id: Self.activityId)
             }
         )
         ActivityCenter.shared.publish(activity)
@@ -197,6 +221,8 @@ private struct AirDropProgressRing: View {
                     .trim(from: 0, to: CGFloat(max(0.04, progress)))
                     .stroke(AirDropActivityProvider.blue, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
+                    // Al terminar, el anillo se llena suave en vez de saltar
+                    .animation(.easeOut(duration: 0.35), value: fixedProgress)
             }
             .frame(width: 17, height: 17)
         }
