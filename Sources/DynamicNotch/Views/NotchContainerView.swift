@@ -830,7 +830,7 @@ public struct NotchContainerView: View {
                             x: currentX,
                             y: max(0, (geometry.height - bolitaDiam) / 2.0)
                         )
-                        .notchHitRegion("satellite.\(activity.id)")
+                        .notchHitRegion("satellite.\(activity.id)", offset: CGSize(width: currentX, height: max(0, (geometry.height - bolitaDiam) / 2.0)))
                         .zIndex(100 - Double(slotIndex))
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: -18)),
@@ -860,7 +860,7 @@ public struct NotchContainerView: View {
                         x: currentX,
                         y: max(0, (geometry.height - bolitaDiam) / 2.0)
                     )
-                    .notchHitRegion("satellite.\(leftActivity.id)")
+                    .notchHitRegion("satellite.\(leftActivity.id)", offset: CGSize(width: currentX, height: max(0, (geometry.height - bolitaDiam) / 2.0)))
                     .zIndex(100)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: 18)),
@@ -880,7 +880,7 @@ public struct NotchContainerView: View {
                         x: restingX,
                         y: max(0, (geometry.height - bolitaDiam) / 2.0)
                     )
-                    .notchHitRegion("satellite.overflow")
+                    .notchHitRegion("satellite.overflow", offset: CGSize(width: restingX, height: max(0, (geometry.height - bolitaDiam) / 2.0)))
                     .zIndex(90)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .center).combined(with: .opacity),

@@ -237,6 +237,14 @@ public final class AgentIPCService {
         case ("POST", "/progress"):
             handleProgressRequest(bodyData: bodyData, connection: connection)
             
+        case ("GET", "/debug/hit"):
+            // Diagnóstico del hit-test: zona del notch y zonas reportadas por las bolitas
+            var info: [String: Any] = [:]
+            DispatchQueue.main.sync {
+                info = NotchWindowManager.shared.hitTestDebugInfo()
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
+            
         case ("POST", "/glasslab"), ("GET", "/glasslab"):
             // Abre/cierra el laboratorio de Liquid Glass (comparativa de 5 variantes)
             DispatchQueue.main.async {

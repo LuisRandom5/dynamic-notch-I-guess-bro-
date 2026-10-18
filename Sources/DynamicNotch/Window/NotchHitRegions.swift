@@ -43,13 +43,18 @@ public struct NotchHitRegionsKey: PreferenceKey {
 
 public extension View {
     /// Registra esta vista como zona clicable del panel del notch.
-    /// Aplicarlo DESPUÉS de `.offset` / `.scaleEffect` para que el marco reportado siga a la vista animada.
-    func notchHitRegion(_ id: String, shape: NotchHitRegion.Shape = .circle, padding: CGFloat = 6) -> some View {
+    /// `.offset` sólo mueve el dibujo, no el marco de layout que lee GeometryReader: pasa aquí el mismo
+    /// desplazamiento que a `.offset` para que la zona quede donde realmente se ve la vista.
+    func notchHitRegion(_ id: String, offset: CGSize = .zero, shape: NotchHitRegion.Shape = .circle, padding: CGFloat = 6) -> some View {
         background(
             GeometryReader { geo in
                 Color.clear.preference(
                     key: NotchHitRegionsKey.self,
-                    value: [id: NotchHitRegion(frame: geo.frame(in: .global), shape: shape, padding: padding)]
+                    value: [id: NotchHitRegion(
+                        frame: geo.frame(in: .global).offsetBy(dx: offset.width, dy: offset.height),
+                        shape: shape,
+                        padding: padding
+                    )]
                 )
             }
         )

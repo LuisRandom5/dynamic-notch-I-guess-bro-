@@ -113,8 +113,23 @@ public final class NotchWindowManager: ObservableObject {
         hitView.updateHitArea(CGRect(x: originX, y: originY, width: width, height: height))
     }
     
+    public func hitTestDebugInfo() -> [String: Any] {
+        guard let hit = hitTestView else { return ["error": "sin hitTestView"] }
+        func r(_ c: CGRect) -> [Double] { [Double(c.minX), Double(c.minY), Double(c.width), Double(c.height)] }
+        return [
+            "bounds": r(hit.bounds),
+            "hitArea": r(hit.hitAreaRect),
+            "dynamic": hit.dynamicHitPaths.map { r($0.boundingBox) },
+            "lastRegionsRaw": lastRegionsRaw.map { "\($0.key): \(r($0.value.frame))" },
+            "secondary": ActivityCenter.shared.secondaryActivities.map { $0.id },
+            "mode": "\(AppState.shared.mode)"
+        ]
+    }
+    private var lastRegionsRaw: [String: NotchHitRegion] = [:]
+    
     /// Recibe las zonas que reportan las vistas SwiftUI (`.notchHitRegion`) y las aplica al hit-test del panel.
     public func updateDynamicHitRegions(_ regions: [String: NotchHitRegion]) {
+        lastRegionsRaw = regions
         hitTestView?.updateDynamicHitRegions(Array(regions.values))
     }
     
