@@ -118,6 +118,13 @@ public final class AudioSpectrumEngine: ObservableObject {
     private var bandSlowDB: [Float] = [-56.0, -56.0, -56.0, -56.0, -56.0, -56.0]
     private var prevRawEnergies: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     private var agcPeakDB: Float = -18.0
+    
+    // Transición tap real ↔ generador procedural (streams con DRM entregan buffers de 0.0 exacto)
+    private var lastNonZeroSampleTime: Double = CFAbsoluteTimeGetCurrent()
+    private var lastLiveOutputTime: Double = CFAbsoluteTimeGetCurrent()
+    private var liveLevelReference: Float = 0.5
+    private var proceduralBlend: Float = 0.0
+    private var lastBlendUpdateTime: Double = CFAbsoluteTimeGetCurrent()
     private var bandPeakDB: [Float] = [-18.0, -18.0, -18.0, -18.0, -18.0, -18.0]
     private var heldBandTargets: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     private var bandJitter: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -868,8 +875,17 @@ public final class AudioSpectrumEngine: ObservableObject {
             vDSP_vsmul(monoFrames, 1, &inv, &monoFrames, 1, vDSP_Length(targetFrames))
         }
         
+        // Silencio digital exacto (todas las muestras en 0.0): típico de audio protegido con FairPlay,
+        // a diferencia del silencio musical real, que conserva dither / ruido de fondo
+        var peakSample: Float = 0
+        vDSP_maxmgv(monoFrames, 1, &peakSample, vDSP_Length(targetFrames))
+        
+        let callbackTime = CFAbsoluteTimeGetCurrent()
         os_unfair_lock_lock(&lock)
-        lastIOProcTimestamp = CFAbsoluteTimeGetCurrent()
+        lastIOProcTimestamp = callbackTime
+        if peakSample > 0 {
+            lastNonZeroSampleTime = callbackTime
+        }
         os_unfair_lock_unlock(&lock)
         
         processingQueue.async { [weak self] in
@@ -1334,6 +1350,13 @@ public final class AudioSpectrumEngine: ObservableObject {
         
         os_unfair_lock_lock(&lock)
         currentMagnitudes = outputLevels
+        if !isSilent {
+            // Nivel típico del audio real reciente (τ ≈ 3 s): el generador procedural se escala a él
+            // para que el relevo no cambie la "energía" visible de las barras
+            lastLiveOutputTime = timestamp
+            let mean = outputLevels.reduce(0, +) / Float(max(1, outputLevels.count))
+            liveLevelReference += (mean - liveLevelReference) * 0.006
+        }
         os_unfair_lock_unlock(&lock)
         
         if self.isSilent != isSilent {
@@ -1394,6 +1417,9 @@ public final class AudioSpectrumEngine: ObservableObject {
         os_unfair_lock_lock(&lock)
         var copy = currentMagnitudes
         let lastTime = lastIOProcTimestamp
+        let lastNonZero = lastNonZeroSampleTime
+        let lastLive = lastLiveOutputTime
+        let levelReference = liveLevelReference
         os_unfair_lock_unlock(&lock)
         
         let elapsedSinceCallback = CFAbsoluteTimeGetCurrent() - lastTime
@@ -1411,7 +1437,40 @@ public final class AudioSpectrumEngine: ObservableObject {
         if CallActivityProvider.shared.isCallActive && copy.allSatisfy({ $0 < 0.01 }) {
             return generateRealisticCallMagnitudes()
         }
-        return copy
+        return blendWithProceduralIfStarved(copy, lastCallback: lastTime, lastNonZero: lastNonZero, lastLive: lastLive, levelReference: levelReference)
+    }
+    
+    /// Si hay música reproduciéndose pero el tap no entrega señal útil (DRM, tap caído o silencio prolongado),
+    /// cruza suavemente hacia el generador procedural y regresa al audio real en cuanto vuelve.
+    private func blendWithProceduralIfStarved(_ live: [Float], lastCallback: Double, lastNonZero: Double, lastLive: Double, levelReference: Float) -> [Float] {
+        let now = CFAbsoluteTimeGetCurrent()
+        let dt = Float(min(0.1, max(0.001, now - lastBlendUpdateTime)))
+        lastBlendUpdateTime = now
+        
+        let isPlaying = MusicService.shared.currentTrack.isPlaying
+        let digitalZero = now - lastNonZero > 0.6       // buffers de 0.0 exacto (audio protegido)
+        let tapStarved = now - lastCallback > 0.5 // el tap dejó de llamar
+        let longSilence = now - lastLive > 4.0           // gate cerrado demasiado tiempo para ser una pausa musical
+        let wantsProcedural = isPlaying && (digitalZero || tapStarved || longSilence)
+        
+        // Entrada lenta (τ 300 ms) para no notar el relevo; salida rápida (τ 120 ms) cuando vuelve el audio real
+        let target: Float = wantsProcedural ? 1.0 : 0.0
+        let tau: Float = wantsProcedural ? 0.30 : 0.12
+        proceduralBlend += (target - proceduralBlend) * (1.0 - exp(-dt / tau))
+        if proceduralBlend < 0.002 {
+            proceduralBlend = 0
+            return live
+        }
+        
+        let procedural = ProceduralMotionEngine.shared.getMagnitudes(barCount: 6)
+        // El procedural rinde ~0.4–0.5 de media; escalarlo al nivel típico de la pista real
+        let scale = max(0.6, min(1.6, levelReference / 0.5))
+        var blended = live
+        for i in 0..<min(blended.count, procedural.count) {
+            let proc = min(1.0, procedural[i] * scale)
+            blended[i] = live[i] * (1.0 - proceduralBlend) + proc * proceduralBlend
+        }
+        return blended
     }
     
     private var lastSimTime: Double = CFAbsoluteTimeGetCurrent()
