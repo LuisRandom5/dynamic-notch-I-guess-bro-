@@ -228,7 +228,7 @@ public final class NotchWindowManager: ObservableObject {
                 height = (ActivityCenter.shared.customCardHeight ?? 112) + 8
             }
         } else if mode == .compact {
-            width = geom.width + 104
+            width = geom.width + NotchTuning.compactWingsExtraWidth
             height = geom.height + 4
         } else {
             width = !AppState.shared.shelfItems.isEmpty ? geom.width + 96 : geom.width

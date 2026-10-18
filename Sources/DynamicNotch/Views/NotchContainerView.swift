@@ -36,6 +36,11 @@ public struct NotchTuning {
     public static let dragCancelThresholdX: CGFloat = 45       // Umbral horizontal para cancelar
     public static let dragCancelThresholdY: CGFloat = 45       // Umbral vertical para cancelar
     public static let cancelSpring = Animation.spring(response: 0.35, dampingFraction: 0.82)
+    
+    // 5) ALAS COMPACTAS (música): ancho ajustado al contenido. La carátula (19 pt) y las barras (~21 pt) quedan
+    //    con ~11 pt de margen a cada lado; el resto del ancho es la cámara, que no se puede reducir
+    public static let compactWingWidth: CGFloat = 42
+    public static let compactWingsExtraWidth: CGFloat = compactWingWidth * 2
 }
 
 public enum NotchInteractionState: Equatable {
@@ -106,7 +111,7 @@ public struct NotchContainerView: View {
             return geometry.width
         case .compact:
             let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
-            return geometry.width + 104 + (wingExtra * 2)
+            return geometry.width + NotchTuning.compactWingsExtraWidth + (wingExtra * 2)
         case .expanded, .shelf:
             return NotchTuning.expandedWidth
         }
@@ -165,8 +170,13 @@ public struct NotchContainerView: View {
                 }
                 return geometry.width
             case .compact:
+                // Pausa tras el HUD de volumen/brillo: el notch se recoge por completo (sin alas negras vacías)
+                // y al terminar vuelve a abrirse hacia los lados con la carátula y las barras
+                if appState.isHoldingBareNotch {
+                    return geometry.width
+                }
                 let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
-                return geometry.width + 104 + (wingExtra * 2)
+                return geometry.width + NotchTuning.compactWingsExtraWidth + (wingExtra * 2)
             case .expanded, .shelf:
                 return NotchTuning.expandedWidth
             }

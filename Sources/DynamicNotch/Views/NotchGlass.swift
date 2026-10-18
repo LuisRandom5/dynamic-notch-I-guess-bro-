@@ -82,9 +82,11 @@ public struct NotchBubbleBackground: View {
         let mode = appState.effectiveAppearanceMode
         ZStack {
             if #available(macOS 26.0, *), glassVisible, mode != .pureOLED {
-                Color.black.opacity(NotchGlassMetrics.veilOpacity(for: mode))
+                // Sin el resaltado interactivo y con un velo mínimo: la gota no debe brillar más que la cápsula
+                // (sobre fondos de color el borde refractado se veía como un halo)
+                Color.black.opacity(max(0.22, NotchGlassMetrics.veilOpacity(for: mode)))
                     .clipShape(Circle())
-                    .glassEffect((backdrop.isBackdropBright ? Glass.regular : Glass.clear).interactive(), in: Circle())
+                    .glassEffect(backdrop.isBackdropBright ? Glass.regular : Glass.clear, in: Circle())
                     .glassEffectTransition(.materialize)
                     .environment(\.colorScheme, .dark)
             } else {

@@ -227,7 +227,8 @@ public final class AppState: ObservableObject {
     
     @Published public var bolitaDiameter: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "bolitaDiameter")
-        return (saved > 0 && saved != 28.0 && saved != 36.0) ? CGFloat(saved) : 26.0 // 26 pt compacta, precisa y fiel a iOS
+        // 23 pt (~12% menos que los 26 anteriores): reconocible y cómoda, sin competir con la cápsula
+        return (saved > 0 && saved != 28.0 && saved != 36.0 && saved != 26.0) ? CGFloat(saved) : 23.0
     }() {
         didSet {
             UserDefaults.standard.set(Double(bolitaDiameter), forKey: "bolitaDiameter")
@@ -237,7 +238,8 @@ public final class AppState: ObservableObject {
     
     @Published public var bolitaGap: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "bolitaGap")
-        return (saved > 0 && saved != 8.0) ? CGFloat(saved) : 6.0 // 6 pt cohesión perfecta con el notch
+        // 11 pt entre los bordes geométricos de la cápsula y la bolita (la sombra no cuenta)
+        return (saved > 0 && saved != 8.0 && saved != 6.0) ? CGFloat(saved) : 11.0
     }() {
         didSet {
             UserDefaults.standard.set(Double(bolitaGap), forKey: "bolitaGap")

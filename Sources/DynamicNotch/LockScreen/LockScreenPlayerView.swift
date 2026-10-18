@@ -115,7 +115,7 @@ public struct LockScreenPlayerView: View {
             let regionBottom = height * 0.79 - appState.lockScreenVerticalOffset
             let available = regionBottom - regionTop
             // El reproductor se apoya abajo del hueco, justo arriba de la foto de perfil (no centrado)
-            let playerBottom = height * 0.755 - appState.lockScreenVerticalOffset
+            let playerBottom = height * 0.80 - appState.lockScreenVerticalOffset
             let heroHeight = LockScreenHeroMetrics.cardHeight(showsVolume: appState.lockScreenShowVolumeSlider)
             let compactHeight = appState.lockScreenShowVolumeSlider
                 ? LockScreenPlayerMetrics.compactCardHeightWithVolume

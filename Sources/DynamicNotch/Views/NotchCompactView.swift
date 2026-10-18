@@ -6,7 +6,7 @@ public struct NotchCompactView: View {
     @EnvironmentObject var screenService: ScreenService
     
     public var namespace: Namespace.ID?
-    private let wingWidth: CGFloat = 52
+    private let wingWidth: CGFloat = NotchTuning.compactWingWidth
     private var wingExtra: CGFloat {
         (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
     }
