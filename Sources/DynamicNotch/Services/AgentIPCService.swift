@@ -237,6 +237,13 @@ public final class AgentIPCService {
         case ("POST", "/progress"):
             handleProgressRequest(bodyData: bodyData, connection: connection)
             
+        case ("POST", "/glasslab"), ("GET", "/glasslab"):
+            // Abre/cierra el laboratorio de Liquid Glass (comparativa de 5 variantes)
+            DispatchQueue.main.async {
+                GlassLabWindow.shared.toggle()
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("POST", "/claude"):
             // Reportes de scripts/claude_notch_hook.py (Claude Code)
             let json = (try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any]) ?? [:]

@@ -154,37 +154,28 @@ public struct DynamicNotchBackgroundView: View {
                         ? max(0.0, min(0.45, glassManager.uniformScrimOpacity))
                         : max(0.0, min(0.85, appState.glassDarknessOpacity))
                     
-                    let behindDimming: Double = (mode == .clearGlass)
-                        ? (rawAmount * 0.45)
-                        : (rawAmount * 0.35)
+                    // macOS 27 cambió cómo se compone el tinte del vidrio: un tinte oscuro casi opaco se dibuja
+                    // como relleno sólido y el vidrio deja de verse translúcido (ver cmux #5860). Allí la
+                    // profundidad la da sólo la apariencia oscura; en macOS 26 se conserva un tinte suave.
+                    let suppressesTint = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+                    let nativeTintOpacity: Double = suppressesTint
+                        ? 0.0
+                        : ((mode == .clearGlass) ? (rawAmount * 0.35) : (rawAmount * 0.45))
+                    let baseGlass: Glass = (mode == .clearGlass) ? Glass.clear : Glass.regular
+                    let configuredGlass: Glass = (nativeTintOpacity > 0.001)
+                        ? baseGlass.tint(Color.black.opacity(nativeTintOpacity))
+                        : baseGlass
                     
-                    let nativeTintOpacity: Double = (mode == .clearGlass)
-                        ? (rawAmount * 0.55)
-                        : (rawAmount * 0.65)
-                    
-                    ZStack {
-                        // Atenuación opcional situada DETRÁS del vidrio (Apple HIG: Materials),
-                        // nunca por encima de .glassEffect para no apagar la refracción ni el borde especular.
-                        if behindDimming > 0.001 {
-                            pillShape
-                                .fill(Color.black.opacity(behindDimming))
-                        }
-                        
-                        GlassEffectContainer {
-                            let baseGlass: Glass = (mode == .clearGlass) ? Glass.clear : Glass.regular
-                            let configuredGlass: Glass = (nativeTintOpacity > 0.001)
-                                ? baseGlass.tint(Color.black.opacity(nativeTintOpacity))
-                                : baseGlass
-                            
-                            Color.clear
-                                .glassEffect(configuredGlass, in: pillShape)
-                                .allowsHitTesting(false)
-                        }
+                    // Sin relleno negro detrás: el vidrio refracta lo que tiene atrás, y un fondo negro lo
+                    // convierte en "plástico gris". Tampoco GlassEffectContainer: con una sola forma no hace
+                    // falta y saca el vidrio del recorte de su contenedor.
+                    Color.clear
+                        .glassEffect(configuredGlass, in: pillShape)
+                        .allowsHitTesting(false)
                         .environment(\.colorScheme, mode == .clearGlass ? .light : .dark)
                         .environment(\.controlActiveState, .key)
-                    }
-                    .opacity(isExpanded ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.18), value: isExpanded)
+                        .opacity(isExpanded ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.18), value: isExpanded)
                 } else {
                     // Fallback para versiones anteriores a macOS 26
                     let activeScrim = (mode == .darkGlass)
