@@ -406,11 +406,9 @@ public struct NotchContainerView: View {
     }
     
     public var body: some View {
-        // Un solo contenedor para todo el vidrio del notch (superficie + bolitas): se dibujan juntos y se
-        // funden de forma nativa al acercarse
-        NotchGlassContainer {
-            notchContainerContent
-        }
+        // Sin GlassEffectContainer alrededor: el contenedor dibuja todo el vidrio en una pasada por ENCIMA de
+        // los hermanos, y el reproductor quedaba borroso debajo de la superficie (probado en macOS 27)
+        notchContainerContent
             .environment(\.notchGlassSurfaceVisible, isGlassSurfaceVisible)
             .onPreferenceChange(NotchHitRegionsKey.self) { regions in
                 NotchWindowManager.shared.updateDynamicHitRegions(regions)

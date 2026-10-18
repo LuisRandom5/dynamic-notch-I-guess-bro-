@@ -398,7 +398,8 @@ public final class AudioDeviceService: NSObject, ObservableObject {
             priority: 85,
             style: .sliderPill,
             tint: isMuted ? DesignTokens.red : DesignTokens.green,
-            duration: 2.5,
+            // 3 s y lo que estaba en el notch (p. ej. el reproductor) vuelve a salir
+            duration: 3.0,
             sliderState: .volume(level: volume, isMuted: isMuted)
         )
         ActivityCenter.shared.publish(activity)

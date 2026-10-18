@@ -5,8 +5,9 @@ import SwiftUI
 // - El notch desplegado es la capa funcional que flota sobre el contenido (como los módulos del Centro de
 //   Control): es la única superficie grande de vidrio. Nada de vidrio sobre vidrio: lo que va encima del
 //   notch (botones, carátula, textos) es contenido, sin materiales propios.
-// - Todas las superficies de vidrio (notch + bolitas) viven en un único `GlassEffectContainer`: se dibujan
-//   juntas (mejor rendimiento) y, al acercarse, se funden y separan como líquido de forma nativa.
+// - OJO: NO envolver el notch en un `GlassEffectContainer`. El contenedor compone el vidrio por encima del
+//   contenido hermano (el reproductor se veía borroso bajo la superficie en macOS 27). Para usarlo, el
+//   contenido tendría que ir DENTRO de la vista con `.glassEffect`, no como hermano.
 // - Variante `clear` (el aspecto elegido del Centro de Control) con una capa de atenuación oscura; Apple
 //   recomienda clear sólo sobre fondos ricos y atenuar si el fondo es claro.
 // - Sin tinte decorativo: el color se reserva para estados (anillos, indicadores), no para el vidrio.

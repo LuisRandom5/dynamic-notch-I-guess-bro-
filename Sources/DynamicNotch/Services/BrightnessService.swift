@@ -132,7 +132,7 @@ public final class BrightnessService: ObservableObject {
             priority: 85,
             style: .sliderPill,
             tint: .white,
-            duration: 2.5,
+            duration: 3.0,
             sliderState: .brightness(level: level)
         )
         

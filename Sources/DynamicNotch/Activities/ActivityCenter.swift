@@ -232,7 +232,14 @@ public final class ActivityCenter: ObservableObject {
         // Candidatos a actividad principal en el notch físico:
         // Las actividades de progreso de IA en segundo plano (agentAI no modal) NUNCA deben ocupar
         // el notch físico en reposo como píldora vacía; deben vivir exclusivamente como bolitas satélite.
+        // HUD del sistema (volumen/brillo): como en la Isla Dinámica, se muestra SIEMPRE al instante y esconde
+        // lo que hubiera en el notch mientras dura; al irse, lo anterior vuelve a su lugar. Lo escondido no
+        // pasa a bolita (eso provocaría animaciones cruzadas de 3 s).
+        let systemHUD = sorted.first { $0.style == .sliderPill }
         let primaryCandidates = sorted.filter { activity in
+            if activity.style == .sliderPill {
+                return false
+            }
             if activity.kind == .claude {
                 // Claude vive siempre como bolita satélite; se integra al notch sólo cuando el usuario la toca
                 return false
@@ -271,8 +278,14 @@ public final class ActivityCenter: ObservableObject {
             lastRoleChangeTime = now
         }
         
+        // Mientras el HUD está visible, lo que iba en el notch queda en pausa (ni notch ni bolita)
+        let hiddenByHUD = systemHUD != nil ? chosenPrimary?.id : nil
+        if let hud = systemHUD {
+            chosenPrimary = hud
+        }
+        
         let primaryId = chosenPrimary?.id
-        let remaining = sorted.filter { $0.id != primaryId }
+        let remaining = sorted.filter { $0.id != primaryId && $0.id != hiddenByHUD && $0.style != .sliderPill }
         let satelliteSlots = mode == .modeA ? maxSatellites : 1
         var newSecondaries = Array(remaining.prefix(satelliteSlots))
         let newOverflow = Array(remaining.dropFirst(satelliteSlots))

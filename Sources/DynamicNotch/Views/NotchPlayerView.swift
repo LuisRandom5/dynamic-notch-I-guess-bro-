@@ -815,6 +815,17 @@ public struct NotchPlayerView: View {
                 
                 Spacer()
                 
+                // Acceso a los ajustes de sonido en la cabecera: deja todo el alto para la lista
+                Button(action: {
+                    AudioDeviceService.shared.openSoundSettings()
+                }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Ajustes de sonido…")
+                
                 Button(action: {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         isShowingAirPlayPicker = false
@@ -830,63 +841,51 @@ public struct NotchPlayerView: View {
             .padding(.horizontal, 4)
             .padding(.top, 2)
             
-            // Lista de dispositivos con scroll suave si hay varios
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 5) {
-                    ForEach(audioService.getOutputDevices()) { dev in
-                        Button(action: {
-                            audioService.setDefaultOutputDevice(id: dev.id)
-                            appState.hapticService.triggerSnap()
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
-                                isShowingAirPlayPicker = false
-                            }
-                        }) {
-                            HStack(spacing: 10) {
-                                Image(systemName: dev.icon)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(dev.isDefault ? Color.blue : Color.white.opacity(0.65))
-                                    .frame(width: 20)
-                                
-                                Text(dev.name)
-                                    .font(.system(size: 12, weight: dev.isDefault ? .semibold : .regular, design: .rounded))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                
-                                Spacer()
-                                
-                                if dev.isDefault {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(Color.blue)
-                                }
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(dev.isDefault ? Color.blue.opacity(0.18) : Color.white.opacity(0.06))
-                            )
+            // Todas las salidas a la vista, sin scroll: dentro del notch el desplazamiento del trackpad es el
+            // gesto de cerrar, así que una lista con scroll escondía la última opción. Con más de 3, dos columnas (cabe en el alto de la tarjeta).
+            let devices = audioService.getOutputDevices()
+            let columns = devices.count > 3
+                ? [GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5)]
+                : [GridItem(.flexible())]
+            LazyVGrid(columns: columns, spacing: 4) {
+                ForEach(devices) { dev in
+                    Button(action: {
+                        audioService.setDefaultOutputDevice(id: dev.id)
+                        appState.hapticService.triggerSnap()
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
+                            isShowingAirPlayPicker = false
                         }
-                        .buttonStyle(.plain)
+                    }) {
+                        HStack(spacing: 9) {
+                            Image(systemName: dev.icon)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundStyle(dev.isDefault ? AnyShapeStyle(Color.blue) : AnyShapeStyle(.secondary))
+                                .frame(width: 18)
+                            
+                            Text(dev.name)
+                                .font(.system(size: 12, weight: dev.isDefault ? .semibold : .regular, design: .rounded))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            
+                            Spacer(minLength: 0)
+                            
+                            if dev.isDefault {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11.5, weight: .bold))
+                                    .foregroundColor(Color.blue)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                        .background(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(dev.isDefault ? Color.blue.opacity(0.18) : Color.white.opacity(0.06))
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .frame(maxHeight: 90)
-            
-            // Acceso rápido a ajustes del sistema
-            Button(action: {
-                AudioDeviceService.shared.openSoundSettings()
-            }) {
-                HStack(spacing: 5) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 10))
-                    Text("Ajustes de sonido...")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                }
-                .foregroundStyle(.tertiary)
-                .padding(.top, 2)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 4)
     }
