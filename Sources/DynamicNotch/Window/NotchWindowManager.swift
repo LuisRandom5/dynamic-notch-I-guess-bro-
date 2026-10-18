@@ -104,6 +104,37 @@ public final class NotchWindowManager: ObservableObject {
         previous.activate()
     }
     
+    /// Pantalla completa con reproducción: el notch se desvanece y no recibe eventos hasta salir
+    public private(set) var isHiddenForFullScreen = false
+    
+    public func setHiddenForFullScreen(_ hidden: Bool) {
+        guard let panel = panel, hidden != isHiddenForFullScreen else { return }
+        isHiddenForFullScreen = hidden
+        if hidden && (AppState.shared.mode == .expanded || AppState.shared.mode == .shelf) {
+            AppState.shared.collapse()
+        }
+        // Se saca la ventana de la pantalla (no `ignoresMouseEvents`: fijarlo a mano cambia cómo macOS deja
+        // pasar los clics por las zonas transparentes del panel)
+        if hidden {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.25
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panel.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                guard self?.isHiddenForFullScreen == true else { return }
+                panel.orderOut(nil)
+            })
+        } else {
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.35
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+            }
+        }
+    }
+    
     /// Si el cursor está sobre el notch, vuelve a la flecha (al cambiar de canción el cursor de texto de otra
     /// app se quedaba puesto sin que el ratón se moviera)
     public func resetCursorIfOverNotch() {

@@ -374,6 +374,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         ProceduralMotionEngine.shared.startPrefetchingTempo()
         // Diagnóstico de rendimiento siempre activo (barato): GET /debug/hitches
         FrameHitchMonitor.shared.start()
+        // Notch oculto mientras se ve algo a pantalla completa
+        FullScreenMediaMonitor.shared.start()
         // Vidrio legible: detecta si detrás del notch hay algo claro (regular) o el fondo de pantalla (clear)
         BackdropBrightnessMonitor.shared.start()
         

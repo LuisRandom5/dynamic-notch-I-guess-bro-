@@ -123,7 +123,7 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     }
 
     public func gestureShouldBegin(at screenLocation: NSPoint) -> Bool {
-        guard AppState.shared.enableTrackpadSwipe else { return false }
+        guard AppState.shared.enableTrackpadSwipe, !NotchWindowManager.shared.isHiddenForFullScreen else { return false }
         let screen = ScreenService.shared.targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
         let frame = screen.frame
         let dxFromCenter = abs(screenLocation.x - frame.midX)
