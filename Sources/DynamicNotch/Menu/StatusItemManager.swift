@@ -174,6 +174,10 @@ public final class StatusItemManager: NSObject {
         debugPanelItem.target = self
         menu.addItem(debugPanelItem)
         
+        let studioItem = NSMenuItem(title: "🎬 Animation Studio (bolitas)", action: #selector(openAnimationStudio), keyEquivalent: "")
+        studioItem.target = self
+        menu.addItem(studioItem)
+        
         let spectrumMonitorItem = NSMenuItem(
             title: "Monitor de Audio Real y Overscroll...",
             action: #selector(openAudioSpectrumMonitor),
@@ -303,6 +307,10 @@ public final class StatusItemManager: NSObject {
         withAnimation(.spring(response: 0.52, dampingFraction: 0.82)) {
             AppState.shared.mode = .shelf
         }
+    }
+    
+    @objc private func openAnimationStudio() {
+        AnimationStudioWindow.shared.show()
     }
     
     @objc private func openDebugPanel() {

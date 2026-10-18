@@ -295,6 +295,15 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("POST", "/debug/studio-snapshot"):
+            DispatchQueue.main.async { AnimationStudioWindow.shared.snapshot() }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
+        case ("POST", "/debug/studio"):
+            // Abre el Animation Studio de las bolitas
+            DispatchQueue.main.async { AnimationStudioWindow.shared.show() }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("POST", "/debug/toggle-notch"):
             // Diagnóstico: abre o cierra el reproductor como si el usuario lo hiciera
             DispatchQueue.main.async {

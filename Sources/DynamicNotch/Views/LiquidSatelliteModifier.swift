@@ -105,30 +105,13 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         let bubbleRadius = bubbleDiameter / 2
         // Absorbida: el centro de la bolita queda concéntrico con el extremo del notch
         let mergedX = notchEndX
-        let travel = raw < 0 ? raw : Self.easeInOut(m)
+        // Perfil de la gota (de los cuadros del iPhone): nace desde cero en el extremo, sale como óvalo apretado
+        // y largo con el icono comprimido, forma el cuello y se recoge en círculo. Parámetros: LiquidMotionTuning
+        let profile = LiquidDropProfile(raw: raw)
+        let travel = profile.travel
         let x = restingX + (mergedX - restingX) * travel
-        
-        // Perfil de nacimiento calcado de la Isla Dinámica (cuadro por cuadro):
-        //  m = 1    la gota nace DENTRO del extremo del notch, pequeña y muy apretada (un "(" del icono)
-        //  m ≈ 0.6  asoma un bulto aplanado, más bajo que la cápsula, con el icono comprimido a lo ancho
-        //  m ≈ 0.35 ya es un círculo completo unido por una cintura gruesa (forma de cacahuate)
-        //  m ≈ 0.15 la cintura es un hilo · m = 0 separada en su lugar
-        //  raw < 0  el resorte la pasa un poco: crece apenas por encima de su tamaño y se asienta
-        // Perfil de nacimiento (de tus cuadros del iPhone): la gota sale APRETADA Y LARGA, un óvalo bajo y
-        // estirado hacia afuera que lleva el icono comprimido, y sólo al final se recoge en un círculo perfecto.
-        //  m 0.80 → asoma · m 0.45 → óvalo largo y bajo · m 0.20 → casi círculo · m 0 → círculo
-        // Nace desde CERO dentro del extremo (m 1 → 0.78) para que el notch empiece siendo una cápsula limpia
-        let birth = Self.smoothstep((1 - m) / 0.22)
-        let heightScale: CGFloat = birth * (0.52 + 0.48 * Self.smoothstep((0.62 - m) / 0.50))
-        // El alargamiento crece mientras se separa (pico ≈ m 0.5) y se recoge al formar el círculo; al principio
-        // es moderado para que el bulto salga redondeado, no en punta
-        let elongation: CGFloat = 1 + 0.62 * Self.smoothstep((m - 0.14) / 0.32) * (1 - 0.7 * Self.smoothstep((m - 0.58) / 0.24))
-        // Tensión superficial justo antes del corte y temblor al soltarse (raw < 0)
-        let tension = (m > 0.05 && m < 0.26) ? sin(.pi * (0.26 - m) / 0.21) : 0
-        let wobble: CGFloat = raw < 0 ? min(1, -raw / 0.06) : 0
-        let settle: CGFloat = raw < 0 ? 1 + min(0.06, -raw * 0.5) : 1
-        let scaleY = heightScale * settle * (1 - 0.05 * tension - 0.06 * wobble)
-        let scaleX = heightScale * elongation * settle * (1 + 0.07 * tension + 0.07 * wobble)
+        let scaleX = profile.scaleX
+        let scaleY = profile.scaleY
         
         // Mismo umbral que el cuello: el cuello aguanta casi hasta la posición de reposo
         let gapTravel = abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX))
@@ -395,10 +378,10 @@ public extension AnyTransition {
         .asymmetric(
             insertion: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
                 // Al doble de un cambio normal: se alcanza a leer el nacimiento de la gota
-                .animation(.spring(response: 1.32, dampingFraction: 0.70)),
+                .animation(.spring(response: LiquidMotionTuning.v.emergeResponse, dampingFraction: LiquidMotionTuning.v.emergeDamping)),
             // Guardarse es lo mismo a la inversa: crece la cintura, la gota se encoge y se mete en el extremo
             removal: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                .animation(.spring(response: 1.12, dampingFraction: 0.94))
+                .animation(.spring(response: LiquidMotionTuning.v.absorbResponse, dampingFraction: LiquidMotionTuning.v.absorbDamping))
         )
     }
 }

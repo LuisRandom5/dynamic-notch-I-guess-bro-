@@ -446,7 +446,7 @@ public final class ActivityCenter: ObservableObject {
             // Como en la Isla Dinámica: el extremo se ensancha un poco para dejar salir la gota y, cuando la
             // cintura se adelgaza, regresa con un pequeño retroceso elástico
             // Tiempos al doble, al ritmo de la gota (ver AnyTransition.liquidSatellite)
-            withAnimation(.easeOut(duration: 0.36)) { pillImpulse = 6 }
+            withAnimation(.easeOut(duration: 0.36)) { pillImpulse = CGFloat(LiquidMotionTuning.v.widenImpulse) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.44) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
                 withAnimation(.spring(response: 0.92, dampingFraction: 0.62)) { self.pillImpulse = 0 }
@@ -457,7 +457,7 @@ public final class ActivityCenter: ObservableObject {
                 // Si mientras tanto el notch se desplegó (p. ej. la repisa), no abultar la tarjeta
                 let mode = AppState.shared.mode
                 guard mode != .expanded && mode != .shelf, self.expandedActivity == nil else { return }
-                withAnimation(.easeOut(duration: 0.20)) { self.pillImpulse = 7 }
+                withAnimation(.easeOut(duration: 0.20)) { self.pillImpulse = CGFloat(LiquidMotionTuning.v.absorbBulge) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
                     guard self.impulseToken == token else { return }
                     withAnimation(.spring(response: 0.80, dampingFraction: 0.52)) { self.pillImpulse = 0 }

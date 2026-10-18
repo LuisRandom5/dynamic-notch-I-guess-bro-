@@ -10,7 +10,7 @@ import SwiftUI
 
 public enum LiquidContour {
     /// Parámetros de la unión suave: a mayor `blend`, más largo se estira el cuello antes de romperse
-    public static let blend: CGFloat = 11
+    public static var blend: CGFloat { CGFloat(LiquidMotionTuning.v.blend) }
     /// Paso de la rejilla (pt): menor = borde más fino
     public static let gridStep: CGFloat = 0.75
 
