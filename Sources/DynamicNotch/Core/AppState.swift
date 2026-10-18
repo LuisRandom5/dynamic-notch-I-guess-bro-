@@ -490,7 +490,8 @@ public final class AppState: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     public var shouldShowCompact: Bool {
-        return (musicService.hasActiveMusic || musicPauseDismissTimer != nil || !shelfItems.isEmpty) && showCompactWhenPlaying
+        // La repisa ya no abre las alas: se muestra como bolita (ShelfActivityProvider)
+        return (musicService.hasActiveMusic || musicPauseDismissTimer != nil) && showCompactWhenPlaying
     }
     
     /// Reconcilia de forma segura el modo compacto cuando cambia la música, la bandeja o se cierra una actividad

@@ -96,6 +96,16 @@ public struct LockScreenPlayerView: View {
         isReduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.58, dampingFraction: 0.88)
     }
     
+    /// La presentación que llega hace el viaje completo (su carátula y superficie parten del lugar de la otra
+    /// con matchedGeometryEffect); la que se va sólo se desvanece rápido. Antes ambas se fundían durante todo
+    /// el resorte y la carátula grande se quedaba "flotando" unos milisegundos tras volver a la tarjeta.
+    private var stageTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.animation(.easeOut(duration: 0.14)),
+            removal: .opacity.animation(.easeIn(duration: 0.12))
+        )
+    }
+    
     private func setFullscreen(_ value: Bool) {
         if value { SoundFeedbackService.shared.playBubblePop() }
         withAnimation(stageAnimation) {
@@ -128,7 +138,7 @@ public struct LockScreenPlayerView: View {
                     AmbientMusicCanvasView(namespace: namespace) {
                         setFullscreen(false)
                     }
-                    .transition(.opacity)
+                    .transition(stageTransition)
                 } else if appState.lockScreenStyle != .compactCard && heroFits {
                     LockScreenHeroPlayer(
                         namespace: namespace,
@@ -136,12 +146,12 @@ public struct LockScreenPlayerView: View {
                         isShowingRoutePicker: $isShowingRoutePicker
                     )
                     .position(x: geo.size.width / 2, y: playerBottom - heroHeight / 2)
-                    .transition(.opacity)
+                    .transition(stageTransition)
                 } else {
                     // Variante horizontal: estilo elegido o pantallas donde la vertical no cabe legible
                     compactCardView
                         .position(x: geo.size.width / 2, y: playerBottom - compactHeight / 2)
-                        .transition(.opacity)
+                        .transition(stageTransition)
                 }
                 
                 // Selector interactivo de ruta de audio (AirPods / Altavoces / AirPlay)

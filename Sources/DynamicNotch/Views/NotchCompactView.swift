@@ -7,9 +7,8 @@ public struct NotchCompactView: View {
     
     public var namespace: Namespace.ID?
     private let wingWidth: CGFloat = NotchTuning.compactWingWidth
-    private var wingExtra: CGFloat {
-        (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
-    }
+    /// La repisa ya no ocupa espacio en las alas (es una bolita)
+    private let wingExtra: CGFloat = 0
     @State private var artworkRotationY: Double = 0.0
     @State private var artworkScale: CGFloat = 1.0
     
@@ -118,10 +117,6 @@ public struct NotchCompactView: View {
             
             // Ala derecha compacta (Trailing): Visualizador + Badge activo con pulso de radar si hay archivos
             HStack(spacing: 5) {
-                if !appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch {
-                    ActiveFileBadgeView()
-                }
-                
                 AudioVisualizer(
                     isPlaying: musicService.currentTrack.isPlaying,
                     colorMode: .fromArtwork(musicService.currentTrack.artwork)

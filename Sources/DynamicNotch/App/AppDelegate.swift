@@ -365,6 +365,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // El temporizador cede el notch a la música/video (y vuelve cuando se detiene)
         ActivityCenter.shared.startObservingPlayback()
+        // La repisa con archivos aparece como bolita
+        ShelfActivityProvider.shared.start()
         
         // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()

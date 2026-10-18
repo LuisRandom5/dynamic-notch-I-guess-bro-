@@ -84,19 +84,8 @@ public final class ShelfStorageService: ObservableObject {
         let isDestWritable = fileManager.isWritableFile(atPath: stashDirectory.path)
         DNDLogger.log("ShelfStorageService.stashFile inspect: isWritable=\(isWritable), isDeletable=\(isDeletable), isDestDirWritable=\(isDestWritable)")
         
-        // Prueba 3: Intentar primero movimiento asistido nativo por Finder para desvanecer icono sin demora
-        if let finderMovedURL = moveViaFinderScripting(source: canonicalSource, destinationDirectory: stashDirectory) {
-            DNDLogger.log("ShelfStorageService.stashFile moveViaFinderScripting SUCCEEDED! Target: \(finderMovedURL.path)")
-            notifyFinderChanged(for: canonicalSource)
-            notifyFinderChanged(for: finderMovedURL)
-            return ShelfItem(
-                url: finderMovedURL,
-                originalURL: canonicalSource,
-                isStashed: true,
-                isReadOnlySource: false,
-                name: finderMovedURL.lastPathComponent
-            )
-        }
+        // Sin automatizar Finder (AppleScript): macOS pedía autorización (Touch ID) en cada movimiento y
+        // bloqueaba ~10 s. FileManager mueve el archivo directo y Finder lo refleja solo (FSEvents).
         
         // Fallback a FileManager.moveItem con reporte detallado de errores (Prueba 1)
         do {
@@ -185,116 +174,14 @@ public final class ShelfStorageService: ObservableObject {
         }
     }
     
-    // MARK: - Scripting Nativo de Finder (Prueba 3)
-    /// Mueve un archivo a través de AppleScript delegando la operación directamente a Finder.
-    /// Esto garantiza que el icono del escritorio se desplace instantáneamente y Finder
-    /// actualice la interfaz sin iconos fantasma ni necesidad de recargar.
-    private func moveViaFinderScripting(source: URL, destinationDirectory: URL) -> URL? {
-        let sourcePath = source.standardizedFileURL.path
-        let destDirPath = destinationDirectory.standardizedFileURL.path
-        
-        let escapedSource = sourcePath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let escapedDest = destDirPath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        
-        let scriptSource = """
-        tell application "Finder"
-            try
-                set srcFile to (POSIX file "\(escapedSource)") as alias
-                set dstFolder to (POSIX file "\(escapedDest)") as alias
-                set movedItem to (move srcFile to dstFolder with replacing) as alias
-                return POSIX path of movedItem
-            on error errMsg number errNum
-                return "ERROR:" & errNum & ":" & errMsg
-            end try
-        end tell
-        """
-        
-        var errorDict: NSDictionary?
-        if let script = NSAppleScript(source: scriptSource) {
-            let result = script.executeAndReturnError(&errorDict)
-            if let err = errorDict {
-                DNDLogger.log("ShelfStorageService: moveViaFinderScripting NSAppleScript error: \(err)")
-                return nil
-            }
-            let stringVal = result.stringValue ?? ""
-            if stringVal.hasPrefix("ERROR:") {
-                DNDLogger.log("ShelfStorageService: moveViaFinderScripting Finder returned: \(stringVal)")
-                return nil
-            }
-            if !stringVal.isEmpty {
-                let movedURL = URL(fileURLWithPath: stringVal)
-                if fileManager.fileExists(atPath: movedURL.path) {
-                    DNDLogger.log("ShelfStorageService: moveViaFinderScripting SUCCEEDED! Result: \(movedURL.path)")
-                    return movedURL
-                }
-            }
-        }
-        return nil
-    }
-
-    /// Restaura un archivo stasheado de vuelta a su carpeta de origen vía Finder Scripting
-    private func restoreViaFinderScripting(source: URL, destinationDirectory: URL) -> URL? {
-        let sourcePath = source.standardizedFileURL.path
-        let destDirPath = destinationDirectory.standardizedFileURL.path
-        
-        let escapedSource = sourcePath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let escapedDest = destDirPath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        
-        let scriptSource = """
-        tell application "Finder"
-            try
-                set srcFile to (POSIX file "\(escapedSource)") as alias
-                set dstFolder to (POSIX file "\(escapedDest)") as alias
-                set movedItem to (move srcFile to dstFolder with replacing) as alias
-                return POSIX path of movedItem
-            on error errMsg number errNum
-                return "ERROR:" & errNum & ":" & errMsg
-            end try
-        end tell
-        """
-        
-        var errorDict: NSDictionary?
-        if let script = NSAppleScript(source: scriptSource) {
-            let result = script.executeAndReturnError(&errorDict)
-            if let err = errorDict {
-                DNDLogger.log("ShelfStorageService: restoreViaFinderScripting NSAppleScript error: \(err)")
-                return nil
-            }
-            let stringVal = result.stringValue ?? ""
-            if stringVal.hasPrefix("ERROR:") {
-                DNDLogger.log("ShelfStorageService: restoreViaFinderScripting Finder returned: \(stringVal)")
-                return nil
-            }
-            if !stringVal.isEmpty {
-                let movedURL = URL(fileURLWithPath: stringVal)
-                if fileManager.fileExists(atPath: movedURL.path) {
-                    DNDLogger.log("ShelfStorageService: restoreViaFinderScripting SUCCEEDED! Result: \(movedURL.path)")
-                    return movedURL
-                }
-            }
-        }
-        return nil
-    }
-
     /// Notifica a Finder y al sistema de archivos para refrescar el Escritorio al instante
     private func notifyFinderChanged(for url: URL) {
         let parent = url.deletingLastPathComponent().path
         NSWorkspace.shared.noteFileSystemChanged(parent)
         NSWorkspace.shared.noteFileSystemChanged(url.path)
         
-        // Solicitar a Finder actualizar inmediatamente la vista del directorio padre
-        let escapedParent = parent.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let scriptSource = """
-        tell application "Finder"
-            try
-                update (POSIX file "\(escapedParent)")
-            end try
-        end tell
-        """
-        if let script = NSAppleScript(source: scriptSource) {
-            var errorDict: NSDictionary?
-            _ = script.executeAndReturnError(&errorDict)
-        }
+        // Basta con avisar al sistema de archivos: pedirle a Finder un "update" por AppleScript disparaba
+        // la autorización con Touch ID
     }
     
     /// Mueve el archivo stasheado de vuelta a su ubicación original (Escritorio, Descargas, etc.)
@@ -308,15 +195,7 @@ public final class ShelfStorageService: ObservableObject {
             return false
         }
         
-        // 1. Intentar primero con Finder scripting para que el icono reaparezca instantáneamente
-        if let restoredURL = restoreViaFinderScripting(source: item.url, destinationDirectory: parentDir) {
-            DNDLogger.log("ShelfStorageService.restoreToOrigin via Finder SUCCEEDED to \(restoredURL.path)")
-            notifyFinderChanged(for: restoredURL)
-            notifyFinderChanged(for: item.url)
-            return true
-        }
-        
-        // 2. Fallback a FileManager.moveItem
+        // Directo con FileManager (sin automatizar Finder: pedía Touch ID)
         let targetURL = uniqueDestinationURL(in: parentDir, filename: origURL.lastPathComponent)
         do {
             try fileManager.moveItem(at: item.url, to: targetURL)

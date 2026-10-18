@@ -123,7 +123,17 @@ public final class ActivityCenter: ObservableObject {
         }
         
         if expandedActivity?.id == id {
-            expandedActivity = nil
+            // La tarjeta abierta se recoge hacia el notch con su animación (antes desaparecía de golpe, p. ej.
+            // cuando termina la sesión de Claude con su tarjeta abierta)
+            withAnimation(AnimationSpeedManager.shared.spring(response: 0.36, dampingFraction: 0.85)) {
+                expandedActivity = nil
+                customCardWidth = nil
+                customCardHeight = nil
+                customTopRadius = nil
+                customBottomRadius = nil
+            }
+            fusionExpansionTimer?.invalidate()
+            fusionExpansionTimer = nil
             fusingActivityId = nil
             isFusing = false
             fusionProgress = 0.0
@@ -271,8 +281,8 @@ public final class ActivityCenter: ObservableObject {
             if activity.style == .sliderPill {
                 return false
             }
-            if activity.kind == .claude {
-                // Claude vive siempre como bolita satélite; se integra al notch sólo cuando el usuario la toca
+            if activity.kind == .claude || activity.id == ShelfActivityProvider.activityId {
+                // Claude y la repisa viven siempre como bolita satélite
                 return false
             }
             if yieldsToPlayback(activity) {

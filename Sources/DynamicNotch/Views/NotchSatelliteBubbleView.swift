@@ -201,6 +201,20 @@ public struct NotchBolitaView: View {
                     .font(.system(size: size * 0.40, weight: .semibold))
                     .foregroundColor(DesignTokens.orange)
                     .opacity(isTimerPaused ? 0.6 : 1)
+            } else if activity.id == ShelfActivityProvider.activityId {
+                // Repisa: cantidad de archivos en azul (con 1 archivo, el icono de bandeja)
+                let count = activity.bolitaVariant?.shortText ?? ""
+                if count == "1" || count.isEmpty {
+                    Image(systemName: "tray.full.fill")
+                        .font(.system(size: size * 0.40, weight: .semibold))
+                        .foregroundColor(ShelfActivityProvider.blue)
+                } else {
+                    Text(count)
+                        .font(.system(size: size * 0.44, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(ShelfActivityProvider.blue)
+                        .contentTransition(.numericText())
+                }
             } else if activity.kind == .recording {
                 // Punto de grabación circular rojo minimalista idéntico a iOS
                 Circle()
@@ -294,6 +308,11 @@ public struct NotchBolitaView: View {
     }
     
     private func handleTapGesture() {
+        // La repisa no tiene tarjeta propia: su bolita abre la repisa del notch
+        if activity.id == ShelfActivityProvider.activityId {
+            activity.onTap?()
+            return
+        }
         if center.expandedActivity?.id == activity.id {
             center.collapseExpandedActivity()
             return

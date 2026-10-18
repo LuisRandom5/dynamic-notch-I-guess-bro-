@@ -105,9 +105,6 @@ public struct NotchContainerView: View {
         }
         switch appState.mode {
         case .idle:
-            if !appState.shelfItems.isEmpty {
-                return geometry.width + 96
-            }
             return geometry.width
         case .compact:
             let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
@@ -165,9 +162,6 @@ public struct NotchContainerView: View {
         } else {
             switch appState.mode {
             case .idle:
-                if !appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch {
-                    return geometry.width + 24
-                }
                 return geometry.width
             case .compact:
                 // Pausa tras el HUD de volumen/brillo: el notch se recoge por completo (sin alas negras vacías)
@@ -175,8 +169,7 @@ public struct NotchContainerView: View {
                 if appState.isHoldingBareNotch {
                     return geometry.width
                 }
-                let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
-                return geometry.width + NotchTuning.compactWingsExtraWidth + (wingExtra * 2)
+                return geometry.width + NotchTuning.compactWingsExtraWidth
             case .expanded, .shelf:
                 return NotchTuning.expandedWidth
             }
@@ -527,7 +520,8 @@ public struct NotchContainerView: View {
     
     @ViewBuilder
     private var idleContentView: some View {
-        if !appState.shelfItems.isEmpty {
+        // La repisa se representa con su bolita: el notch en reposo queda limpio
+        if false {
             HStack(spacing: 0) {
                 // Ala izquierda simétrica (44 pt): Miniatura o icono del archivo
                 ZStack {
@@ -861,7 +855,8 @@ public struct NotchContainerView: View {
                             showsBridge: showsBridge && slotIndex == 0,
                             isGlass: isGlassSurfaceVisible
                         ))
-                        .zIndex(100 - Double(slotIndex))
+                        // Al fundirse pasa POR DEBAJO del notch (se reabsorbe en él) en vez de encimarse a las alas
+                        .zIndex(isFusingThis ? -1 : 100 - Double(slotIndex))
                         .transition(reduceMotion ? .opacity : .liquidSatellite)
                 }
             }
@@ -883,7 +878,7 @@ public struct NotchContainerView: View {
                         showsBridge: showsBridge,
                         isGlass: isGlassSurfaceVisible
                     ))
-                    .zIndex(100)
+                    .zIndex(isFusingThis ? -1 : 100)
                     .transition(reduceMotion ? .opacity : .liquidSatellite)
             }
             
