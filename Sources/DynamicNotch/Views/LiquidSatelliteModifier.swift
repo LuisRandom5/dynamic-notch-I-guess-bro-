@@ -305,11 +305,11 @@ public extension AnyTransition {
     static var liquidSatellite: AnyTransition {
         .asymmetric(
             insertion: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                // 1.5× lo de un cambio normal: se alcanza a leer el nacimiento de la gota sin sentirse lento
-                .animation(.spring(response: 1.0, dampingFraction: 0.70)),
+                // Al doble de un cambio normal: se alcanza a leer el nacimiento de la gota
+                .animation(.spring(response: 1.32, dampingFraction: 0.70)),
             // Guardarse es lo mismo a la inversa: crece la cintura, la gota se encoge y se mete en el extremo
             removal: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                .animation(.spring(response: 0.84, dampingFraction: 0.94))
+                .animation(.spring(response: 1.12, dampingFraction: 0.94))
         )
     }
 }

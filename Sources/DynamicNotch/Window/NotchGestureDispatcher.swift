@@ -29,6 +29,8 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     private static let interactiveCloseFlickDelta: CGFloat = -3.0
     private var pendingInteractiveClose: (() -> Void)?
     private var lastCloseDelta: CGFloat = 0
+    /// El cierre ya se completó solo al llegar al final: el desenfoque no se mantiene hasta soltar
+    private var didAutoCommitClose = false
     
     /// Sigue los dedos hacia arriba: devuelve false para seguir recibiendo movimientos (la decisión es al soltar)
     private func trackInteractiveClose(translation t: CGFloat, delta: CGFloat, onCommit: @escaping () -> Void) -> Bool {
@@ -36,6 +38,13 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         AppState.shared.interactiveCollapseProgress = progress
         lastCloseDelta = delta
         pendingInteractiveClose = progress > 0 ? onCommit : nil
+        // Llegó al final del recorrido: se cierra YA, sin esperar a que se levanten los dedos (antes se quedaba
+        // "compactada" en pantalla hasta soltar). El resto del gesto se absorbe.
+        if progress >= 0.92 {
+            finishInteractiveClose()
+            didAutoCommitClose = true
+            return true
+        }
         return false
     }
     
@@ -43,7 +52,8 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     private func finishInteractiveClose() {
         let app = AppState.shared
         let progress = app.interactiveCollapseProgress
-        guard progress > 0 || pendingInteractiveClose != nil else { return }
+        // Sin cierre pendiente (p. ej. ya se completó solo al llegar al final) no hay nada que decidir
+        guard pendingInteractiveClose != nil else { return }
         let commit = pendingInteractiveClose
         pendingInteractiveClose = nil
         if let commit = commit, progress >= Self.interactiveCloseCommit || lastCloseDelta <= Self.interactiveCloseFlickDelta {
@@ -150,7 +160,12 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
             AppState.shared.interactiveCollapseProgress = 0
             pendingInteractiveClose = nil
         }
+        didAutoCommitClose = false
         let triggered = route(axis: axis, translation: t, delta: delta)
+        if didAutoCommitClose {
+            withAnimation(.easeOut(duration: 0.30)) { AppState.shared.gestureBlurHold = 0 }
+            return true
+        }
         // Desenfoque interactivo SÓLO cuando hay transformación: el cierre que sigue a los dedos crece con el
         // recorrido y, si el gesto ya disparó un cambio, se queda completo hasta levantar los dedos.
         // El estiramiento de resorte (topar con pared: no hay más páginas) no se desenfoca.
