@@ -275,6 +275,26 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("GET", "/debug/hitches"), ("POST", "/debug/hitches"):
+            // Diagnóstico de rendimiento: cuadros lentos recientes (POST además reinicia el conteo)
+            var info: [String: Any] = [:]
+            let reset = method == "POST"
+            DispatchQueue.main.sync {
+                info = FrameHitchMonitor.shared.report(reset: reset)
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
+            
+        case ("POST", "/debug/toggle-notch"):
+            // Diagnóstico: abre o cierra el reproductor como si el usuario lo hiciera
+            DispatchQueue.main.async {
+                if AppState.shared.mode == .expanded || AppState.shared.mode == .shelf {
+                    AppState.shared.collapse()
+                } else {
+                    AppState.shared.expand()
+                }
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]

@@ -372,6 +372,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()
         // Tempo real de cada canción, por si su audio llega protegido (DRM) y en silencio
         ProceduralMotionEngine.shared.startPrefetchingTempo()
+        // Diagnóstico de rendimiento siempre activo (barato): GET /debug/hitches
+        FrameHitchMonitor.shared.start()
         // Vidrio legible: detecta si detrás del notch hay algo claro (regular) o el fondo de pantalla (clear)
         BackdropBrightnessMonitor.shared.start()
         

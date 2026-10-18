@@ -412,13 +412,11 @@ public final class CallDetectorService: ObservableObject {
         // 1. App FaceTime nativa
         // 2. Servicios de notificación de FaceTime (FaceTimeNotificationCenterService, etc.)
         // 3. Centro de notificaciones de macOS (com.apple.notificationcenterui)
+        // Sólo por identificador: pedir `localizedName` de cada app es una consulta cara al sistema y esto
+        // corre en el hilo principal cada 0.35 s (se comía cuadros de las animaciones del notch)
         let candidateApps = runningApps.filter { app in
             let b = app.bundleIdentifier?.lowercased() ?? ""
-            let n = app.localizedName?.lowercased() ?? ""
-            if b == "com.apple.telephonyutilities" && n.contains("callservices") {
-                return false // callservicesd es un demonio sin ventanas
-            }
-            return b.contains("facetime") || n.contains("facetime") || b == "com.apple.notificationcenterui"
+            return b.contains("facetime") || b == "com.apple.notificationcenterui"
         }
         
         guard !candidateApps.isEmpty else { return }
