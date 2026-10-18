@@ -368,6 +368,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()
+        // Vidrio legible: detecta si detrás del notch hay algo claro (regular) o el fondo de pantalla (clear)
+        BackdropBrightnessMonitor.shared.start()
         
         // Precalentar la canalización de Liquid Glass en GPU para evitar saltos en el primer despliegue
         if #available(macOS 26.0, *) {

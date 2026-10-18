@@ -169,7 +169,7 @@ public struct AmbientMusicCanvasView: View {
     }
 
     private var scrubber: some View {
-        TimelineView(.animation(minimumInterval: 0.25, paused: !track.isPlaying || isSeeking)) { _ in
+        TimelineView(.animation(paused: !track.isPlaying || isSeeking)) { _ in
             let duration = max(track.duration, 0.001)
             let position = isSeeking ? seekProgress * duration : min(duration, lyricsService.estimatedPosition)
             let fraction = min(1, max(0, position / duration))
@@ -343,7 +343,8 @@ private struct SyncedLyricsView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 26) {
+                // Lazy: sólo se dibujan las líneas visibles (antes se componían todas, con desenfoque, en cada cuadro)
+                LazyVStack(alignment: .leading, spacing: 26) {
                     Spacer(minLength: 150)
 
                     // Antes de la primera línea: puntos de introducción
@@ -366,7 +367,8 @@ private struct SyncedLyricsView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .foregroundStyle(.white.opacity(isCurrent ? 1.0 : (index < current ? 0.30 : 0.36)))
-                                .blur(radius: isCurrent ? 0 : min(2.2, Double(distance) * 0.55))
+                                // Desenfoque sólo en las líneas vecinas (las lejanas ya están atenuadas)
+                                .blur(radius: (isCurrent || distance > 3) ? 0 : Double(distance) * 0.55)
                                 .animation(.easeOut(duration: 0.35), value: isCurrent)
                         }
                         .buttonStyle(.plain)
@@ -407,7 +409,7 @@ private struct InstrumentalDots: View {
     @State private var breathe = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { _ in
+        TimelineView(.animation) { _ in
             let span = max(0.1, end - start)
             let progress = min(1, max(0, (lyrics.estimatedPosition - start) / span))
             HStack(spacing: 10) {
@@ -473,6 +475,7 @@ private struct AmbientArtworkBackground: View {
     let primary: Color
     let secondary: Color
     var isOLED: Bool = false
+    @State private var drift = false
 
     var body: some View {
         ZStack {
@@ -481,20 +484,29 @@ private struct AmbientArtworkBackground: View {
                 // Negro puro: respeta el modo OLED también en pantalla completa
                 Color.black
             } else if #available(macOS 15.0, *) {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate
-                    MeshGradient(
-                        width: 3,
-                        height: 3,
-                        points: meshPoints(t),
-                        colors: [
-                            primary, primary.opacity(0.85), secondary,
-                            secondary.opacity(0.9), primary.opacity(0.75), secondary.opacity(0.8),
-                            primary.opacity(0.7), secondary, primary.opacity(0.9)
-                        ]
-                    )
-                }
+                // Rendimiento: la malla se dibuja UNA vez y lo que se mueve es la capa (escala, giro y desplazamiento
+                // con animaciones de Core Animation a la frecuencia de la pantalla). Antes se recalculaba la malla
+                // a pantalla completa 30 veces por segundo y todo se veía a ≤30 fps.
+                MeshGradient(
+                    width: 3,
+                    height: 3,
+                    points: [
+                        [0, 0], [0.5, 0], [1, 0],
+                        [0, 0.55], [0.42, 0.48], [1, 0.45],
+                        [0, 1], [0.6, 1], [1, 1]
+                    ],
+                    colors: [
+                        primary, primary.opacity(0.85), secondary,
+                        secondary.opacity(0.9), primary.opacity(0.75), secondary.opacity(0.8),
+                        primary.opacity(0.7), secondary, primary.opacity(0.9)
+                    ]
+                )
+                .scaleEffect(drift ? 1.45 : 1.30)
+                .rotationEffect(.degrees(drift ? 14 : -10))
+                .offset(x: drift ? 60 : -50, y: drift ? -36 : 30)
+                .animation(.easeInOut(duration: 18).repeatForever(autoreverses: true), value: drift)
                 .opacity(0.85)
+                .onAppear { drift = true }
             } else {
                 LinearGradient(colors: [primary, secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
                     .opacity(0.8)
@@ -503,18 +515,10 @@ private struct AmbientArtworkBackground: View {
                 Color.black.opacity(0.38)
             }
         }
+        // La malla escalada no debe salirse del marco (durante la transformación desde la tarjeta)
+        .clipped()
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 1.2), value: primary)
-    }
-
-    /// Puntos interiores que derivan despacio; los bordes quedan fijos
-    private func meshPoints(_ t: Double) -> [SIMD2<Float>] {
-        func wobble(_ phase: Double, _ amount: Double) -> Float { Float(sin(t * 0.18 + phase) * amount) }
-        return [
-            [0, 0], [0.5, 0], [1, 0],
-            [0, 0.5 + wobble(1.0, 0.12)], [0.5 + wobble(2.1, 0.16), 0.5 + wobble(0.4, 0.14)], [1, 0.5 + wobble(3.3, 0.12)],
-            [0, 1], [0.5 + wobble(4.2, 0.18), 1], [1, 1]
-        ]
     }
 }
 

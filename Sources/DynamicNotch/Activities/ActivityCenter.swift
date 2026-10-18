@@ -46,6 +46,11 @@ public final class ActivityCenter: ObservableObject {
         let until: Date
     }
     private var roleHandoff: RoleHandoff?
+    
+    /// Después del HUD de volumen/brillo, lo que había en el notch (reproductor, temporizador…) se queda
+    /// escondido un momento antes de volver, como en la Isla Dinámica: el notch queda limpio y luego regresa.
+    public static let hudReturnDelay: TimeInterval = 3.0
+    private var hudHoldUntil: Date = .distantPast
     private static let reabsorbDuration: TimeInterval = 0.50
     private static let notchSettleDuration: TimeInterval = 0.40
     
@@ -74,7 +79,11 @@ public final class ActivityCenter: ObservableObject {
     
     /// Publica o actualiza una actividad según las reglas de prioridad y actualización en sitio
     public func publish(_ activity: LiveActivity) {
-        AppState.shared.isHoldingBareNotch = false
+        // Durante la pausa posterior al HUD, las actualizaciones de otras actividades (temporizador, Claude…)
+        // no deben hacer reaparecer el reproductor antes de tiempo
+        if Date() >= hudHoldUntil || activity.style == .sliderPill {
+            AppState.shared.isHoldingBareNotch = false
+        }
         
         if dismissingActivityId == activity.id {
             dismissingActivityId = nil
@@ -165,6 +174,15 @@ public final class ActivityCenter: ObservableObject {
             AppState.shared.isHoldingBareNotch = true
         }
         
+        // HUD del sistema: al cerrarse, notch limpio unos segundos y después regresa lo que había
+        let isSystemHUD = current.style == .sliderPill
+        if isSystemHUD {
+            hudHoldUntil = Date().addingTimeInterval(duration + Self.hudReturnDelay)
+            if MusicService.shared.hasActiveMusic {
+                AppState.shared.isHoldingBareNotch = true
+            }
+        }
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             guard let self = self else { return }
             self.activeActivities.removeAll(where: { $0.id == id })
@@ -175,7 +193,20 @@ public final class ActivityCenter: ObservableObject {
             self.recalculateRoles()
             self.dismissingActivityId = nil
             
-            if isCard && (AppState.shared.mode == .compact || AppState.shared.shouldShowCompact) && MusicService.shared.hasActiveMusic {
+            if isSystemHUD {
+                let holdUntil = self.hudHoldUntil
+                DispatchQueue.main.asyncAfter(deadline: .now() + max(0, holdUntil.timeIntervalSinceNow)) {
+                    // Otro HUD extendió la pausa: ese se encarga de terminarla
+                    guard self.hudHoldUntil == holdUntil else { return }
+                    withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
+                        AppState.shared.isHoldingBareNotch = false
+                        self.recalculateRoles()
+                        if self.currentActivity == nil {
+                            AppState.shared.reconcileCompactMode()
+                        }
+                    }
+                }
+            } else if isCard && (AppState.shared.mode == .compact || AppState.shared.shouldShowCompact) && MusicService.shared.hasActiveMusic {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                     guard self.currentActivity == nil else {
                         AppState.shared.isHoldingBareNotch = false
@@ -278,10 +309,14 @@ public final class ActivityCenter: ObservableObject {
             lastRoleChangeTime = now
         }
         
-        // Mientras el HUD está visible, lo que iba en el notch queda en pausa (ni notch ni bolita)
-        let hiddenByHUD = systemHUD != nil ? chosenPrimary?.id : nil
+        // Mientras el HUD está visible (y unos segundos después), lo que iba en el notch queda en pausa
+        // (ni notch ni bolita). Un aviso urgente sí puede aparecer durante esa pausa.
+        let isHoldingAfterHUD = systemHUD == nil && now < hudHoldUntil && !(chosenPrimary?.isUrgent ?? false)
+        let hiddenByHUD = (systemHUD != nil || isHoldingAfterHUD) ? chosenPrimary?.id : nil
         if let hud = systemHUD {
             chosenPrimary = hud
+        } else if isHoldingAfterHUD {
+            chosenPrimary = nil
         }
         
         let primaryId = chosenPrimary?.id

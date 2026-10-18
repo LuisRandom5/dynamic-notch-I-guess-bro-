@@ -97,6 +97,7 @@ public struct StripedTestPatternView: View {
 public struct DynamicNotchBackgroundView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var glassManager = GlassClearManager.shared
+    @ObservedObject var backdrop = BackdropBrightnessMonitor.shared
     
     public var topRadius: CGFloat
     public var bottomRadius: CGFloat
@@ -174,8 +175,11 @@ public struct DynamicNotchBackgroundView: View {
                         // se disuelve) en vez de un simple fundido de opacidad
                         if showsGlass {
                             ZStack(alignment: .top) {
+                                // Clear sobre el fondo de pantalla (lo más transparente); regular cuando detrás hay una
+                                // ventana clara o un fondo claro: desenfoca lo de atrás y ajusta la luminosidad para que
+                                // el texto blanco se lea (guía de Apple: clear sólo sobre contenido visual)
                                 Color.clear
-                                    .glassEffect(Glass.clear, in: pillShape)
+                                    .glassEffect(backdrop.isBackdropBright ? Glass.regular : Glass.clear, in: pillShape)
                                     .glassEffectTransition(.materialize)
                                 
                                 Color.black.opacity(veilOpacity)
@@ -244,6 +248,7 @@ public struct DynamicNotchBackgroundView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.24), value: showsGlass)
+            .animation(.easeInOut(duration: 0.35), value: backdrop.isBackdropBright)
         }
         .animation(.easeInOut(duration: 0.24), value: isExpanded)
         .environment(\.controlActiveState, .key)

@@ -277,7 +277,7 @@ struct LockScreenProgressScrubber: View {
     private var track: MusicTrack { musicService.currentTrack }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !track.isPlaying || dragFraction != nil)) { context in
+        TimelineView(.animation(paused: !track.isPlaying || dragFraction != nil)) { context in
             let duration = max(track.duration, 0.001)
             let live = min(duration, anchorPosition + (track.isPlaying ? context.date.timeIntervalSince(anchorDate) : 0))
             let position: Double = {

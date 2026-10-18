@@ -824,15 +824,19 @@ public struct NotchContainerView: View {
             // Bolitas a la Derecha
             // Cada bolita se une al notch con un cuello líquido (LiquidSatelliteModifier): brota de él al
             // aparecer, se funde al tocarla (fusionProgress) y se reabsorbe al desaparecer.
-            let notchRadius = geometry.height / 2.0
-            let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
+            // Ancho/alto VISIBLES del notch: incluyen la expansión al pasar el cursor y el "apretón" al presionar
+            // (scaleEffect anclado arriba), para que las bolitas se aparten y no queden tapadas
+            let visibleHalfWidth = cardExpandedWidth * scaleX / 2.0
+            let visibleHeight = geometry.height * scaleY
+            let notchRadius = visibleHeight / 2.0
+            let bubbleOffsetY = max(0, (visibleHeight - bolitaDiam) / 2.0)
             // El cuello negro sólo une bolitas negras con el notch negro (en cristal, la gota se reabsorbe sola)
             let showsBridge = appState.mode != .expanded && appState.mode != .shelf && !isGlassSurfaceVisible
             ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
                 let isLeft = isBothSides && index == 1
                 if !isLeft {
                     let slotIndex = isBothSides ? (index > 1 ? index - 1 : index) : index
-                    let restingX = (cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                    let restingX = visibleHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
                     let isFusingThis = activityCenter.fusingActivityId == activity.id
                     
                     NotchBolitaView(activity: activity, side: .right)
@@ -840,7 +844,7 @@ public struct NotchContainerView: View {
                         .modifier(LiquidSatelliteModifier(
                             merge: isFusingThis ? activityCenter.fusionProgress : 0,
                             restingX: restingX,
-                            notchEndX: (cardExpandedWidth / 2.0) - notchRadius,
+                            notchEndX: visibleHalfWidth - notchRadius,
                             notchRadius: notchRadius,
                             bubbleDiameter: bolitaDiam,
                             offsetY: bubbleOffsetY,
@@ -854,7 +858,7 @@ public struct NotchContainerView: View {
             
             // Bolita a la Izquierda (si está configurado .bothSides)
             if isBothSides, let leftActivity = activityCenter.secondaryActivities.dropFirst().first {
-                let restingX = -((cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0))
+                let restingX = -(visibleHalfWidth + gap + (bolitaDiam / 2.0))
                 let isFusingThis = activityCenter.fusingActivityId == leftActivity.id
                 
                 NotchBolitaView(activity: leftActivity, side: .left)
@@ -862,7 +866,7 @@ public struct NotchContainerView: View {
                     .modifier(LiquidSatelliteModifier(
                         merge: isFusingThis ? activityCenter.fusionProgress : 0,
                         restingX: restingX,
-                        notchEndX: -((cardExpandedWidth / 2.0) - notchRadius),
+                        notchEndX: -(visibleHalfWidth - notchRadius),
                         notchRadius: notchRadius,
                         bubbleDiameter: bolitaDiam,
                         offsetY: bubbleOffsetY,
@@ -878,7 +882,7 @@ public struct NotchContainerView: View {
                 let slotIndex = isBothSides
                     ? max(0, activityCenter.secondaryActivities.count - 1)
                     : activityCenter.secondaryActivities.count
-                let restingX = (cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                let restingX = visibleHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
                 
                 NotchOverflowBolitaView(count: activityCenter.overflowCount)
                     .offset(
@@ -911,6 +915,10 @@ public struct NotchContainerView: View {
     )
     .animation(AnimationSpeedManager.shared.spring(response: 0.40, dampingFraction: 0.82), value: activityCenter.expandedActivity?.id)
     .animation(AnimationSpeedManager.shared.spring(response: 0.36, dampingFraction: 0.92), value: activityCenter.fusionProgress)
+    // Las bolitas se mueven con el MISMO resorte que el notch cuando éste cambia de ancho (HUD de volumen o
+    // brillo, actividades) o se aprieta al presionar: nunca quedan tapadas a mitad de la animación
+    .animation(currentShapeSpring, value: cardExpandedWidth)
+    .animation(NotchTuning.pressSpring, value: interactionState)
     // Aparecer/desaparecer de bolitas: lo bastante pausado para leer el cuello líquido al separarse
     .animation(AnimationSpeedManager.shared.spring(response: 0.55, dampingFraction: 0.88), value: activityCenter.secondaryActivities.count)
     .animation(.spring(response: 0.40, dampingFraction: 0.82), value: agentProvider.isProgressHUDExpanded)

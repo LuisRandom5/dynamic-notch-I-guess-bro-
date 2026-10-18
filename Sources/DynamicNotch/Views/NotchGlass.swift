@@ -72,6 +72,7 @@ public struct NotchBubbleBackground: View {
 
     @Environment(\.notchGlassSurfaceVisible) private var glassVisible
     @ObservedObject private var appState = AppState.shared
+    @ObservedObject private var backdrop = BackdropBrightnessMonitor.shared
 
     public init(size: CGFloat) {
         self.size = size
@@ -83,7 +84,7 @@ public struct NotchBubbleBackground: View {
             if #available(macOS 26.0, *), glassVisible, mode != .pureOLED {
                 Color.black.opacity(NotchGlassMetrics.veilOpacity(for: mode))
                     .clipShape(Circle())
-                    .glassEffect(Glass.clear.interactive(), in: Circle())
+                    .glassEffect((backdrop.isBackdropBright ? Glass.regular : Glass.clear).interactive(), in: Circle())
                     .glassEffectTransition(.materialize)
                     .environment(\.colorScheme, .dark)
             } else {
