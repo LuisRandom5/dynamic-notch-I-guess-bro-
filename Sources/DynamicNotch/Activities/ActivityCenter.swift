@@ -41,6 +41,43 @@ public final class ActivityCenter: ObservableObject {
     @Published public private(set) var pillImpulse: CGFloat = 0
     private var impulseToken = 0
     
+    /// Alerta en curso (ver presentAlert): si el usuario interactúa, la tarjeta ya no se cierra sola
+    private var alertingActivityId: String?
+    
+    /// Alerta de la Isla Dinámica: ante una actualización importante (terminó, necesita atención), la
+    /// actividad se expande un momento para mostrarla y regresa sola a su lugar. Sólo si nada más ocupa el
+    /// notch (no interrumpe al usuario).
+    public func presentAlert(id: String, duration: TimeInterval = 4.0) {
+        guard let activity = activeActivities.first(where: { $0.id == id }),
+              secondaryActivities.contains(where: { $0.id == id }),
+              expandedActivity == nil, !isFusing,
+              AppState.shared.mode != .expanded, AppState.shared.mode != .shelf,
+              !AppState.shared.isHovered else { return }
+        alertingActivityId = id
+        initiateFusion(for: activity)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.finishAlert(id: id)
+        }
+    }
+    
+    /// El usuario tocó: la tarjeta abierta por una alerta pasa a ser suya (no se cierra sola)
+    public func cancelAlertAutoCollapse() {
+        alertingActivityId = nil
+    }
+    
+    private func finishAlert(id: String) {
+        guard alertingActivityId == id else { return }
+        // El cursor está encima: el usuario la está viendo, se queda hasta que se vaya
+        if AppState.shared.isHovered {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.finishAlert(id: id) }
+            return
+        }
+        alertingActivityId = nil
+        if expandedActivity?.id == id {
+            collapseExpandedActivity()
+        }
+    }
+    
     /// Último clic atendido por una bolita: el panel lo consulta para no tomarlo también como tap al notch
     public var lastSatelliteTapAt: Date = .distantPast
     
@@ -99,6 +136,9 @@ public final class ActivityCenter: ObservableObject {
         
         // Actualización en sitio si ya existe
         if let index = activeActivities.firstIndex(where: { $0.id == activity.id }) {
+            // Conserva cuándo empezó: es el desempate de la Isla Dinámica (gana la que se inició primero)
+            var activity = activity
+            activity.createdAt = activeActivities[index].createdAt
             activeActivities[index] = activity
             if currentActivity?.id == activity.id {
                 currentActivity = activity
@@ -271,7 +311,9 @@ public final class ActivityCenter: ObservableObject {
             if a.priority != b.priority {
                 return a.priority > b.priority
             }
-            return a.lastUpdatedAt > b.lastUpdatedAt
+            // Como la Isla Dinámica: con la misma relevancia gana la que se INICIÓ primero (estable: una
+            // actualización no le roba el lugar a otra)
+            return a.createdAt < b.createdAt
         }
         
         let now = Date()
@@ -588,6 +630,7 @@ public final class ActivityCenter: ObservableObject {
     /// Contrae la actividad expandida de vuelta al notch y expulsa suavemente la bolita a su slot satélite
     public func collapseExpandedActivity() {
         guard expandedActivity != nil || isFusing else { return }
+        alertingActivityId = nil
         
 
         fusionExpansionTimer?.invalidate()

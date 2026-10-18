@@ -148,6 +148,8 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
     public func gestureAllowsHorizontal() -> Bool {
         switch context {
         case .expanded, .shelf: return true
+        // Notch cerrado con música (o minimizado): deslizar de lado la esconde / la regresa
+        case .collapsed: return AppState.shared.mode == .compact || AppState.shared.isCompactMinimized
         default: return false
         }
     }
@@ -246,6 +248,17 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
                 }
             } else if t <= -16.0 {
                 agent.collapseInteraction()
+                return true
+            }
+
+        case (.collapsed, .horizontal):
+            if abs(t) >= 10 {
+                let minimize = !app.isCompactMinimized
+                DNDLogger.log("Gestos: swipe lateral en notch cerrado -> \(minimize ? "minimizar" : "restaurar") música")
+                withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.84)) {
+                    app.isCompactMinimized = minimize
+                }
+                app.hapticService.triggerSnap()
                 return true
             }
 

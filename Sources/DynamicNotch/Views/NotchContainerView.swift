@@ -100,15 +100,14 @@ public struct NotchContainerView: View {
     }
     
     private var baseRestingWidth: CGFloat {
-        if appState.isHoldingBareNotch {
+        if appState.isHoldingBareNotch || appState.isCompactMinimized {
             return geometry.width
         }
         switch appState.mode {
         case .idle:
             return geometry.width
         case .compact:
-            let wingExtra: CGFloat = (!appState.shelfItems.isEmpty && appState.showShelfBadgeInNotch) ? 24 : 0
-            return geometry.width + NotchTuning.compactWingsExtraWidth + (wingExtra * 2)
+            return geometry.width + NotchTuning.compactWingsExtraWidth
         case .expanded, .shelf:
             return NotchTuning.expandedWidth
         }
@@ -166,7 +165,7 @@ public struct NotchContainerView: View {
             case .compact:
                 // Pausa tras el HUD de volumen/brillo: el notch se recoge por completo (sin alas negras vacías)
                 // y al terminar vuelve a abrirse hacia los lados con la carátula y las barras
-                if appState.isHoldingBareNotch {
+                if appState.isHoldingBareNotch || appState.isCompactMinimized {
                     return geometry.width
                 }
                 return geometry.width + NotchTuning.compactWingsExtraWidth
@@ -398,6 +397,22 @@ public struct NotchContainerView: View {
             return 5
         }
         return 3
+    }
+    
+    @ObservedObject private var backdropMonitor = BackdropBrightnessMonitor.shared
+    
+    /// Color de la keyline (nil = sin keyline): actividad principal, tarjeta abierta o la carátula de la música
+    private var keylineColor: Color? {
+        guard backdropMonitor.isSystemDarkMode, appState.effectiveAppearanceMode == .pureOLED else { return nil }
+        if let activity = activityCenter.expandedActivity ?? activityCenter.currentActivity {
+            return activity.tint
+        }
+        let showsMusic = (appState.mode == .compact && !appState.isHoldingBareNotch && !appState.isCompactMinimized)
+            || appState.mode == .expanded
+        if showsMusic, let artwork = musicService.currentTrack.artwork {
+            return ArtworkGradientCache.colors(for: artwork).top
+        }
+        return nil
     }
     
     /// Cambia cada vez que el notch se transforma (abre/cierra, cambia de página, de tarjeta o de actividad)
@@ -637,7 +652,7 @@ public struct NotchContainerView: View {
             case .idle:
                 idleContentView
             case .compact:
-                if appState.isHoldingBareNotch {
+                if appState.isHoldingBareNotch || appState.isCompactMinimized {
                     Color.clear
                         .frame(width: currentWidth, height: currentHeight)
                 } else {
@@ -672,6 +687,18 @@ public struct NotchContainerView: View {
                         trailingImpulse: activityCenter.pillImpulse
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                    // Keyline de la Isla Dinámica: en modo oscuro, un borde fino del color de lo que se muestra
+                    // la separa del contenido oscuro de detrás (sólo en negro OLED y con algo en el notch)
+                    .overlay(alignment: .top) {
+                        if let keyline = keylineColor {
+                            containerPillShape
+                                .stroke(keyline.opacity(0.42), lineWidth: 1)
+                                .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                                .allowsHitTesting(false)
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.3), value: keylineColor != nil)
                     
                     mainModeContentView
                         // Estándar: el contenido se desenfoca un instante mientras la forma se transforma.
@@ -982,6 +1009,12 @@ public struct NotchContainerView: View {
         }
         .onChange(of: musicService.currentTrack.title) { _, _ in
             NotchWindowManager.shared.resetCursorIfOverNotch()
+            // Canción nueva: la actividad minimizada vuelve a mostrarse (como una actualización en la Isla)
+            if appState.isCompactMinimized {
+                withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.84)) {
+                    appState.isCompactMinimized = false
+                }
+            }
         }
         .onAppear {
             appState.requestCollapse = {

@@ -125,6 +125,9 @@ public final class AppState: ObservableObject {
     @Published public var gestureBlurHold: CGFloat = 0
     /// Cierre interactivo (0…1): el reproductor/repisa/tarjeta se encoge hacia el notch siguiendo los dedos
     @Published public var interactiveCollapseProgress: CGFloat = 0
+    /// Como en la Isla Dinámica: deslizar de lado sobre el notch cerrado esconde la actividad de música
+    /// (queda el notch limpio); otro deslizamiento, o el cambio de canción, la regresa
+    @Published public var isCompactMinimized: Bool = false
     
     // Volume HUD State
     @Published public var isVolumeHUDActive: Bool = false

@@ -16,6 +16,8 @@ public final class BackdropBrightnessMonitor: ObservableObject {
     public static let shared = BackdropBrightnessMonitor()
 
     @Published public private(set) var isBackdropBright = false
+    /// Modo oscuro del sistema (para la "keyline" de la Isla Dinámica)
+    @Published public private(set) var isSystemDarkMode = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
 
     private var timer: Timer?
     /// Zona que ocupa el notch desplegado (centrada arriba de la pantalla)
@@ -63,6 +65,8 @@ public final class BackdropBrightnessMonitor: ObservableObject {
         } else {
             backdropBright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
         }
+        let dark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+        if dark != isSystemDarkMode { isSystemDarkMode = dark }
         // Cristal Claro: siempre clear, sin adaptar
         let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass
         let bright = adapts && backdropBright
