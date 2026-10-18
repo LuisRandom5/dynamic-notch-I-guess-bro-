@@ -18,6 +18,9 @@ public struct AmbientMusicCanvasView: View {
     /// En la pantalla bloqueada: espacio de nombres compartido con el reproductor compacto, para que la
     /// carátula y la superficie se transformen de una presentación a la otra (matchedGeometryEffect)
     public var namespace: Namespace.ID?
+    /// Abre el selector de salida de audio (pantalla bloqueada); sin él no se muestra el botón
+    public var onShowRoutes: (() -> Void)?
+    @ObservedObject private var audioService = AudioDeviceService.shared
 
     @State private var isSeeking: Bool = false
     @State private var seekProgress: Double = 0.0
@@ -30,8 +33,9 @@ public struct AmbientMusicCanvasView: View {
 
     private let clockTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
-    public init(namespace: Namespace.ID? = nil, onDismiss: (() -> Void)? = nil) {
+    public init(namespace: Namespace.ID? = nil, onShowRoutes: (() -> Void)? = nil, onDismiss: (() -> Void)? = nil) {
         self.namespace = namespace
+        self.onShowRoutes = onShowRoutes
         self.onDismiss = onDismiss
     }
     
@@ -115,20 +119,24 @@ public struct AmbientMusicCanvasView: View {
         VStack(alignment: .leading, spacing: 22) {
             artwork
 
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title.isEmpty ? "Sin reproducción" : track.title)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(track.artist)
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.62))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
+            // Como el reproductor de la pantalla bloqueada de iOS: título y artista centrados, el indicador de
+            // audio pequeño arriba a la derecha
+            VStack(spacing: 3) {
+                Text(track.title.isEmpty ? "Sin reproducción" : track.title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(track.artist)
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 44)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .topTrailing) {
                 AudioVisualizer(isPlaying: track.isPlaying, colorMode: .fromArtwork(track.artwork))
-                    .frame(width: 38, height: 16)
+                    .frame(width: 26, height: 14)
+                    .padding(.top, 5)
             }
 
             scrubber
@@ -175,7 +183,10 @@ public struct AmbientMusicCanvasView: View {
             let fraction = min(1, max(0, position / duration))
             let barHeight: CGFloat = (isHoveringProgress || isSeeking) ? 10 : 6
 
-            VStack(spacing: 7) {
+            // Tiempos en la misma línea que la barra (transcurrido · barra · restante)
+            HStack(spacing: 12) {
+                Text(formatTime(position))
+                    .frame(width: 42, alignment: .leading)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.22))
@@ -205,52 +216,65 @@ public struct AmbientMusicCanvasView: View {
                 }
                 .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isSeeking)
 
-                HStack {
-                    Text(formatTime(position))
-                    Spacer()
-                    Text("-" + formatTime(max(0, duration - position)))
-                }
-                .font(.system(size: 12, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.55))
+                Text("-" + formatTime(max(0, duration - position)))
+                    .frame(width: 46, alignment: .trailing)
             }
+            .font(.system(size: 12, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(.white.opacity(0.55))
         }
     }
 
+    /// Transporte centrado (anterior · reproducir/pausa · siguiente) y la salida de audio discreta a la derecha
     private var transportControls: some View {
-        HStack(spacing: 46) {
-            Button {
-                previousTick += 1
-                musicService.previousTrack()
-                appState.hapticService.triggerSnap()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 28, weight: .regular))
-                    .symbolEffect(.bounce.down, value: previousTick)
-            }
-            .buttonStyle(TransportButtonStyle(diameter: 60))
+        ZStack {
+            HStack(spacing: 40) {
+                Button {
+                    previousTick += 1
+                    musicService.previousTrack()
+                    appState.hapticService.triggerSnap()
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 26, weight: .regular))
+                        .symbolEffect(.bounce.down, value: previousTick)
+                }
+                .buttonStyle(TransportButtonStyle(diameter: 54))
 
-            Button {
-                musicService.togglePlayPause()
-                appState.hapticService.triggerExpand()
-            } label: {
-                Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 38, weight: .regular))
-                    .contentTransition(.symbolEffect(.replace.downUp))
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(TransportButtonStyle(diameter: 72))
+                Button {
+                    musicService.togglePlayPause()
+                    appState.hapticService.triggerExpand()
+                } label: {
+                    Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 34, weight: .regular))
+                        .contentTransition(.symbolEffect(.replace.downUp))
+                        .frame(width: 40, height: 40)
+                }
+                .buttonStyle(TransportButtonStyle(diameter: 64))
 
-            Button {
-                nextTick += 1
-                musicService.nextTrack()
-                appState.hapticService.triggerSnap()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 28, weight: .regular))
-                    .symbolEffect(.bounce.down, value: nextTick)
+                Button {
+                    nextTick += 1
+                    musicService.nextTrack()
+                    appState.hapticService.triggerSnap()
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 26, weight: .regular))
+                        .symbolEffect(.bounce.down, value: nextTick)
+                }
+                .buttonStyle(TransportButtonStyle(diameter: 54))
             }
-            .buttonStyle(TransportButtonStyle(diameter: 60))
+
+            if let showRoutes = onShowRoutes {
+                HStack {
+                    Spacer()
+                    Button(action: showRoutes) {
+                        Image(systemName: audioService.isAirPodsActive ? audioService.currentDeviceIcon : "laptopcomputer")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(audioService.isAirPodsActive ? AnyShapeStyle(Color.blue) : AnyShapeStyle(.white.opacity(0.7)))
+                    }
+                    .buttonStyle(TransportButtonStyle(diameter: 40))
+                    .help("Salida de audio: \(audioService.currentDeviceName)")
+                }
+            }
         }
         .foregroundStyle(.white)
     }

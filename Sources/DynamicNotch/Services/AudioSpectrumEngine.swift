@@ -1207,22 +1207,27 @@ public final class AudioSpectrumEngine: ObservableObject {
                 //    15 dB debajo de su pico de referencia
                 // Ventana de 15 dB: los golpes llegan arriba y los huecos regresan abajo (con 28 dB las barras
                 // vivían entre 25% y 50% y se veían como un bloque que no seguía la canción)
-                let floorDB = max(closeThreshold, bandReferenceDB[i] - 15.0)
-                let dynamicRange: Float = max(10.0, bandReferenceDB[i] - floorDB)
+                // Graves (bombo y bajo): ventana más estrecha → cada golpe destaca más sobre el nivel sostenido
+                let isBass = i <= 1
+                let floorDB = max(closeThreshold, bandReferenceDB[i] - (isBass ? 12.0 : 15.0))
+                let dynamicRange: Float = max(isBass ? 8.0 : 10.0, bandReferenceDB[i] - floorDB)
                 let sustainedRatio = max(0.0, min(1.15, (db - floorDB) / dynamicRange))
                 
                 // 2) Contraste dinámico de transitorio (onset) en esta banda específica
                 let onsetDeltaDB = max(0.0, db - bandSlowDB[i])
-                let onsetNormalized = min(1.0, onsetDeltaDB / 10.0)
+                let onsetNormalized = min(1.0, onsetDeltaDB / (isBass ? 7.0 : 10.0))
                 
-                // Combinación armónica balanceada: 72% nivel sostenido + 28% transitorio rítmico
-                let combined = sustainedRatio * 0.72 + onsetNormalized * 0.28 * min(1.0, sustainedRatio * 1.3)
+                // Combinación: nivel sostenido + transitorio rítmico. En los graves pesa más el golpe (el bombo
+                // "patea" la barra); en el resto, 72/28 para que la voz y los platillos no salten de más.
+                let onsetWeight: Float = isBass ? 0.42 : 0.28
+                let combined = sustainedRatio * (1 - onsetWeight) + onsetNormalized * onsetWeight * min(1.0, sustainedRatio * 1.3)
                 
                 // Compresión suave tipo tanh para evitar saturación en bandas altas
                 let tanhCompressed = tanh(combined * 1.30) / tanh(1.30)
                 
                 let maxH = SpectrumMetrics.maxActiveHeight
-                let activeMapped = tanhCompressed * maxH * SpectrumMetrics.gainMultiplier
+                // Los golpes de graves llegan un poco más alto que el resto
+                let activeMapped = tanhCompressed * maxH * SpectrumMetrics.gainMultiplier * (isBass ? 1.14 : 1.0)
                 let target = min(maxH, max(0.0, activeMapped))
                 
                 // 3) Histéresis adaptativa: el umbral crece con la fluctuación reciente de la banda

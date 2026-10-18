@@ -227,13 +227,19 @@ public final class AppState: ObservableObject {
     
     @Published public var bolitaDiameter: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "bolitaDiameter")
-        // 23 pt (~12% menos que los 26 anteriores): reconocible y cómoda, sin competir con la cápsula
-        return (saved > 0 && saved != 28.0 && saved != 36.0 && saved != 26.0) ? CGFloat(saved) : 23.0
+        // 0 = automático: mismo alto que la cápsula del notch, como las bolitas de la Isla Dinámica del iPhone
+        // (los tamaños fijos anteriores se migran a automático)
+        return (saved > 0 && ![23.0, 26.0, 28.0, 36.0].contains(saved)) ? CGFloat(saved) : 0
     }() {
         didSet {
             UserDefaults.standard.set(Double(bolitaDiameter), forKey: "bolitaDiameter")
             NotchWindowManager.shared.updateHitAreaForCurrentState()
         }
+    }
+    
+    /// Diámetro real de las bolitas: el elegido, o el alto del notch en automático
+    public var effectiveBolitaDiameter: CGFloat {
+        bolitaDiameter > 0 ? bolitaDiameter : max(24, ScreenService.shared.currentGeometry.height)
     }
     
     @Published public var bolitaGap: CGFloat = {

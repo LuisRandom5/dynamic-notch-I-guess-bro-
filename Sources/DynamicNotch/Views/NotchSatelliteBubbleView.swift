@@ -32,7 +32,7 @@ public struct NotchBolitaView: View {
     }
     
     private var size: CGFloat {
-        appState.bolitaDiameter
+        appState.effectiveBolitaDiameter
     }
     
     private var isFusing: Bool {
@@ -161,27 +161,26 @@ public struct NotchBolitaView: View {
     // MARK: - Presentación Mínima Dynamic Island (Limpia, Nativa, Sin RGB)
     @ViewBuilder
     private var minimalDynamicIslandView: some View {
-        let isSmall = size <= 26
-        let ringInset: CGFloat = isSmall ? 3.6 : 4.4
-        let ringDiameter = max(0, size - ringInset)
+        // Estilo Isla Dinámica del iPhone: círculo negro con margen y, dentro, un anillo grueso con su pista
+        // tenue y el icono al centro
+        let ringDiameter = size * 0.70
+        let ringWidth = max(2.4, size * 0.085)
         
         ZStack {
             // 1. Fondo: negro OLED junto al notch negro, o el mismo Liquid Glass del notch desplegado
             NotchBubbleBackground(size: size)
             
-            // 2. Anillo de progreso fino y semántico (sólo si la actividad lo requiere)
+            // 2. Pista del anillo: siempre visible (da la silueta de la bolita); el arco sólo con progreso
+            Circle()
+                .stroke(showsProgressRing ? ringStrokeColor.opacity(0.28) : Color.white.opacity(0.16), lineWidth: ringWidth)
+                .frame(width: ringDiameter, height: ringDiameter)
+            
             if showsProgressRing {
-                // Pista gris oscura de fondo
-                Circle()
-                    .stroke(Color.white.opacity(0.13), lineWidth: 1.7)
-                    .frame(width: ringDiameter, height: ringDiameter)
-                
-                // Arco de progreso con trazo semántico limpio sin halos decorativos
                 Circle()
                     .trim(from: 0.0, to: CGFloat(max(0.01, min(1.0, progress))))
                     .stroke(
                         ringStrokeColor,
-                        style: StrokeStyle(lineWidth: 1.7, lineCap: .round)
+                        style: StrokeStyle(lineWidth: ringWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                     .frame(width: ringDiameter, height: ringDiameter)
@@ -194,11 +193,11 @@ public struct NotchBolitaView: View {
             // 3. Contenido representativo centrado ópticamente
             if activity.kind == .claude {
                 // Marca de Claude: respira mientras trabaja; el anillo pulsa si espera respuesta del usuario
-                ClaudeMarkView(size: size * 0.48, isAnimating: claudeSession?.phase == .working)
+                ClaudeMarkView(size: size * 0.36, isAnimating: claudeSession?.phase == .working)
             } else if activity.kind == .timer && timerProvider.hasActiveSession {
                 // Sólo el icono: la bolita es una miniatura en vivo, el anillo ya dice cuánto falta
                 Image(systemName: timerProvider.mode == .countdown ? "timer" : "stopwatch")
-                    .font(.system(size: size * 0.40, weight: .semibold))
+                    .font(.system(size: size * 0.30, weight: .semibold))
                     .foregroundColor(DesignTokens.orange)
                     .opacity(isTimerPaused ? 0.6 : 1)
             } else if activity.id == ShelfActivityProvider.activityId {
@@ -206,11 +205,11 @@ public struct NotchBolitaView: View {
                 let count = activity.bolitaVariant?.shortText ?? ""
                 if count == "1" || count.isEmpty {
                     Image(systemName: "tray.full.fill")
-                        .font(.system(size: size * 0.40, weight: .semibold))
+                        .font(.system(size: size * 0.28, weight: .semibold))
                         .foregroundColor(ShelfActivityProvider.blue)
                 } else {
                     Text(count)
-                        .font(.system(size: size * 0.44, weight: .bold, design: .rounded))
+                        .font(.system(size: size * 0.32, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(ShelfActivityProvider.blue)
                         .contentTransition(.numericText())
@@ -219,22 +218,22 @@ public struct NotchBolitaView: View {
                 // Punto de grabación circular rojo minimalista idéntico a iOS
                 Circle()
                     .fill(Color(red: 0.98, green: 0.26, blue: 0.22))
-                    .frame(width: isSmall ? 6.5 : 7.5, height: isSmall ? 6.5 : 7.5)
+                    .frame(width: size * 0.26, height: size * 0.26)
             } else if activity.kind == .agentAI {
                 let isFinished = (activity.state == .finished || agentProvider.satelliteProgress >= 0.999 || !(agentProvider.isActive)) && agentProvider.isSatelliteActive && agentProvider.satelliteProgress > 0.5
                 if isFinished {
                     Image(systemName: "checkmark")
-                        .font(.system(size: isSmall ? 8.0 : 9.0, weight: .bold))
+                        .font(.system(size: size * 0.28, weight: .bold))
                         .foregroundColor(Color(red: 0.35, green: 0.85, blue: 0.55))
                 } else {
                     // Logotipo de IA minimalista, nítido y con amplio espacio negativo negro OLED
                     Image(systemName: "sparkle")
-                        .font(.system(size: isSmall ? 8.5 : 9.5, weight: .medium))
+                        .font(.system(size: size * 0.30, weight: .medium))
                         .foregroundColor(Color.white.opacity(0.95))
                 }
             } else {
                 Image(systemName: iconName)
-                    .font(.system(size: isSmall ? 10.0 : 11.5, weight: .semibold))
+                    .font(.system(size: size * 0.30, weight: .semibold))
                     .foregroundColor(iconColor)
             }
         }
@@ -266,8 +265,9 @@ public struct NotchBolitaView: View {
     }
     
     private var scaleAmount: CGFloat {
-        if isPressed { return 0.94 }
-        if isHovered { return 1.05 }
+        if isPressed { return 0.92 }
+        // Al pasar el cursor la bolita crece: invita a tocarla
+        if isHovered { return 1.12 }
         return 1.0
     }
     
@@ -277,7 +277,7 @@ public struct NotchBolitaView: View {
             .contentShape(Circle())
             .scaleEffect(scaleAmount)
             .brightness(isHovered ? 0.04 : 0.0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.80), value: isHovered)
+            .animation(.spring(response: 0.26, dampingFraction: 0.68), value: isHovered)
             .animation(.spring(response: 0.16, dampingFraction: 0.75), value: isPressed)
             .highPriorityGesture(
                 TapGesture().onEnded {
@@ -364,7 +364,7 @@ public struct NotchOverflowBolitaView: View {
     }
     
     private var size: CGFloat {
-        appState.bolitaDiameter
+        appState.effectiveBolitaDiameter
     }
     
     public var body: some View {

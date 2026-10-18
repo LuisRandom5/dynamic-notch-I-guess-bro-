@@ -135,7 +135,9 @@ public struct LockScreenPlayerView: View {
             
             ZStack {
                 if appState.isLockScreenFullscreen {
-                    AmbientMusicCanvasView(namespace: namespace) {
+                    AmbientMusicCanvasView(namespace: namespace, onShowRoutes: {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) { isShowingRoutePicker = true }
+                    }) {
                         setFullscreen(false)
                     }
                     .transition(stageTransition)

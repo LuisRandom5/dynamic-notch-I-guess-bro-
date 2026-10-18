@@ -398,6 +398,11 @@ public struct NotchContainerView: View {
         return 3
     }
     
+    /// Cambia cada vez que el notch se transforma (abre/cierra, cambia de página, de tarjeta o de actividad)
+    private var morphKey: String {
+        "\(appState.mode)|\(appState.activeTab)|\(appState.isPlayerDetailExpanded)|\(activityCenter.expandedActivity?.id ?? "-")|\(activityCenter.currentActivity?.id ?? "-")|\(agentProvider.isProgressHUDExpanded)"
+    }
+    
     /// El notch muestra su superficie desplegada (vidrio en los modos de cristal, negro en OLED)
     private var isSurfaceExpanded: Bool {
         appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil
@@ -666,6 +671,8 @@ public struct NotchContainerView: View {
                     
                     mainModeContentView
                         .clipShape(containerPillShape)
+                        // Estándar: el contenido se desenfoca un instante mientras la forma se transforma
+                        .morphBlur(on: morphKey)
                     
                     // Zona táctil superior en el notch para cerrar al hacer click en el notch
                     topNotchCloseZone
@@ -822,7 +829,7 @@ public struct NotchContainerView: View {
         
         // MARK: - Bolitas Satélite de Live Activities y Coordinador de Fusión
         if activityCenter.expandedActivity == nil {
-            let bolitaDiam = appState.bolitaDiameter
+            let bolitaDiam = appState.effectiveBolitaDiameter
             let gap = appState.bolitaGap
             let isBothSides = appState.satelliteLocation == .bothSides && activityCenter.secondaryActivities.count >= 2
             
