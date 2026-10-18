@@ -114,8 +114,7 @@ public struct LockScreenPlayerView: View {
             let regionTop = height * 0.28 - appState.lockScreenVerticalOffset
             let regionBottom = height * 0.79 - appState.lockScreenVerticalOffset
             let available = regionBottom - regionTop
-            let showsVolume = appState.lockScreenShowVolumeSlider
-            let heroArtwork = LockScreenHeroMetrics.artworkSize(availableHeight: available, showsVolume: showsVolume)
+            let heroFits = available >= LockScreenHeroMetrics.cardHeight(showsVolume: appState.lockScreenShowVolumeSlider)
             let namespace = isReduceMotion ? nil : stageNamespace
             
             ZStack {
@@ -124,9 +123,8 @@ public struct LockScreenPlayerView: View {
                         setFullscreen(false)
                     }
                     .transition(.opacity)
-                } else if appState.lockScreenStyle != .compactCard, let artworkSize = heroArtwork {
+                } else if appState.lockScreenStyle != .compactCard && heroFits {
                     LockScreenHeroPlayer(
-                        artworkSize: artworkSize,
                         namespace: namespace,
                         onExpand: { setFullscreen(true) },
                         isShowingRoutePicker: $isShowingRoutePicker

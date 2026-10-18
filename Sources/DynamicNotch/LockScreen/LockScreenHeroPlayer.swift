@@ -1,38 +1,28 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Reproductor compacto de la pantalla bloqueada (composición vertical estilo iPhone)
+// MARK: - Reproductor compacto de la pantalla bloqueada (estilo iPhone)
 //
-// Carátula protagonista arriba y una tarjeta de controles debajo que comparte su proporción (la tarjeta es
-// apenas más ancha que la carátula). Orden: título/artista → progreso con tiempos → transporte.
-// Sin efectos decorativos: el cambio de canción es un fundido, reproducir/pausa un cambio de símbolo, y el
-// paso a pantalla completa es una transformación continua (carátula y superficie compartidas).
+// Una sola tarjeta como el reproductor de la pantalla bloqueada del iPhone: carátula pequeña junto al título y
+// artista, progreso con tiempos y transporte. Al tocar la carátula, ESA MISMA carátula crece desde su lugar
+// hasta la presentación a pantalla completa (matchedGeometryEffect) mientras la tarjeta se convierte en el
+// fondo; al volver hace el camino inverso. Cambio de canción con fundido, sin giros ni rebotes.
 
 public enum LockScreenHeroMetrics {
-    public static let artworkMaxSize: CGFloat = 268
-    public static let artworkMinSize: CGFloat = 188
-    /// La tarjeta sobresale 18 pt por lado de la carátula: relación visual clara sin duplicar el ancho
-    public static let cardExtraWidth: CGFloat = 36
-    public static let spacing: CGFloat = 14
-    public static let cardCornerRadius: CGFloat = 28
-    public static let artworkCornerRadiusRatio: CGFloat = 0.075
-    public static let cardHeight: CGFloat = 160
-    public static let cardHeightWithVolume: CGFloat = 188
+    public static let cardWidth: CGFloat = 372
+    public static let cardCornerRadius: CGFloat = 30
+    public static let artworkSize: CGFloat = 56
+    /// Concéntrica con la tarjeta: radio de la tarjeta menos el margen interior (≈ 30 − 18)
+    public static let artworkCornerRadius: CGFloat = 12
+    public static let cardHeight: CGFloat = 186
+    public static let cardHeightWithVolume: CGFloat = 214
 
     public static func cardHeight(showsVolume: Bool) -> CGFloat {
         showsVolume ? cardHeightWithVolume : cardHeight
     }
-
-    /// Tamaño de carátula que cabe en el alto disponible (nil: no cabe a un tamaño legible → usar la
-    /// variante horizontal)
-    public static func artworkSize(availableHeight: CGFloat, showsVolume: Bool) -> CGFloat? {
-        let size = min(artworkMaxSize, availableHeight - spacing - cardHeight(showsVolume: showsVolume))
-        return size >= artworkMinSize ? size : nil
-    }
 }
 
 struct LockScreenHeroPlayer: View {
-    let artworkSize: CGFloat
     let namespace: Namespace.ID?
     let onExpand: () -> Void
     @Binding var isShowingRoutePicker: Bool
@@ -47,20 +37,41 @@ struct LockScreenHeroPlayer: View {
     private var track: MusicTrack { musicService.currentTrack }
     private var isPrivacyMode: Bool { appState.lockScreenHideMediaDetails }
     private var trackKey: String { track.title + "|" + track.artist }
-    private var cardWidth: CGFloat { artworkSize + LockScreenHeroMetrics.cardExtraWidth }
 
     var body: some View {
-        VStack(spacing: LockScreenHeroMetrics.spacing) {
-            artwork
-            card
+        let showsVolume = appState.lockScreenShowVolumeSlider
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                artwork
+                trackInfo
+            }
+            .padding(.bottom, 14)
+            LockScreenProgressScrubber()
+                .padding(.bottom, 4)
+            transport
+            if showsVolume {
+                LockScreenVolumeRow()
+                    .padding(.top, 6)
+            }
         }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
+        .frame(width: LockScreenHeroMetrics.cardWidth, height: LockScreenHeroMetrics.cardHeight(showsVolume: showsVolume), alignment: .top)
+        .background(
+            // La superficie (y no el contenido) es la que crece hasta ser el fondo a pantalla completa
+            LockScreenSurface(cornerRadius: LockScreenHeroMetrics.cardCornerRadius)
+                .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+                .lockMatched("lock.surface", namespace)
+        )
+        .environment(\.colorScheme, .dark)
     }
 
     // MARK: Carátula
 
     private var artwork: some View {
-        let radius = artworkSize * LockScreenHeroMetrics.artworkCornerRadiusRatio
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let size = LockScreenHeroMetrics.artworkSize
+        let shape = RoundedRectangle(cornerRadius: LockScreenHeroMetrics.artworkCornerRadius, style: .continuous)
         return ZStack {
             if !isPrivacyMode, let image = track.artwork {
                 Image(nsImage: image)
@@ -77,52 +88,24 @@ struct LockScreenHeroPlayer: View {
                 )
                 .overlay(
                     Image(systemName: "music.note")
-                        .font(.system(size: artworkSize * 0.24, weight: .light))
+                        .font(.system(size: size * 0.4, weight: .light))
                         .foregroundStyle(.white.opacity(0.45))
                 )
             }
         }
         .animation(.easeInOut(duration: 0.35), value: trackKey)
-        .frame(width: artworkSize, height: artworkSize)
+        .frame(width: size, height: size)
         .clipShape(shape)
         .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        // Misma identidad que la carátula grande: crece desde aquí y regresa aquí
         .lockMatched("lock.artwork", namespace)
-        .shadow(color: .black.opacity(0.30), radius: 22, y: 10)
-        // Como en Apple Music: en pausa la carátula se recoge un poco
-        .scaleEffect(track.isPlaying ? 1.0 : 0.92)
-        .animation(.spring(response: 0.45, dampingFraction: 0.84), value: track.isPlaying)
+        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
         .contentShape(shape)
         .onTapGesture(perform: onExpand)
         .help("Toca para ver en pantalla completa")
     }
 
-    // MARK: Tarjeta
-
-    private var card: some View {
-        let shape = RoundedRectangle(cornerRadius: LockScreenHeroMetrics.cardCornerRadius, style: .continuous)
-        return VStack(alignment: .leading, spacing: 0) {
-            trackInfo
-                .padding(.bottom, 13)
-            LockScreenProgressScrubber()
-                .padding(.bottom, 6)
-            transport
-            if appState.lockScreenShowVolumeSlider {
-                LockScreenVolumeRow()
-                    .padding(.top, 6)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 10)
-        .frame(width: cardWidth, height: LockScreenHeroMetrics.cardHeight(showsVolume: appState.lockScreenShowVolumeSlider), alignment: .top)
-        .background(
-            LockScreenSurface(cornerRadius: LockScreenHeroMetrics.cardCornerRadius)
-                .lockMatched("lock.surface", namespace)
-        )
-        .clipShape(shape)
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
-        .environment(\.colorScheme, .dark)
-    }
+    // MARK: Información
 
     private var trackInfo: some View {
         HStack(alignment: .center, spacing: 10) {

@@ -9,6 +9,9 @@ import Combine
 ///
 /// Con fondo claro el notch usa `Glass.regular` en vez de `clear` (guía de Apple: clear sólo sobre contenido
 /// visual; regular desenfoca y ajusta la luminosidad para que el texto se lea).
+///
+/// Sólo en "Cristal Oscuro" (como "Con tinte" de iOS 26). "Cristal Claro" es como "Transparente" de iOS:
+/// el usuario eligió máxima transparencia y el vidrio nunca se adapta.
 public final class BackdropBrightnessMonitor: ObservableObject {
     public static let shared = BackdropBrightnessMonitor()
 
@@ -53,13 +56,16 @@ public final class BackdropBrightnessMonitor: ObservableObject {
             return bounds.intersects(region)
         }
 
-        let bright: Bool
+        let backdropBright: Bool
         if coveredByAppWindow {
             let isDarkMode = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
-            bright = !isDarkMode
+            backdropBright = !isDarkMode
         } else {
-            bright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
+            backdropBright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
         }
+        // Cristal Claro: siempre clear, sin adaptar
+        let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass
+        let bright = adapts && backdropBright
         if bright != isBackdropBright {
             isBackdropBright = bright
         }
