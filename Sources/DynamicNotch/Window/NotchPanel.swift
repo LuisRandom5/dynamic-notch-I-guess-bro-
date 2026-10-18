@@ -180,7 +180,9 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                     let centerX = hitView.bounds.width / 2.0
                     let isNearNotch = (point.y >= hitView.bounds.height - 100) && (abs(point.x - centerX) <= 260)
                     let detectionRect = hitView.hitAreaRect.insetBy(dx: -40, dy: -40)
-                    if (detectionRect.contains(point) || isNearNotch) &&
+                    // Un clic sobre una bolita satélite es de la bolita (abre su panel), no un tap al notch
+                    let isOnSatellite = hitView.dynamicHitPaths.contains { $0.contains(point) }
+                    if (detectionRect.contains(point) || isNearNotch) && !isOnSatellite &&
                         AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {
                         notchDragStartY = event.locationInWindow.y
                         notchDragStartX = event.locationInWindow.x

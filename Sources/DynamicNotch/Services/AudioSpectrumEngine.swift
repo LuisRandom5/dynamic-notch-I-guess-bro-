@@ -1492,50 +1492,8 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     // MARK: - Generador Dinámico para Llamadas de Voz (FaceTime / Teléfono)
     public func generateRealisticCallMagnitudes() -> [Float] {
-        let now = CFAbsoluteTimeGetCurrent()
-        let elapsed = now - lastSimCalculationTime
-        if elapsed < 0.012 && !cachedSimMagnitudes.allSatisfy({ $0 == 0 }) {
-            return cachedSimMagnitudes
-        }
-        
-        let dt = Float(max(0.008, min(0.05, elapsed > 1.0 ? 0.016 : elapsed)))
-        lastSimCalculationTime = now
-        lastSimTime = now
-        
-        let speechCadence = sin(now * 3.5) * 0.45 + sin(now * 7.2) * 0.25 + 0.30
-        let syllabicBurst = max(0.0, sin(now * 11.0)) * 0.35
-        
-        let band0 = Float(max(0.04, sin(now * 1.8) * 0.08 + 0.06))
-        let band1 = Float(max(0.08, speechCadence * 0.35 + 0.12))
-        let band2 = Float(min(0.95, max(0.15, speechCadence * 0.75 + syllabicBurst + 0.18)))
-        let band3 = Float(min(0.90, max(0.18, speechCadence * 0.82 + syllabicBurst * 0.8 + 0.16)))
-        let band4 = Float(min(0.80, max(0.12, speechCadence * 0.55 + 0.14)))
-        let band5 = Float(max(0.05, sin(now * 8.5) * 0.12 + 0.08))
-        
-        let targets = [band0, band1, band2, band3, band4, band5]
-        let attackCoeff = 1.0 - exp(-dt / 0.025)
-        let releaseCoeff = 1.0 - exp(-dt / 0.140)
-        
-        for i in 0..<6 {
-            let coeff = targets[i] > simEnvelopeLevels[i] ? attackCoeff : releaseCoeff
-            simEnvelopeLevels[i] += (targets[i] - simEnvelopeLevels[i]) * coeff
-        }
-        
-        cachedSimMagnitudes = simEnvelopeLevels
-        
-        if now - lastTelemetryRecordTime >= 0.10 {
-            lastTelemetryRecordTime = now
-            recordTelemetryFrame(
-                raw: targets,
-                weighted: targets.map { $0 * 1.05 },
-                normalized: simEnvelopeLevels,
-                smoothed: simEnvelopeLevels,
-                peakDB: -16.0 + (simEnvelopeLevels.max() ?? 0) * 12.0,
-                timestamp: now
-            )
-        }
-        
-        return simEnvelopeLevels
+        // Voz sintética determinista (misma lógica para todas las vistas de llamada)
+        GrooveSynth.speechLevels(at: CACurrentMediaTime(), seed: 0xC0FFEE)
     }
     
     // MARK: - Generador Psicoacústico Hiperrealista Multiespectral (Punchy & Rítmico)

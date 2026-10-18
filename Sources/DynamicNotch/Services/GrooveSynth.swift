@@ -91,6 +91,33 @@ public enum GrooveSynth {
         }
     }
 
+    /// Niveles de una voz hablando (llamadas): sílabas de ~4-6 Hz agrupadas en palabras y frases con pausas.
+    /// La energía vive en los medios (voz humana) y casi nada en los extremos.
+    public static func speechLevels(at t: Double, seed: UInt64) -> [Float] {
+        // Frases de 1.5–4 s separadas por silencios cortos (el otro lado también habla)
+        let phraseClock = t / 2.6
+        let phraseGate = max(t < 1.5 ? 1 : 0, smoothstep(0.18, 0.38, smoothNoise(phraseClock, seed, 70)))
+        // Sílabas: picos rápidos con forma de envolvente, ritmo irregular
+        let syllableRate = 4.6 + 1.4 * smoothNoise(t * 0.3, seed, 71)
+        let syllablePhase = t * syllableRate
+        let syllableIndex = Int(syllablePhase.rounded(.down))
+        let within = syllablePhase - Double(syllableIndex)
+        let stress = 0.55 + 0.45 * unit(seed, syllableIndex, 72)
+        let syllable = envelope(within / syllableRate, decay: 0.09) * stress
+        let voiced = phraseGate * (0.35 + 0.65 * syllable)
+        
+        func wobble(_ i: UInt64, _ rate: Double) -> Double { smoothNoise(t * rate, seed, 80 + i) }
+        let raw: [Double] = [
+            0.10 * voiced + 0.05 * wobble(0, 0.8),
+            0.42 * voiced + 0.08 * wobble(1, 1.1),
+            0.85 * voiced + 0.10 * wobble(2, 1.6),
+            0.92 * voiced + 0.10 * wobble(3, 1.9),
+            0.60 * voiced + 0.10 * wobble(4, 2.3),
+            0.22 * voiced * syllable + 0.05 * wobble(5, 2.8),
+        ]
+        return raw.map { Float(min(1, max(0, $0))) }
+    }
+    
     // MARK: - Piezas
 
     /// Envolvente del golpe más reciente del patrón (busca hasta un compás atrás).
