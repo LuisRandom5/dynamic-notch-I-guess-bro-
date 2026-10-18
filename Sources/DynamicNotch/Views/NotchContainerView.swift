@@ -834,17 +834,22 @@ public struct NotchContainerView: View {
             let visibleHalfWidth = cardExpandedWidth * scaleX / 2.0
             let visibleHeight = geometry.height * scaleY
             let notchRadius = visibleHeight / 2.0
-            let bubbleOffsetY = max(0, (visibleHeight - bolitaDiam) / 2.0)
+            // Al pasar el cursor sólo crece el notch: la bolita se queda donde estaba (independiente) y se hace
+            // un poco más pequeña, cediéndole protagonismo. Si el notch creciera mucho, nunca la toca (≥ 3 pt).
+            let isNotchHovered = scaleX > 1.001 && interactionState != .pressed
+            let restHalfWidth = max(cardExpandedWidth / 2.0, visibleHalfWidth + 3 - gap)
+            let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
             // El cuello negro sólo une bolitas negras con el notch negro (en cristal, la gota se reabsorbe sola)
             let showsBridge = appState.mode != .expanded && appState.mode != .shelf && !isGlassSurfaceVisible
             ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
                 let isLeft = isBothSides && index == 1
                 if !isLeft {
                     let slotIndex = isBothSides ? (index > 1 ? index - 1 : index) : index
-                    let restingX = visibleHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                    let restingX = restHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
                     let isFusingThis = activityCenter.fusingActivityId == activity.id
                     
                     NotchBolitaView(activity: activity, side: .right)
+                        .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
                         .notchHitRegion("satellite.\(activity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
                         .modifier(LiquidSatelliteModifier(
                             merge: isFusingThis ? activityCenter.fusionProgress : 0,
@@ -865,10 +870,11 @@ public struct NotchContainerView: View {
             
             // Bolita a la Izquierda (si está configurado .bothSides)
             if isBothSides, let leftActivity = activityCenter.secondaryActivities.dropFirst().first {
-                let restingX = -(visibleHalfWidth + gap + (bolitaDiam / 2.0))
+                let restingX = -(restHalfWidth + gap + (bolitaDiam / 2.0))
                 let isFusingThis = activityCenter.fusingActivityId == leftActivity.id
                 
                 NotchBolitaView(activity: leftActivity, side: .left)
+                    .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
                     .notchHitRegion("satellite.\(leftActivity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
                     .modifier(LiquidSatelliteModifier(
                         merge: isFusingThis ? activityCenter.fusionProgress : 0,
@@ -889,7 +895,7 @@ public struct NotchContainerView: View {
                 let slotIndex = isBothSides
                     ? max(0, activityCenter.secondaryActivities.count - 1)
                     : activityCenter.secondaryActivities.count
-                let restingX = visibleHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                let restingX = restHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
                 
                 NotchOverflowBolitaView(count: activityCenter.overflowCount)
                     .offset(
