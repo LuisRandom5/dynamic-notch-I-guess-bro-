@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import ApplicationServices
 
 // MARK: - AirDropActivityProvider (Transferencia en Progreso -> Completado)
 public final class AirDropActivityProvider: ObservableObject {
@@ -18,6 +20,11 @@ public final class AirDropActivityProvider: ObservableObject {
     /// Último momento en que se mostró la tarjeta de "recibido" (para no duplicarla)
     private var lastReceivedCardAt: Date = .distantPast
 
+    /// Ventanas de Finder abiertas antes de recibir y la app que el usuario tenía al frente
+    private var finderWindowsBeforeReceive: [AXUIElement] = []
+    private var appBeforeReceive: NSRunningApplication?
+    private var finderGuardUntil: Date = .distantPast
+
     public init() {}
 
     // MARK: - Transferencias reales (AirDropTransferMonitor)
@@ -27,6 +34,7 @@ public final class AirDropActivityProvider: ObservableObject {
     public func beginTransfer(_ direction: AirDropTransferMonitor.Direction) {
         activeDirection = direction
         isTransferring = true
+        if direction == .receiving { snapshotFinderBeforeReceive() }
         AppState.shared.hapticService.triggerSnap()
         publishTransferActivity(progress: 0, startedAt: Date())
 
@@ -51,6 +59,7 @@ public final class AirDropActivityProvider: ObservableObject {
         case (.receiving, true):
             // Si AirDropObserverService ya mostró la tarjeta del archivo, no volver a poner las alas encima
             // (antes se quedaban trabadas con el anillo lleno: nada las reemplazaba ni las retiraba)
+            closeAutoRevealedFinderWindow()
             guard Date().timeIntervalSince(lastReceivedCardAt) >= 4 else { return }
             // El anillo se completa al instante y se busca el archivo (hasta 2 s) para que la tarjeta abra
             // exactamente su ubicación
@@ -192,7 +201,9 @@ public final class AirDropActivityProvider: ObservableObject {
             trailing: trailing,
             tint: blue,
             duration: 5.0,
-            onTap: {
+            onTap: { [weak self] in
+                // Lo abrió el usuario: no cerrar esa ventana de Finder
+                self?.finderGuardUntil = .distantPast
                 if let url = fileURL {
                     // Abre Finder con el archivo seleccionado
                     NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -203,6 +214,64 @@ public final class AirDropActivityProvider: ObservableObject {
             }
         )
         ActivityCenter.shared.publish(activity)
+    }
+}
+
+// MARK: - Ventana de Finder que macOS abre solo
+
+extension AirDropActivityProvider {
+    private static var finderApp: NSRunningApplication? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first
+    }
+
+    private static func finderWindows() -> [AXUIElement] {
+        guard let finder = finderApp else { return [] }
+        var ref: CFTypeRef?
+        AXUIElementCopyAttributeValue(AXUIElementCreateApplication(finder.processIdentifier), kAXWindowsAttribute as CFString, &ref)
+        return ref as? [AXUIElement] ?? []
+    }
+
+    fileprivate func snapshotFinderBeforeReceive() {
+        finderWindowsBeforeReceive = Self.finderWindows()
+        let front = NSWorkspace.shared.frontmostApplication
+        appBeforeReceive = front?.bundleIdentifier == "com.apple.finder" ? nil : front
+    }
+
+    /// Al recibir de un dispositivo de la misma cuenta, macOS abre Descargas en Finder con el archivo.
+    /// Dynamic Notch ya ofrece eso al tocar la tarjeta, así que se cierra esa ventana NUEVA de Descargas
+    /// (nunca una que el usuario ya tuviera abierta) y se regresa a la app de antes.
+    fileprivate func closeAutoRevealedFinderWindow() {
+        finderGuardUntil = Date().addingTimeInterval(3)
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        let titles: Set<String> = Set([downloads?.lastPathComponent, downloads.map { FileManager.default.displayName(atPath: $0.path) }].compactMap { $0 })
+        pollForRevealedFinderWindow(titles: titles)
+    }
+
+    private func pollForRevealedFinderWindow(titles: Set<String>) {
+        guard Date() < finderGuardUntil else { return }
+        let before = finderWindowsBeforeReceive
+        let revealed = Self.finderWindows().first { window in
+            guard !before.contains(where: { CFEqual($0, window) }) else { return false }
+            var titleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef)
+            return titles.contains((titleRef as? String) ?? "")
+        }
+        guard let window = revealed else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                self?.pollForRevealedFinderWindow(titles: titles)
+            }
+            return
+        }
+        var buttonRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &buttonRef) == .success,
+           let button = buttonRef, CFGetTypeID(button) == AXUIElementGetTypeID() {
+            AXUIElementPerformAction(button as! AXUIElement, kAXPressAction as CFString)
+            DNDLogger.log("AirDropActivityProvider: cerrada la ventana de Descargas que abrió macOS")
+        }
+        finderGuardUntil = .distantPast
+        if let previous = appBeforeReceive, !previous.isTerminated {
+            previous.activate()
+        }
     }
 }
 

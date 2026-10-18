@@ -32,8 +32,8 @@ public final class MessagesObserverService: ObservableObject {
     private var knownRecords: [String: ChatRecord] = [:]
     private var lastBannerSignature: String = ""
     private var lastBannerAlertedAt: Date = .distantPast
-    private var triedAirDropCloseActions: Set<String> = []
-    private var loggedAirDropTree = false
+    private var airDropCloseAttempts = 0
+    private var lastAirDropCloseAttemptAt: Date = .distantPast
     private var lastAirDropBannerSignature: String = ""
     private var isFirstCheck: Bool = true
     
@@ -124,22 +124,21 @@ public final class MessagesObserverService: ObservableObject {
             let isAirDrop = strings.contains { $0.lowercased().contains("airdrop") }
             if isAirDrop {
                 let signature = strings.prefix(3).joined(separator: "|")
+                let now = Date()
                 if signature != lastAirDropBannerSignature {
                     lastAirDropBannerSignature = signature
-                    triedAirDropCloseActions = []
-                    loggedAirDropTree = false
-                } else if !triedAirDropCloseActions.isEmpty && !loggedAirDropTree {
-                    // Sigue en pantalla aunque la acción "funcionó": registrar su estructura una vez para diagnóstico
-                    loggedAirDropTree = true
-                    DNDLogger.log("MessagesObserverService: el aviso de AirDrop sigue visible tras \(triedAirDropCloseActions); estructura ↓\n" + axTreeDescription(win))
+                    airDropCloseAttempts = 0
+                    lastAirDropCloseAttemptAt = .distantPast
                 }
-                // Cada intento usa una acción distinta: en macOS 27 algunas responden .success sin cerrar nada
-                if let used = dismissNativeBanner(win, skipping: triedAirDropCloseActions) {
-                    triedAirDropCloseActions.insert(used)
-                    DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop → \(used): \(strings.prefix(3))")
-                } else if triedAirDropCloseActions.isEmpty && !loggedAirDropTree {
-                    loggedAirDropTree = true
-                    DNDLogger.log("MessagesObserverService: aviso de AirDrop sin acción de cierre; estructura ↓\n" + axTreeDescription(win))
+                // macOS 27 acepta "Cerrar" (.success) sin quitar el aviso si llega mientras éste aún está entrando:
+                // se reintenta con pausas mientras siga en pantalla
+                if airDropCloseAttempts < 8 && now.timeIntervalSince(lastAirDropCloseAttemptAt) >= 0.3 {
+                    airDropCloseAttempts += 1
+                    lastAirDropCloseAttemptAt = now
+                    let used = dismissNativeBanner(win)
+                    if airDropCloseAttempts == 1 || airDropCloseAttempts == 8 {
+                        DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop, intento \(airDropCloseAttempts) → \(used ?? "sin acción"): \(strings.prefix(2))")
+                    }
                 }
                 continue
             }
