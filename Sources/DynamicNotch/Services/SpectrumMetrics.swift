@@ -68,6 +68,16 @@ public struct SpectrumMetrics {
     public static var agcReleaseSec: Double = 2.5
     public static var agcDecayDBPerSec: Float = 4.5
     
+    // AGC multibanda: cada banda sigue su propio pico además del pico global,
+    // para que bandas tenues (agudos en voz/podcast, graves en música clásica) usen todo el rango visual.
+    public static var perBandAGCAmount: Float = 0.55      // 0 = solo AGC global · 1 = solo AGC por banda
+    public static var perBandMaxBoostDB: Float = 18.0     // Una banda nunca se amplifica más de esto respecto al pico global
+    public static var perBandReleaseDBPerSec: Float = 3.0 // Caída del pico por banda (lenta: no "respira" entre golpes)
+    
+    // Histéresis adaptativa: la banda ignora cambios menores que su propio nivel de fluctuación reciente
+    public static var hysteresisJitterFactor: Float = 0.8
+    public static var hysteresisMax: Float = 0.06
+    
     public static var spatialDiffusion: Float = 0.12 // Difusión espacial armónica (12%) para movimiento suave y cohesionado
     public static var fluxThreshold: Float = 0.24    // Umbral de transitorios para Spectral Flux por banda
     public static var fluxPulseBoost: Float = 0.08   // Impulso rítmico balanceado y controlado en transitorios

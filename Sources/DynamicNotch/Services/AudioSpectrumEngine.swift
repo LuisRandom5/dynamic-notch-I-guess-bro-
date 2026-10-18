@@ -118,6 +118,9 @@ public final class AudioSpectrumEngine: ObservableObject {
     private var bandSlowDB: [Float] = [-56.0, -56.0, -56.0, -56.0, -56.0, -56.0]
     private var prevRawEnergies: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     private var agcPeakDB: Float = -18.0
+    private var bandPeakDB: [Float] = [-18.0, -18.0, -18.0, -18.0, -18.0, -18.0]
+    private var heldBandTargets: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    private var bandJitter: [Float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     private var lastProcessTime: Double = CFAbsoluteTimeGetCurrent()
     private var lastAudibleTime: Double = CFAbsoluteTimeGetCurrent()
     private var gateIsOpen: Bool = false
@@ -1014,14 +1017,29 @@ public final class AudioSpectrumEngine: ObservableObject {
             }
         }
         
-        // Rango dinámico de ventana activa (28 dB debajo del pico AGC actual)
-        let floorDB = max(closeThreshold, agcPeakDB - 28.0)
-        let dynamicRange: Float = max(16.0, agcPeakDB - floorDB)
+        // AGC multibanda: pico propio por banda (ataque rápido, caída lenta), limitado a perBandMaxBoostDB
+        // por debajo del pico global para no convertir ruido de fondo en barras llenas.
+        let bandAttackCoeff = 1.0 - exp(-dt / Float(max(0.005, SpectrumMetrics.agcAttackMs / 1000.0)))
+        let bandFloorDB = agcPeakDB - SpectrumMetrics.perBandMaxBoostDB
+        let perBandAmount = max(0.0, min(1.0, SpectrumMetrics.perBandAGCAmount))
+        var bandReferenceDB: [Float] = [0, 0, 0, 0, 0, 0]
+        for i in 0..<6 {
+            let db = weightedDBs[i]
+            if gateIsOpen && db > bandPeakDB[i] {
+                bandPeakDB[i] += (db - bandPeakDB[i]) * bandAttackCoeff
+            } else {
+                bandPeakDB[i] -= dt * SpectrumMetrics.perBandReleaseDBPerSec
+            }
+            bandPeakDB[i] = max(bandFloorDB, min(agcPeakDB, bandPeakDB[i]))
+            bandReferenceDB[i] = agcPeakDB * (1.0 - perBandAmount) + bandPeakDB[i] * perBandAmount
+        }
+        
         var normalizedEnergies: [Float] = [0, 0, 0, 0, 0, 0]
         
         // Constante de tiempo del seguidor lento por banda (~250 ms) para extraer golpes rítmicos (onsets)
         let slowFloorCoeff = 1.0 - exp(-dt / 0.250)
         let slowRiseCoeff = 1.0 - exp(-dt / 0.160)
+        let jitterCoeff = 1.0 - exp(-dt / 0.300)
         
         for i in 0..<6 {
             let db = weightedDBs[i]
@@ -1033,7 +1051,10 @@ public final class AudioSpectrumEngine: ObservableObject {
                     bandSlowDB[i] += (db - bandSlowDB[i]) * slowFloorCoeff
                 }
                 
-                // 1) Nivel espectral continuo dentro de la ventana AGC (0.0 ... 1.0)
+                // 1) Nivel espectral continuo dentro de la ventana AGC de esta banda (0.0 ... 1.0),
+                //    28 dB debajo de su pico de referencia
+                let floorDB = max(closeThreshold, bandReferenceDB[i] - 28.0)
+                let dynamicRange: Float = max(16.0, bandReferenceDB[i] - floorDB)
                 let sustainedRatio = max(0.0, min(1.15, (db - floorDB) / dynamicRange))
                 
                 // 2) Contraste dinámico de transitorio (onset) en esta banda específica
@@ -1048,8 +1069,20 @@ public final class AudioSpectrumEngine: ObservableObject {
                 
                 let maxH = SpectrumMetrics.maxActiveHeight
                 let activeMapped = tanhCompressed * maxH * SpectrumMetrics.gainMultiplier
-                normalizedEnergies[i] = min(maxH, max(0.0, activeMapped))
+                let target = min(maxH, max(0.0, activeMapped))
+                
+                // 3) Histéresis adaptativa: el umbral crece con la fluctuación reciente de la banda
+                //    (platillos rápidos) y se reduce en bandas estables (bajo sostenido, voz)
+                let change = abs(target - heldBandTargets[i])
+                bandJitter[i] += (change - bandJitter[i]) * jitterCoeff
+                let hysteresis = min(SpectrumMetrics.hysteresisMax, bandJitter[i] * SpectrumMetrics.hysteresisJitterFactor)
+                if change > hysteresis {
+                    heldBandTargets[i] = target
+                }
+                normalizedEnergies[i] = heldBandTargets[i]
             } else {
+                heldBandTargets[i] = 0.0
+                bandJitter[i] = 0.0
                 bandSlowDB[i] = max(closeThreshold, bandSlowDB[i] - dt * 20.0)
                 normalizedEnergies[i] = 0.0
             }
@@ -1530,6 +1563,9 @@ public final class AudioSpectrumEngine: ObservableObject {
             self.envelopeLevels = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.filteredBandEnergies = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.bandSlowDB = [-56.0, -56.0, -56.0, -56.0, -56.0, -56.0]
+            self.bandPeakDB = [-18.0, -18.0, -18.0, -18.0, -18.0, -18.0]
+            self.heldBandTargets = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.bandJitter = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.prevRawEnergies = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.simEnvelopeLevels = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.cachedSimMagnitudes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
