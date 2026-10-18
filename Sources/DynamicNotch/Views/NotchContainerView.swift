@@ -802,40 +802,31 @@ public struct NotchContainerView: View {
             let isBothSides = appState.satelliteLocation == .bothSides && activityCenter.secondaryActivities.count >= 2
             
             // Bolitas a la Derecha
+            // Cada bolita se une al notch con un cuello líquido (LiquidSatelliteModifier): brota de él al
+            // aparecer, se funde al tocarla (fusionProgress) y se reabsorbe al desaparecer.
+            let notchRadius = geometry.height / 2.0
+            let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
+            let showsBridge = appState.mode != .expanded && appState.mode != .shelf
             ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
                 let isLeft = isBothSides && index == 1
                 if !isLeft {
                     let slotIndex = isBothSides ? (index > 1 ? index - 1 : index) : index
                     let restingX = (cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
                     let isFusingThis = activityCenter.fusingActivityId == activity.id
-                    let fusionProg = isFusingThis ? activityCenter.fusionProgress : 0.0
-                    
-                    // Fase 1: Se desplaza suavemente hacia la cápsula y se funde como superficie líquida continua
-                    let targetX = (cardExpandedWidth / 2.0) - (bolitaDiam * 0.30)
-                    let currentX = restingX - (fusionProg * (restingX - targetX))
-                    
-                    // Deformación sutil: la forma circular se alarga en la dirección del movimiento (+16% en X, -10% en Y)
-                    let elongation = (isFusingThis && !reduceMotion) ? (0.16 * sin(fusionProg * .pi)) : 0.0
-                    let baseScale = isFusingThis ? max(0.58, 1.0 - (fusionProg * 0.38)) : 1.0
-                    let scaleX = baseScale * (1.0 + elongation)
-                    let scaleY = baseScale * (1.0 - (elongation * 0.65))
-                    
-                    // Fusión líquida: borde se integra progresivamente sin desvanecimiento repentino
-                    let opacityProg = isFusingThis ? (fusionProg < 0.60 ? 1.0 : max(0.0, 1.0 - pow((fusionProg - 0.60) / 0.40, 1.8))) : 1.0
                     
                     NotchBolitaView(activity: activity, side: .right)
-                        .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
-                        .opacity(opacityProg)
-                        .offset(
-                            x: currentX,
-                            y: max(0, (geometry.height - bolitaDiam) / 2.0)
-                        )
-                        .notchHitRegion("satellite.\(activity.id)", offset: CGSize(width: currentX, height: max(0, (geometry.height - bolitaDiam) / 2.0)))
-                        .zIndex(100 - Double(slotIndex))
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: -18)),
-                            removal: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: -18))
+                        .notchHitRegion("satellite.\(activity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
+                        .modifier(LiquidSatelliteModifier(
+                            merge: isFusingThis ? activityCenter.fusionProgress : 0,
+                            restingX: restingX,
+                            notchEndX: (cardExpandedWidth / 2.0) - notchRadius,
+                            notchRadius: notchRadius,
+                            bubbleDiameter: bolitaDiam,
+                            offsetY: bubbleOffsetY,
+                            showsBridge: showsBridge && slotIndex == 0
                         ))
+                        .zIndex(100 - Double(slotIndex))
+                        .transition(reduceMotion ? .opacity : .liquidSatellite)
                 }
             }
             
@@ -843,29 +834,20 @@ public struct NotchContainerView: View {
             if isBothSides, let leftActivity = activityCenter.secondaryActivities.dropFirst().first {
                 let restingX = -((cardExpandedWidth / 2.0) + gap + (bolitaDiam / 2.0))
                 let isFusingThis = activityCenter.fusingActivityId == leftActivity.id
-                let fusionProg = isFusingThis ? activityCenter.fusionProgress : 0.0
-                let targetX = -((cardExpandedWidth / 2.0) - (bolitaDiam * 0.30))
-                let currentX = restingX + (fusionProg * (targetX - restingX))
-                
-                let elongation = (isFusingThis && !reduceMotion) ? (0.16 * sin(fusionProg * .pi)) : 0.0
-                let baseScale = isFusingThis ? max(0.58, 1.0 - (fusionProg * 0.38)) : 1.0
-                let scaleX = baseScale * (1.0 + elongation)
-                let scaleY = baseScale * (1.0 - (elongation * 0.65))
-                let opacityProg = isFusingThis ? (fusionProg < 0.60 ? 1.0 : max(0.0, 1.0 - pow((fusionProg - 0.60) / 0.40, 1.8))) : 1.0
                 
                 NotchBolitaView(activity: leftActivity, side: .left)
-                    .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
-                    .opacity(opacityProg)
-                    .offset(
-                        x: currentX,
-                        y: max(0, (geometry.height - bolitaDiam) / 2.0)
-                    )
-                    .notchHitRegion("satellite.\(leftActivity.id)", offset: CGSize(width: currentX, height: max(0, (geometry.height - bolitaDiam) / 2.0)))
-                    .zIndex(100)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: 18)),
-                        removal: .scale(scale: 0.35, anchor: .center).combined(with: .opacity).combined(with: .offset(x: 18))
+                    .notchHitRegion("satellite.\(leftActivity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
+                    .modifier(LiquidSatelliteModifier(
+                        merge: isFusingThis ? activityCenter.fusionProgress : 0,
+                        restingX: restingX,
+                        notchEndX: -((cardExpandedWidth / 2.0) - notchRadius),
+                        notchRadius: notchRadius,
+                        bubbleDiameter: bolitaDiam,
+                        offsetY: bubbleOffsetY,
+                        showsBridge: showsBridge
                     ))
+                    .zIndex(100)
+                    .transition(reduceMotion ? .opacity : .liquidSatellite)
             }
             
             // Indicador de Desbordamiento (+N)
@@ -905,8 +887,9 @@ public struct NotchContainerView: View {
             }
     )
     .animation(AnimationSpeedManager.shared.spring(response: 0.40, dampingFraction: 0.82), value: activityCenter.expandedActivity?.id)
-    .animation(AnimationSpeedManager.shared.spring(response: 0.36, dampingFraction: 0.78), value: activityCenter.fusionProgress)
-    .animation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82), value: activityCenter.secondaryActivities.count)
+    .animation(AnimationSpeedManager.shared.spring(response: 0.36, dampingFraction: 0.92), value: activityCenter.fusionProgress)
+    // Aparecer/desaparecer de bolitas: lo bastante pausado para leer el cuello líquido al separarse
+    .animation(AnimationSpeedManager.shared.spring(response: 0.55, dampingFraction: 0.88), value: activityCenter.secondaryActivities.count)
     .animation(.spring(response: 0.40, dampingFraction: 0.82), value: agentProvider.isProgressHUDExpanded)
     .animation(.spring(response: 0.35, dampingFraction: 0.80), value: agentProvider.isSatelliteActive)
 

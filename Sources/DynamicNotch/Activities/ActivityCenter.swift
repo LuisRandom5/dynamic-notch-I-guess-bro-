@@ -310,8 +310,9 @@ public final class ActivityCenter: ObservableObject {
             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         }
         
-        let spring = AnimationSpeedManager.shared.spring(response: 0.34, dampingFraction: 0.80)
-        let travelDuration = AnimationSpeedManager.shared.adjustedDuration(0.22)
+        // Sin rebote: la bolita viaja con desaceleración natural y se funde (ver LiquidSatelliteModifier)
+        let spring = AnimationSpeedManager.shared.spring(response: 0.34, dampingFraction: 0.92)
+        let travelDuration = AnimationSpeedManager.shared.adjustedDuration(0.24)
         
         // 2. Fase 1: Desplazamiento orgánico y elongación sutil hacia la silueta del notch
         withAnimation(spring) {
@@ -358,7 +359,7 @@ public final class ActivityCenter: ObservableObject {
     /// Etapa 2: desde las alas, la cápsula crece hacia abajo hasta la tarjeta de estado.
     private func expandClaudeInTwoStages(_ activity: LiveActivity) {
         let wings = wingsSize
-        withAnimation(AnimationSpeedManager.shared.spring(response: 0.34, dampingFraction: 0.78)) {
+        withAnimation(AnimationSpeedManager.shared.spring(response: 0.32, dampingFraction: 0.90)) {
             self.expandedActivity = activity
             self.customCardWidth = wings.width
             self.customCardHeight = wings.height
@@ -368,10 +369,11 @@ public final class ActivityCenter: ObservableObject {
         }
         NotchWindowManager.shared.updateHitAreaForCurrentState()
         
-        let stageDelay = AnimationSpeedManager.shared.adjustedDuration(0.42)
+        // La cápsula sigue creciendo hacia abajo sin pausa perceptible entre las alas y la tarjeta
+        let stageDelay = AnimationSpeedManager.shared.adjustedDuration(0.20)
         let timer = Timer(timeInterval: stageDelay, repeats: false) { [weak self] _ in
             guard let self = self, self.expandedActivity?.id == activity.id, !self.isCollapsingClaude else { return }
-            withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
+            withAnimation(AnimationSpeedManager.shared.spring(response: 0.42, dampingFraction: 0.88)) {
                 self.customCardWidth = activity.customExpandedWidth ?? ClaudeActivityProvider.cardWidth
                 self.customCardHeight = activity.customExpandedHeight ?? ClaudeActivityProvider.cardHeight
                 self.customTopRadius = 0
@@ -503,7 +505,7 @@ public final class ActivityCenter: ObservableObject {
         // Fase 1 reverso: Desprendimiento y regreso elástico de la bolita a su slot satélite
         DispatchQueue.main.asyncAfter(deadline: .now() + (contractDuration * 0.35)) { [weak self] in
             guard let self = self else { return }
-            withAnimation(AnimationSpeedManager.shared.spring(response: 0.36, dampingFraction: 0.80)) {
+            withAnimation(AnimationSpeedManager.shared.spring(response: 0.40, dampingFraction: 0.90)) {
                 self.fusionProgress = 0.0
             }
             
