@@ -66,10 +66,13 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
             return (260, 200)
         case .collapsed:
             return (260, 120)
+        // Reproductor y bandeja: sólo la tarjeta visible + 16 pt. Con la zona holgada (70 pt de más hacia abajo),
+        // desplazarse en la ventana de debajo con el cursor cerca del notch contaba como "deslizar arriba" y
+        // cerraba la bandeja sola.
         case .expanded(let detail):
-            return (max(260, PlayerMetrics.cardWidth / 2 + 40), detail ? PlayerMetrics.detailCardHeight + 70 : 270)
+            return (PlayerMetrics.cardWidth / 2 + 16, (detail ? PlayerMetrics.detailCardHeight : PlayerMetrics.cardHeight) + 16)
         case .shelf:
-            return (max(260, PlayerMetrics.cardWidth / 2 + 40), 270)
+            return (PlayerMetrics.cardWidth / 2 + 16, 204 + 16)
         }
     }
 
