@@ -27,61 +27,6 @@ def send_ipc(endpoint, data, timeout=2.0):
     except Exception as e:
         return None
 
-def notify_tool_progress(tool_name, args):
-    try:
-        file_target = args.get("TargetFile") or args.get("AbsolutePath") or ""
-        cmd = args.get("CommandLine", "")
-        
-        step_title = ""
-        status_text = "Trabajando..."
-        added = 0
-        deleted = 0
-        
-        fname = file_target.split("/")[-1] if file_target else ""
-        
-        if "replace" in tool_name:
-            step_title = f"Edit {fname}" if fname else "Edit Code"
-            status_text = "Guardando..."
-            rep = args.get("ReplacementContent", "")
-            target = args.get("TargetContent", "")
-            if rep:
-                added += len(rep.splitlines())
-            if target:
-                deleted += len(target.splitlines())
-            chunks = args.get("ReplacementChunks", [])
-            if chunks:
-                for c in chunks:
-                    added += len(c.get("ReplacementContent", "").splitlines())
-                    deleted += len(c.get("TargetContent", "").splitlines())
-        elif "write" in tool_name:
-            step_title = f"Write {fname}" if fname else "Create File"
-            status_text = "Escribiendo..."
-            code = args.get("CodeContent", "")
-            added += len(code.splitlines())
-        elif "view" in tool_name or "read" in tool_name:
-            step_title = f"Read {fname}" if fname else "Read File"
-            status_text = "Leyendo..."
-        elif "grep" in tool_name or "list" in tool_name or "search" in tool_name:
-            query = args.get("Query", "") or args.get("query", "")
-            step_title = f"Search '{query[:16]}'" if query else "Buscar en código"
-            status_text = "Buscando..."
-        elif "run_command" in tool_name:
-            first = cmd.split()[0] if cmd.split() else "command"
-            clean_cmd = cmd.strip()
-            if "./scripts/build_app.sh" in clean_cmd:
-                step_title = "Build Dynamic Notch"
-                status_text = "Compilando..."
-            elif "screencapture" in clean_cmd:
-                step_title = "Captura de pantalla"
-                status_text = "Inspeccionando..."
-            elif "git" in clean_cmd:
-                step_title = f"Git {first}"
-                status_text = "Verificando..."
-            else:
-                step_title = f"Run {first}"
-                status_text = "Ejecutando..."
-        else:
-            step_title = tool_name.replace("_", " ").title()
 TASK_SESSION_FILE = "/tmp/antigravity_task_session.json"
 
 def get_task_session():
@@ -96,13 +41,84 @@ def get_task_session():
                     return data
     except Exception:
         pass
+    return new_task_session(now)
+
+def new_task_session(now):
     return {
         "start_time": now,
         "last_updated": now,
         "tools_count": 0,
         "progress": 0.12,
-        "completed": False
+        "completed": False,
+        "retry": 0,              # Ciclos de corrección tras un build/test fallido
+        "in_retry": False,       # True mientras se corrige el último fallo
+        "verify_started": None,  # Inicio del último build/test (para medir la duración de un ciclo)
+        "last_cycle_sec": None,  # Duración del último ciclo build/test → fallo
+        "eta": None
     }
+
+# Progreso máximo antes de que el agente termine (el 100% solo llega con Stop)
+PROGRESS_CEILING = 0.96
+
+def advance_progress(session, phase_min_prog):
+    """Avance monótono y asintótico: cada herramienta recorre una fracción de lo que falta,
+    así la barra nunca se congela en el tope ni retrocede, aunque haya muchos reintentos."""
+    old_prog = session.get("progress", 0.12)
+    in_retry = session.get("in_retry", False)
+    # En un reintento el avance es más fino: la tarea "se alarga" sin dar marcha atrás
+    fraction = 0.06 if in_retry else 0.10
+    step = max(0.004, (PROGRESS_CEILING - old_prog) * fraction)
+    # Durante un reintento el mínimo de fase no hace saltar la barra (p. ej. el build vuelve a pedir 0.85)
+    floor = old_prog if in_retry else max(old_prog, phase_min_prog)
+    new_prog = min(PROGRESS_CEILING, max(floor, old_prog + step))
+    session["progress"] = new_prog
+    return new_prog
+
+def estimate_remaining(session, progress, now):
+    """ETA por ritmo observado (tiempo transcurrido / progreso), suavizado.
+    En un reintento nunca es menor que la duración del último ciclo build → fallo."""
+    elapsed = max(1.0, now - session.get("start_time", now))
+    rate_eta = elapsed * (1.0 - progress) / max(0.05, progress)
+    prev = session.get("eta")
+    eta = rate_eta if prev is None else (prev * 0.6 + rate_eta * 0.4)
+    if session.get("in_retry") and session.get("last_cycle_sec"):
+        eta = max(eta, session["last_cycle_sec"])
+    eta = int(max(3, min(180, round(eta))))
+    session["eta"] = eta
+    return eta
+
+VERIFY_MARKERS = ("build_app.sh", "swift build", "swift test", "xcodebuild", "pytest", "npm test", "npm run build")
+
+def is_verify_command(cmd):
+    return any(m in cmd for m in VERIFY_MARKERS)
+
+FAILURE_MARKERS = ("error:", "BUILD FAILED", "** BUILD FAILED **", "FAILED", "Traceback (most recent call last)",
+                   "fatal error", "Compiling failed", "tests failed", "npm ERR!")
+
+def tool_failed(payload, tool_call):
+    """Detecta (de forma defensiva) si la herramienta terminó con error."""
+    candidates = [payload.get(k) for k in ("toolResult", "tool_response", "result", "output", "response")]
+    candidates.append(tool_call.get("result"))
+    for c in candidates:
+        if c is None:
+            continue
+        if isinstance(c, dict):
+            for k in ("exitCode", "exit_code", "returnCode", "return_code", "code"):
+                code = c.get(k)
+                if isinstance(code, int) and code != 0:
+                    return True
+            if c.get("success") is False or c.get("is_error") is True or c.get("isError") is True:
+                return True
+            text = " ".join(str(c.get(k, "")) for k in ("stdout", "stderr", "output", "error", "content"))
+        else:
+            text = str(c)
+        if any(m in text for m in FAILURE_MARKERS):
+            return True
+    for k in ("exitCode", "exit_code"):
+        code = payload.get(k)
+        if isinstance(code, int) and code != 0:
+            return True
+    return payload.get("success") is False or payload.get("isError") is True
 
 def save_task_session(session):
     import time
@@ -180,31 +196,26 @@ def notify_tool_progress(tool_name, args):
             status_text = "Trabajando..."
             phase_min_prog = 0.30
             
+        import time
+        now = time.time()
         session = get_task_session()
         session["tools_count"] = session.get("tools_count", 0) + 1
-        cnt = session["tools_count"]
         
-        # Progreso general acumulativo: suma avance con cada herramienta ejecutada
-        # y asegura que jamás disminuya ni se reinicie a cero.
-        old_prog = session.get("progress", 0.12)
-        incremental_prog = old_prog + 0.04
-        computed_prog = max(old_prog, max(phase_min_prog, incremental_prog))
-        final_prog = min(0.95, computed_prog)
-        session["progress"] = final_prog
+        if "run_command" in tool_name and is_verify_command(cmd):
+            session["verify_started"] = now
+        
+        # Progreso acumulativo y monótono: jamás disminuye ni se reinicia a cero
+        final_prog = advance_progress(session, phase_min_prog)
+        
+        retry = session.get("retry", 0)
+        if session.get("in_retry"):
+            # Sub-fase de reintento: el usuario ve que el agente está corrigiendo, no que se colgó
+            status_text = f"Reintento {retry + 1}: corrigiendo errores..."
+            if "run_command" in tool_name and is_verify_command(cmd):
+                status_text = f"Reintento {retry + 1}: verificando..."
+        
+        remaining_sec = estimate_remaining(session, final_prog, now)
         save_task_session(session)
-        
-        # Estimación de tiempo restante aproximado para completar la tarea del usuario
-        if final_prog < 0.30:
-            remaining_sec = 45
-        elif final_prog < 0.50:
-            remaining_sec = 30
-        elif final_prog < 0.70:
-            remaining_sec = 20
-        elif final_prog < 0.85:
-            remaining_sec = 12
-        else:
-            remaining_sec = 5
-            
         remaining_str = f"~ {remaining_sec}s"
         
         display_file = fname if fname else (cmd[:28] if cmd else "Sources/DynamicNotch")
@@ -230,13 +241,7 @@ def handle_session_start():
     try:
         import time
         now = time.time()
-        session = {
-            "start_time": now,
-            "last_updated": now,
-            "tools_count": 0,
-            "progress": 0.12,
-            "completed": False
-        }
+        session = new_task_session(now)
         save_task_session(session)
         send_ipc("/progress", {
             "event": "start",
@@ -326,17 +331,45 @@ def handle_post_tool():
     try:
         raw_input = sys.stdin.read()
         if raw_input.strip():
+            import time
+            now = time.time()
             payload = json.loads(raw_input)
             tool_call = payload.get("toolCall", {})
             tool_name = tool_call.get("name", "")
+            cmd = tool_call.get("args", {}).get("CommandLine", "")
             session = get_task_session()
             prog = session.get("progress", 0.50)
+            status = "Avanzando..."
+            step = f"Completado {tool_name}"
+            
+            if "run_command" in tool_name and is_verify_command(cmd):
+                started = session.get("verify_started")
+                if tool_failed(payload, tool_call):
+                    # Fallo de build/test: abrir (o continuar) un ciclo de reintento sin retroceder la barra
+                    if started:
+                        session["last_cycle_sec"] = max(5.0, now - started)
+                    session["in_retry"] = True
+                    session["retry"] = session.get("retry", 0) + 1
+                    status = f"Reintento {session['retry'] + 1}: corrigiendo errores..."
+                    step = "Build con errores"
+                else:
+                    session["in_retry"] = False
+                    status = "Verificación correcta"
+                session["verify_started"] = None
+            elif session.get("in_retry"):
+                status = f"Reintento {session.get('retry', 0) + 1}: corrigiendo errores..."
+            
+            eta = estimate_remaining(session, prog, now)
+            save_task_session(session)
             send_ipc("/progress", {
                 "event": "step_done",
                 "agent": "Antigravity",
-                "step": f"Completado {tool_name}",
-                "status": "Avanzando...",
-                "progress": prog
+                "step": step,
+                "status": status,
+                "progress": prog,
+                "retry": session.get("retry", 0),
+                "remaining": eta,
+                "remaining_text": f"~ {eta}s"
             }, timeout=0.8)
     except Exception:
         pass
