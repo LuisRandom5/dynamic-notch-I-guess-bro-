@@ -163,8 +163,9 @@ public struct NotchBolitaView: View {
     private var minimalDynamicIslandView: some View {
         // Estilo Isla Dinámica del iPhone: círculo negro con margen y, dentro, un anillo grueso con su pista
         // tenue y el icono al centro
-        let ringDiameter = size * 0.70
-        let ringWidth = max(2.4, size * 0.085)
+        // Más margen negro alrededor: el anillo y el icono ocupan menos del círculo
+        let ringDiameter = size * 0.58
+        let ringWidth = max(2.2, size * 0.075)
         
         ZStack {
             // 1. Fondo: negro OLED junto al notch negro, o el mismo Liquid Glass del notch desplegado
@@ -193,11 +194,11 @@ public struct NotchBolitaView: View {
             // 3. Contenido representativo centrado ópticamente
             if activity.kind == .claude {
                 // Marca de Claude: respira mientras trabaja; el anillo pulsa si espera respuesta del usuario
-                ClaudeMarkView(size: size * 0.36, isAnimating: claudeSession?.phase == .working)
+                ClaudeMarkView(size: size * 0.29, isAnimating: claudeSession?.phase == .working)
             } else if activity.kind == .timer && timerProvider.hasActiveSession {
                 // Sólo el icono: la bolita es una miniatura en vivo, el anillo ya dice cuánto falta
                 Image(systemName: timerProvider.mode == .countdown ? "timer" : "stopwatch")
-                    .font(.system(size: size * 0.30, weight: .semibold))
+                    .font(.system(size: size * 0.24, weight: .semibold))
                     .foregroundColor(DesignTokens.orange)
                     .opacity(isTimerPaused ? 0.6 : 1)
             } else if activity.id == ShelfActivityProvider.activityId {
@@ -205,11 +206,11 @@ public struct NotchBolitaView: View {
                 let count = activity.bolitaVariant?.shortText ?? ""
                 if count == "1" || count.isEmpty {
                     Image(systemName: "tray.full.fill")
-                        .font(.system(size: size * 0.28, weight: .semibold))
+                        .font(.system(size: size * 0.23, weight: .semibold))
                         .foregroundColor(ShelfActivityProvider.blue)
                 } else {
                     Text(count)
-                        .font(.system(size: size * 0.32, weight: .bold, design: .rounded))
+                        .font(.system(size: size * 0.26, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(ShelfActivityProvider.blue)
                         .contentTransition(.numericText())
@@ -218,22 +219,22 @@ public struct NotchBolitaView: View {
                 // Punto de grabación circular rojo minimalista idéntico a iOS
                 Circle()
                     .fill(Color(red: 0.98, green: 0.26, blue: 0.22))
-                    .frame(width: size * 0.26, height: size * 0.26)
+                    .frame(width: size * 0.21, height: size * 0.21)
             } else if activity.kind == .agentAI {
                 let isFinished = (activity.state == .finished || agentProvider.satelliteProgress >= 0.999 || !(agentProvider.isActive)) && agentProvider.isSatelliteActive && agentProvider.satelliteProgress > 0.5
                 if isFinished {
                     Image(systemName: "checkmark")
-                        .font(.system(size: size * 0.28, weight: .bold))
+                        .font(.system(size: size * 0.23, weight: .bold))
                         .foregroundColor(Color(red: 0.35, green: 0.85, blue: 0.55))
                 } else {
                     // Logotipo de IA minimalista, nítido y con amplio espacio negativo negro OLED
                     Image(systemName: "sparkle")
-                        .font(.system(size: size * 0.30, weight: .medium))
+                        .font(.system(size: size * 0.24, weight: .medium))
                         .foregroundColor(Color.white.opacity(0.95))
                 }
             } else {
                 Image(systemName: iconName)
-                    .font(.system(size: size * 0.30, weight: .semibold))
+                    .font(.system(size: size * 0.24, weight: .semibold))
                     .foregroundColor(iconColor)
             }
         }

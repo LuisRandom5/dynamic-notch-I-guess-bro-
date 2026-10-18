@@ -1473,13 +1473,14 @@ public struct NotchContainerView: View {
             withAnimation(shapeSpring) {
                 self.interactionState = .collapsed
                 self.isTransitioningFromActivity = false
-                self.appState.isHoldingBareNotch = false
-                self.appState.isPlayerDetailExpanded = false
-                self.appState.verticalOverscrollOffset = 0
-                self.appState.contentVerticalOverscrollOffset = 0
-                self.appState.overscrollOffset = 0
-                self.appState.contentOverscrollOffset = 0
-                if self.appState.shelfItems.isEmpty || self.musicService.hasActiveMusic {
+                // Sólo lo que cambia (ver AppState.collapse)
+                if self.appState.isHoldingBareNotch { self.appState.isHoldingBareNotch = false }
+                if self.appState.isPlayerDetailExpanded { self.appState.isPlayerDetailExpanded = false }
+                if self.appState.verticalOverscrollOffset != 0 { self.appState.verticalOverscrollOffset = 0 }
+                if self.appState.contentVerticalOverscrollOffset != 0 { self.appState.contentVerticalOverscrollOffset = 0 }
+                if self.appState.overscrollOffset != 0 { self.appState.overscrollOffset = 0 }
+                if self.appState.contentOverscrollOffset != 0 { self.appState.contentOverscrollOffset = 0 }
+                if (self.appState.shelfItems.isEmpty || self.musicService.hasActiveMusic) && self.appState.activeTab != .music {
                     self.appState.activeTab = .music
                 }
                 if self.appState.shouldShowCompact {

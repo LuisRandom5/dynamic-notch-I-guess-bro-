@@ -602,6 +602,8 @@ public final class AppState: ObservableObject {
                 heartbeatShadowOpacity = hoverShadowIntensity
             }
         } else {
+            // Ya en reposo: no publicar nada (evita reevaluar todas las vistas sin motivo)
+            guard heartbeatScaleX != 1.0 || heartbeatScaleY != 1.0 || heartbeatShadowOpacity != 0.0 else { return }
             withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
                 heartbeatScaleX = 1.0
                 heartbeatScaleY = 1.0
@@ -666,13 +668,15 @@ public final class AppState: ObservableObject {
     }
     
     public func collapse() {
-        overscrollOffset = 0
-        contentOverscrollOffset = 0
-        verticalOverscrollOffset = 0
-        contentVerticalOverscrollOffset = 0
-        activeMiniAppOverlay = nil
+        // Asignar sólo si cambia: cada asignación a un @Published (aunque sea el mismo valor) hace que TODAS
+        // las vistas que observan AppState se reevalúen, y eso en el primer cuadro del cierre lo congelaba
+        if overscrollOffset != 0 { overscrollOffset = 0 }
+        if contentOverscrollOffset != 0 { contentOverscrollOffset = 0 }
+        if verticalOverscrollOffset != 0 { verticalOverscrollOffset = 0 }
+        if contentVerticalOverscrollOffset != 0 { contentVerticalOverscrollOffset = 0 }
+        if activeMiniAppOverlay != nil { activeMiniAppOverlay = nil }
         setHoverState(false)
-        if shelfItems.isEmpty || musicService.hasActiveMusic {
+        if (shelfItems.isEmpty || musicService.hasActiveMusic) && activeTab != .music {
             activeTab = .music
         }
         
