@@ -71,6 +71,7 @@ public struct NotchBubbleBackground: View {
     public let size: CGFloat
 
     @Environment(\.notchGlassSurfaceVisible) private var glassVisible
+    @Environment(\.liquidBubbleGlassSuppressed) private var drawnByDroplet
     @ObservedObject private var appState = AppState.shared
     @ObservedObject private var backdrop = BackdropBrightnessMonitor.shared
 
@@ -81,7 +82,10 @@ public struct NotchBubbleBackground: View {
     public var body: some View {
         let mode = appState.effectiveAppearanceMode
         ZStack {
-            if #available(macOS 26.0, *), glassVisible, mode != .pureOLED {
+            if glassVisible && mode != .pureOLED && drawnByDroplet {
+                // En movimiento: la gota de cristal (bolita ∪ cuello) la dibuja LiquidSatelliteModifier
+                Color.clear
+            } else if #available(macOS 26.0, *), glassVisible, mode != .pureOLED {
                 // Sin el resaltado interactivo y con un velo mínimo: la gota no debe brillar más que la cápsula
                 // (sobre fondos de color el borde refractado se veía como un halo)
                 Color.black.opacity(max(0.22, NotchGlassMetrics.veilOpacity(for: mode)))
@@ -104,5 +108,7 @@ public struct NotchBubbleBackground: View {
         }
         .frame(width: size, height: size)
         .animation(.easeInOut(duration: 0.24), value: glassVisible)
+        // El relevo bolita ⇄ gota es instantáneo (sin fundido): si se fundieran habría dos vidrios encimados
+        .animation(nil, value: drawnByDroplet)
     }
 }

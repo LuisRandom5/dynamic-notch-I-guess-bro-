@@ -839,8 +839,8 @@ public struct NotchContainerView: View {
             let isNotchHovered = scaleX > 1.001 && interactionState != .pressed
             let restHalfWidth = max(cardExpandedWidth / 2.0, visibleHalfWidth + 3 - gap)
             let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
-            // El cuello negro sólo une bolitas negras con el notch negro (en cristal, la gota se reabsorbe sola)
-            let showsBridge = appState.mode != .expanded && appState.mode != .shelf && !isGlassSurfaceVisible
+            // En cristal el cuello también existe: se dibuja como parte de la gota de vidrio (LiquidSatelliteModifier)
+            let showsBridge = appState.mode != .expanded && appState.mode != .shelf
             ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
                 let isLeft = isBothSides && index == 1
                 if !isLeft {

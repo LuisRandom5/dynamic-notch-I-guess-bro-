@@ -181,7 +181,12 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                     // Un clic sobre una bolita satélite es de la bolita (abre su panel), no un tap al notch
                     // Con margen de 8 pt: el notch crece al pasar el cursor y empuja un poco a la bolita
                     let isOnSatellite = hitView.dynamicHitPaths.contains { $0.boundingBox.insetBy(dx: -8, dy: -8).contains(point) }
-                    if (detectionRect.contains(point) || isNearNotch) && !isOnSatellite &&
+                    // Con una tarjeta de actividad abierta (p. ej. la de Claude) el clic es para cerrarla: no debe
+                    // contar también como tap al notch (antes abría el reproductor debajo de la tarjeta)
+                    let hasOpenCard = ActivityCenter.shared.expandedActivity != nil
+                        || ActivityCenter.shared.isFusing
+                        || AgentActivityProvider.shared.isProgressHUDExpanded
+                    if (detectionRect.contains(point) || isNearNotch) && !isOnSatellite && !hasOpenCard &&
                         AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {
                         notchDragStartY = event.locationInWindow.y
                         notchDragStartX = event.locationInWindow.x
@@ -216,7 +221,8 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
                         // Se decide un instante después: si una bolita atendió este mismo clic (abrió su tarjeta), no
                         // es un tap al notch (antes se abría también el reproductor debajo de la tarjeta)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            guard Date().timeIntervalSince(ActivityCenter.shared.lastSatelliteTapAt) > 0.4 else {
+                            guard Date().timeIntervalSince(ActivityCenter.shared.lastSatelliteTapAt) > 0.4,
+                                  ActivityCenter.shared.expandedActivity == nil, !ActivityCenter.shared.isFusing else {
                                 DNDLogger.log("NotchPanel.sendEvent -> clic atendido por una bolita; no se expande el notch")
                                 return
                             }
@@ -423,7 +429,10 @@ public final class NotchHitTestView: NSView {
         // Clic en el cuerpo principal del Notch
         if hitAreaRect.contains(point) {
             // Si el Notch está colapsado (idle o compact) y no hay actividad modal activa, expandir al dar tap
-            if AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil {
+            let hasOpenCard = ActivityCenter.shared.expandedActivity != nil
+                || ActivityCenter.shared.isFusing
+                || AgentActivityProvider.shared.isProgressHUDExpanded
+            if AppState.shared.mode != .expanded && AppState.shared.mode != .shelf && ActivityCenter.shared.currentActivity == nil && !hasOpenCard {
                 DNDLogger.log("NotchHitTestView.mouseDown: Tap directo en el notch detectado -> expandiendo")
                 DispatchQueue.main.async {
                     AppState.shared.expand()

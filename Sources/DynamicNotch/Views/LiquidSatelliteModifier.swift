@@ -123,13 +123,21 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         let distance = abs(x - notchEndX)
         // Cuánto está unida la bolita al notch (0 separada · 1 cuello pleno)
         let attached = showsBridge ? Self.smoothstep((maxDistance - distance) / (maxDistance * 0.30)) : 0
+        let notchCenterOffset = CGPoint(x: notchEndX - x, y: notchRadius - (offsetY + bubbleRadius))
+        
+        // Cristal: mientras la gota está en movimiento (desprendiéndose, fundiéndose o rebotando), la bolita y su
+        // cuello se dibujan como UNA sola forma de vidrio (círculo ∪ cuello) que se estira, adelgaza y se corta.
+        // En reposo vuelve la bolita normal; el relevo es invisible porque ahí ambas son el mismo círculo.
+        let drawsGlassDroplet = isGlass && showsBridge && abs(raw) > 0.001
+        let glassFade = isGlass ? 1 - Double(Self.smoothstep((m - 0.70) / 0.28)) : 1
         
         return content
+            .environment(\.liquidBubbleGlassSuppressed, drawsGlassDroplet)
             // Sin costuras: mientras comparten superficie, el borde fino de la bolita se funde con el negro
             .overlay(
                 Circle()
                     .strokeBorder(Color.black, lineWidth: 1.4)
-                    .opacity(Double(attached))
+                    .opacity(isGlass ? 0 : Double(attached))
                     .allowsHitTesting(false)
             )
             // El contenido (anillo, icono) se conserva hasta que la bolita ya está casi dentro del notch;
@@ -140,17 +148,36 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                     .opacity(isGlass ? 0 : Double(Self.smoothstep((m - 0.62) / 0.30)))
                     .allowsHitTesting(false)
             )
-            .opacity(isGlass ? 1 - Double(Self.smoothstep((m - 0.70) / 0.28)) : 1)
+            .opacity(glassFade)
             .scaleEffect(x: stretch, y: squash, anchor: stretchAnchor)
             .background(
-                MetaballBridgeShape(
-                    notchCenter: CGPoint(x: rest + (notchEndX - x), y: rest + (notchRadius - (offsetY + bubbleRadius))),
-                    notchRadius: notchRadius,
-                    bubbleRadius: bubbleRadius,
-                    maxDistance: maxDistance
-                )
-                .fill(Color.black)
-                .opacity(showsBridge ? 1 : 0)
+                ZStack {
+                    if drawsGlassDroplet {
+                        LiquidGlassDroplet(
+                            shape: LiquidDropletShape(
+                                notchCenterOffset: notchCenterOffset,
+                                notchRadius: notchRadius,
+                                bubbleRadius: bubbleRadius,
+                                maxDistance: maxDistance,
+                                stretch: stretch,
+                                squash: squash,
+                                notchIsLeading: towardNotch
+                            ),
+                            reach: abs(notchCenterOffset.x) + notchRadius + 12
+                        )
+                        .opacity(glassFade)
+                    } else if !isGlass {
+                        MetaballBridgeShape(
+                            notchCenter: CGPoint(x: rest + notchCenterOffset.x, y: rest + notchCenterOffset.y),
+                            notchRadius: notchRadius,
+                            bubbleRadius: bubbleRadius,
+                            maxDistance: maxDistance
+                        )
+                        .fill(Color.black)
+                        .opacity(showsBridge ? 1 : 0)
+                    }
+                }
+                .animation(nil, value: drawsGlassDroplet)
                 .allowsHitTesting(false)
             )
             .offset(x: x, y: offsetY)
@@ -163,6 +190,78 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     private static func smoothstep(_ x: CGFloat) -> CGFloat {
         let t = min(1, max(0, x))
         return t * t * (3 - 2 * t)
+    }
+}
+
+// MARK: - Gota de cristal (bolita ∪ cuello)
+
+/// Bolita (estirada en lágrima, anclada en su lado exterior) unida con el cuello metaball hacia el notch,
+/// como una sola silueta. Coordenadas: el centro del rectángulo es el centro de la bolita.
+struct LiquidDropletShape: Shape {
+    var notchCenterOffset: CGPoint
+    var notchRadius: CGFloat
+    var bubbleRadius: CGFloat
+    var maxDistance: CGFloat
+    var stretch: CGFloat
+    var squash: CGFloat
+    var notchIsLeading: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let r = bubbleRadius
+        let w = 2 * r * stretch
+        let h = 2 * r * squash
+        // Lágrima: se estira hacia el notch, con el lado exterior fijo
+        let ellipseX = notchIsLeading ? c.x + r - w : c.x - r
+        let drop = Path(ellipseIn: CGRect(x: ellipseX, y: c.y - h / 2, width: w, height: h))
+        let bubbleRect = CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)
+        let neck = MetaballBridgeShape(
+            notchCenter: CGPoint(x: r + notchCenterOffset.x, y: r + notchCenterOffset.y),
+            notchRadius: notchRadius,
+            bubbleRadius: r,
+            maxDistance: maxDistance
+        ).path(in: CGRect(origin: .zero, size: bubbleRect.size))
+            .offsetBy(dx: bubbleRect.minX, dy: bubbleRect.minY)
+        return neck.isEmpty ? drop : drop.union(neck)
+    }
+}
+
+/// La gota de vidrio con el mismo material y velo que las bolitas
+private struct LiquidGlassDroplet: View {
+    let shape: LiquidDropletShape
+    /// Margen alrededor de la bolita para que el cuello quepa dentro del marco
+    let reach: CGFloat
+
+    @ObservedObject private var appState = AppState.shared
+    @ObservedObject private var backdrop = BackdropBrightnessMonitor.shared
+
+    var body: some View {
+        let size = 2 * (shape.bubbleRadius + reach)
+        ZStack {
+            if #available(macOS 26.0, *) {
+                Color.black.opacity(max(0.22, NotchGlassMetrics.veilOpacity(for: appState.effectiveAppearanceMode)))
+                    .clipShape(shape)
+                Color.clear
+                    .glassEffect(backdrop.isBackdropBright ? Glass.regular : Glass.clear, in: shape)
+                    .glassEffectTransition(.identity)
+            } else {
+                shape.fill(Color.black)
+            }
+        }
+        .frame(width: size, height: size)
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+private struct LiquidBubbleGlassSuppressedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// La gota de vidrio (bolita ∪ cuello) la dibuja LiquidSatelliteModifier: el fondo propio de la bolita se oculta
+    var liquidBubbleGlassSuppressed: Bool {
+        get { self[LiquidBubbleGlassSuppressedKey.self] }
+        set { self[LiquidBubbleGlassSuppressedKey.self] = newValue }
     }
 }
 
