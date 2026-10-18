@@ -771,7 +771,7 @@ public final class AudioSpectrumEngine: ObservableObject {
         }.resume()
     }
     
-    private static func decodeAudioFileToMonoPCM(url: URL, targetSampleRate: Double) -> [Float] {
+    static func decodeAudioFileToMonoPCM(url: URL, targetSampleRate: Double) -> [Float] {
         let asset = AVURLAsset(url: url)
         guard let track = asset.tracks(withMediaType: .audio).first,
               let reader = try? AVAssetReader(asset: asset) else {

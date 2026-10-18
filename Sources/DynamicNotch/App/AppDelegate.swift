@@ -370,6 +370,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()
+        // Tempo real de cada canción, por si su audio llega protegido (DRM) y en silencio
+        ProceduralMotionEngine.shared.startPrefetchingTempo()
         // Vidrio legible: detecta si detrás del notch hay algo claro (regular) o el fondo de pantalla (clear)
         BackdropBrightnessMonitor.shared.start()
         

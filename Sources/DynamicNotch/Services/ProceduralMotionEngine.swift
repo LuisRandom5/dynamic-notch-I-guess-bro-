@@ -1,5 +1,6 @@
 import Foundation
 import QuartzCore
+import Combine
 
 /// Proveedor predeterminado del visualizador: movimiento procedural conectado al estado de reproducción,
 /// sin capturar audio ni micrófono (ver AudioSpectrumEngine.systemCaptureAllowed).
@@ -17,8 +18,26 @@ public final class ProceduralMotionEngine {
     private var seed: UInt64 = 5381
     private var previousSeed: UInt64 = 5381
     private var trackChangedAt: Double = -1_000
+    /// Momento en que llegó el tempo real de la pista actual (para fundirlo sin salto)
+    private var tempoArrivedAt: Double?
+
+    private var tempoPrefetch: AnyCancellable?
 
     private init() {}
+
+    /// Analiza el tempo de cada canción en cuanto empieza (no sólo cuando el audio llega en silencio), para
+    /// tenerlo listo si el contenido resulta protegido. Se llama una vez al arrancar.
+    public func startPrefetchingTempo() {
+        guard tempoPrefetch == nil else { return }
+        tempoPrefetch = MusicService.shared.$currentTrack
+            .map { ($0.title, $0.artist) }
+            .removeDuplicates { $0 == $1 }
+            .sink { title, artist in
+                guard !title.isEmpty else { return }
+                let key = "\(title.lowercased())|\(artist.lowercased())"
+                SongTempoAnalyzer.shared.request(title: title, artist: artist, key: key)
+            }
+    }
 
     /// Niveles 0...1 para `barCount` barras (6 = una por barra; 4 = mezcla de vecinas).
     public func getMagnitudes(barCount: Int = 6) -> [Float] {
@@ -34,6 +53,9 @@ public final class ProceduralMotionEngine {
             trackKey = key
             seed = Self.seed(for: key)
             trackChangedAt = now
+            tempoArrivedAt = nil
+            // Tempo real de la canción (por si el audio llega protegido y en silencio)
+            SongTempoAnalyzer.shared.request(title: track.title, artist: track.artist, key: key)
         }
         let blend = Self.smoothstep((now - trackChangedAt) / VisualizerMotionMetrics.trackCrossfade)
         let current = VisualizerMotion.musicLevels(at: now, seed: seed)
@@ -44,11 +66,44 @@ public final class ProceduralMotionEngine {
         } else {
             levels = current
         }
+        var output = levels
+        if let tempo = SongTempoAnalyzer.shared.profile(for: key), track.isPlaying {
+            if tempoArrivedAt == nil { tempoArrivedAt = now }
+            let fade = Self.smoothstep((now - (tempoArrivedAt ?? now)) / 1.0)
+            output = Self.beatLevels(organic: levels, tempo: tempo, fade: fade)
+        }
         lock.unlock()
-
-        return Self.resample(levels, to: barCount)
+        return Self.resample(output, to: barCount)
     }
-
+    
+    /// Golpes al tempo real de la canción, sobre la posición de reproducción (lo que se oye, con la latencia
+    /// de la salida): bombo en cada tiempo en los graves, caja en 2 y 4 en los medios, contratiempos de
+    /// platillo en los agudos. Se mezcla con el movimiento orgánico según qué tan rítmica es la pista.
+    private static func beatLevels(organic: [Float], tempo: SongTempoAnalyzer.Profile, fade: Double) -> [Float] {
+        let position = LyricsService.shared.estimatedPosition - AudioSpectrumEngine.shared.outputLatencySec
+        let beats = max(0, position) * tempo.bpm / 60
+        let beatIndex = beats.rounded(.down)
+        let phase = beats - beatIndex
+        let kick = exp(-phase * 7)
+        let backbeat = Int(beatIndex) % 2 == 1 ? exp(-phase * 9) : 0
+        let eighths = beats * 2
+        let hat = exp(-(eighths - eighths.rounded(.down)) * 14)
+        let pattern: [Double] = [
+            0.22 + 0.78 * kick,
+            0.24 + 0.64 * kick + 0.12 * backbeat,
+            0.28 + 0.22 * kick + 0.48 * backbeat,
+            0.28 + 0.52 * backbeat + 0.18 * hat,
+            0.24 + 0.16 * backbeat + 0.58 * hat,
+            0.20 + 0.70 * hat,
+        ]
+        let mix = (0.45 + 0.30 * tempo.beatStrength) * fade
+        return (0..<organic.count).map { i in
+            let beat = Float(pattern[min(i, pattern.count - 1)] * VisualizerMotionMetrics.profile[min(i, 5)])
+            let value = organic[i] * Float(1 - mix) + beat * Float(mix)
+            return min(Float(VisualizerMotionMetrics.ceiling), max(0, value))
+        }
+    }
+    
     // MARK: - Utilidades
 
     private static func seed(for key: String) -> UInt64 {
