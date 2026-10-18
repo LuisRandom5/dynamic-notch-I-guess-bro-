@@ -24,7 +24,7 @@ public struct MetaballBridgeShape: Shape {
         guard r1 > 0, r2 > 0, d > abs(r1 - r2), d < maxDistance else { return path }
 
         // El "esparcimiento" del cuello se reduce a cero antes de maxDistance: se rompe sin saltos
-        let spread = 0.5 * Self.smoothstep((maxDistance - d) / (maxDistance * 0.35))
+        let spread = 0.62 * Self.smoothstep((maxDistance - d) / (maxDistance * 0.30))
         guard spread > 0.002 else { return path }
 
         var u1: CGFloat = 0
@@ -48,7 +48,7 @@ public struct MetaballBridgeShape: Shape {
         let p3 = point(c2, r2, a3), p4 = point(c2, r2, a4)
 
         // Largo de las asas: proporcional a la separación para que el cuello sea curvo y no recto
-        let handleSize: CGFloat = 2.4
+        let handleSize: CGFloat = 3.0
         let total = r1 + r2
         let baseHandle = min(spread * handleSize, hypot(p3.x - p1.x, p3.y - p1.y) / total)
         let handle = baseHandle * min(1, d * 2 / total)
@@ -100,9 +100,13 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
         // Absorbida: el centro de la bolita queda casi concéntrico con el extremo del notch
         let mergedX = notchEndX
         let x = restingX + (mergedX - restingX) * Self.easeInOut(m)
-        // Deformación sutil en la dirección del movimiento, máxima a mitad del trayecto
-        let stretch = 1 + 0.12 * sin(.pi * m)
-        let squash = 1 - 0.07 * sin(.pi * m)
+        // Forma de lágrima: mientras el cuello la sujeta, la bolita se estira HACIA el notch (anclada en su
+        // lado exterior); la tensión es máxima justo antes de que el cuello se rompa (m ≈ 0.15–0.35)
+        let tension = m < 0.6 ? sin(.pi * min(1, m / 0.6)) : 0
+        let stretch = 1 + 0.20 * tension
+        let squash = 1 - 0.10 * tension
+        let towardNotch = notchEndX < restingX // la bolita está a la derecha del extremo del notch
+        let stretchAnchor = UnitPoint(x: towardNotch ? 1 : 0, y: 0.5)
         let rest = bubbleDiameter / 2
 
         return content
@@ -114,13 +118,14 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
                     .opacity(Double(Self.smoothstep((m - 0.35) / 0.45)))
                     .allowsHitTesting(false)
             )
-            .scaleEffect(x: stretch, y: squash, anchor: .center)
+            .scaleEffect(x: stretch, y: squash, anchor: stretchAnchor)
             .background(
                 MetaballBridgeShape(
                     notchCenter: CGPoint(x: rest + (notchEndX - x), y: rest + (notchRadius - (offsetY + bubbleRadius))),
                     notchRadius: notchRadius,
                     bubbleRadius: bubbleRadius,
-                    maxDistance: notchRadius + bubbleRadius + abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX)) * 0.6 + 2
+                    // El cuello aguanta casi hasta la posición de reposo: se rompe al final, como una gota
+                    maxDistance: notchRadius + bubbleRadius + abs(restingX - notchEndX - copysign(notchRadius + bubbleRadius, restingX - notchEndX)) * 0.92
                 )
                 .fill(Color.black)
                 .opacity(showsBridge ? 1 : 0)

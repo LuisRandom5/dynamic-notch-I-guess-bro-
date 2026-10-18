@@ -230,8 +230,8 @@ public struct AudioVisualizer: View {
     
     // MARK: - Movimiento
     
-    private static let fadeIn: TimeInterval = 0.22
-    private static let fadeOut: TimeInterval = 0.30
+    private static let fadeIn: TimeInterval = VisualizerMotionMetrics.fadeIn
+    private static let fadeOut: TimeInterval = VisualizerMotionMetrics.fadeOut
     
     /// Alturas de las barras en este cuadro: niveles del motor × fundido de reproducción/pausa.
     private func barHeights(at date: Date) -> [CGFloat] {

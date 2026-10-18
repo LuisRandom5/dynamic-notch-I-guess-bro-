@@ -1,9 +1,7 @@
 import SwiftUI
 
 /// Contenido del notch cuando la bolita de Claude se fusiona con él.
-/// Se adapta al tamaño que le da la fusión:
-/// - Alas (altura del notch): marca de Claude a la izquierda y porcentaje a la derecha de la cámara.
-/// - Tarjeta: tarea, barra de progreso, paso del plan, acción actual y métricas.
+/// Tarjeta: tarea, barra de progreso, paso del plan, acción actual, uso de la suscripción y métricas.
 public struct ClaudeStatusView: View {
     public let sessionId: String
 
@@ -14,38 +12,28 @@ public struct ClaudeStatusView: View {
         self.sessionId = sessionId
     }
 
-    private static let wingWidth: CGFloat = 52
 
     public var body: some View {
         GeometryReader { geo in
             if let state = provider.sessions[sessionId] {
-                let isWings = geo.size.height < screen.currentGeometry.height + 24
-                ZStack(alignment: .top) {
-                    wings(state)
-                        .frame(width: geo.size.width, height: screen.currentGeometry.height)
-                        .opacity(isWings ? 1 : 0)
-                    card(state)
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-                        .opacity(isWings ? 0 : 1)
-                }
-                .animation(.easeInOut(duration: 0.18), value: isWings)
+                // Primero se establece el espacio y después se revela la información: el contenido aparece
+                // en el último tramo de la expansión, sin saltos ni elementos que entren de golpe
+                let target = ClaudeActivityProvider.cardHeight
+                let reveal = Self.smoothstep((geo.size.height - target * 0.7) / (target * 0.3))
+                card(state)
+                    .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                    .opacity(reveal)
+                    .offset(y: (1 - reveal) * -6)
             }
         }
     }
-
-    // MARK: - Alas (etapa 1 de la fusión)
-
-    private func wings(_ state: ClaudeSessionState) -> some View {
-        HStack(spacing: 0) {
-            ClaudeMarkView(size: 15, isAnimating: state.phase == .working)
-                .frame(width: Self.wingWidth)
-            Spacer(minLength: 0)
-            percentLabel(state, size: 12)
-                .frame(width: Self.wingWidth)
-        }
+    
+    private static func smoothstep(_ x: CGFloat) -> CGFloat {
+        let t = min(1, max(0, x))
+        return t * t * (3 - 2 * t)
     }
-
-    // MARK: - Tarjeta (etapa 2 de la fusión)
+    
+    // MARK: - Tarjeta
 
     private func card(_ state: ClaudeSessionState) -> some View {
         VStack(alignment: .leading, spacing: 9) {

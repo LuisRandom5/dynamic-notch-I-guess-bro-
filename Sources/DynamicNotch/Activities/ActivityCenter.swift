@@ -323,11 +323,6 @@ public final class ActivityCenter: ObservableObject {
         let timer = Timer(timeInterval: travelDuration, repeats: false) { [weak self] _ in
             guard let self = self, self.fusingActivityId == activity.id else { return }
             
-            if activity.kind == .claude {
-                self.expandClaudeInTwoStages(activity)
-                return
-            }
-            
             withAnimation(AnimationSpeedManager.shared.spring(response: 0.40, dampingFraction: 0.82)) {
                 self.expandedActivity = activity
                 self.customCardWidth = activity.customExpandedWidth ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudWidth : 420)
@@ -345,66 +340,6 @@ public final class ActivityCenter: ObservableObject {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.fusionExpansionTimer = timer
-    }
-    
-    // MARK: - Fusión en dos etapas (Claude)
-    
-    /// Medidas de las "alas" del notch: el notch físico más 52 pt a cada lado.
-    private var wingsSize: CGSize {
-        let geom = ScreenService.shared.currentGeometry
-        return CGSize(width: geom.width + 104, height: geom.height)
-    }
-    
-    /// Etapa 1: la bolita ya se fundió en el borde; el notch se ensancha a sus alas (marca + porcentaje).
-    /// Etapa 2: desde las alas, la cápsula crece hacia abajo hasta la tarjeta de estado.
-    private func expandClaudeInTwoStages(_ activity: LiveActivity) {
-        let wings = wingsSize
-        withAnimation(AnimationSpeedManager.shared.spring(response: 0.32, dampingFraction: 0.90)) {
-            self.expandedActivity = activity
-            self.customCardWidth = wings.width
-            self.customCardHeight = wings.height
-            self.customTopRadius = 0
-            self.customBottomRadius = wings.height / 2
-            self.recalculateRoles()
-        }
-        NotchWindowManager.shared.updateHitAreaForCurrentState()
-        
-        // La cápsula sigue creciendo hacia abajo sin pausa perceptible entre las alas y la tarjeta
-        let stageDelay = AnimationSpeedManager.shared.adjustedDuration(0.20)
-        let timer = Timer(timeInterval: stageDelay, repeats: false) { [weak self] _ in
-            guard let self = self, self.expandedActivity?.id == activity.id, !self.isCollapsingClaude else { return }
-            withAnimation(AnimationSpeedManager.shared.spring(response: 0.42, dampingFraction: 0.88)) {
-                self.customCardWidth = activity.customExpandedWidth ?? ClaudeActivityProvider.cardWidth
-                self.customCardHeight = activity.customExpandedHeight ?? ClaudeActivityProvider.cardHeight
-                self.customTopRadius = 0
-                self.customBottomRadius = 30
-            }
-            NotchWindowManager.shared.updateHitAreaForCurrentState()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        fusionExpansionTimer = timer
-    }
-    
-    private var isCollapsingClaude = false
-    
-    /// Reverso: la tarjeta se recoge a las alas y desde ahí la bolita se desprende de vuelta a su lugar.
-    private func collapseClaudeInTwoStages() {
-        isCollapsingClaude = true
-        fusionExpansionTimer?.invalidate()
-        fusionExpansionTimer = nil
-        let wings = wingsSize
-        withAnimation(AnimationSpeedManager.shared.spring(response: 0.32, dampingFraction: 0.86)) {
-            self.customCardWidth = wings.width
-            self.customCardHeight = wings.height
-            self.customTopRadius = 0
-            self.customBottomRadius = wings.height / 2
-        }
-        let delay = AnimationSpeedManager.shared.adjustedDuration(0.26)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self = self else { return }
-            self.collapseExpandedActivity()
-            self.isCollapsingClaude = false
-        }
     }
     
     /// Revierte suavemente la transición en curso hacia la posición satélite compacta sin saltos visuales
@@ -471,13 +406,7 @@ public final class ActivityCenter: ObservableObject {
     public func collapseExpandedActivity() {
         guard expandedActivity != nil || isFusing else { return }
         
-        // Claude se recoge primero a las alas (si está como tarjeta) antes de soltar la bolita
-        if expandedActivity?.kind == .claude && !isCollapsingClaude,
-           let height = customCardHeight, height > wingsSize.height + 1 {
-            collapseClaudeInTwoStages()
-            return
-        }
-        
+
         fusionExpansionTimer?.invalidate()
         fusionExpansionTimer = nil
         

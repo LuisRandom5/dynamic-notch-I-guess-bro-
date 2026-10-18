@@ -42,7 +42,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     /// Pipeline experimental que descarga el preview de 30 s de iTunes y le corre FFT a 60 Hz.
     /// Apagado: ese fragmento no está alineado con lo que suena, gasta CPU/red y su salida no llega a las barras
-    /// (sin captura, getMagnitudes usa ProceduralMotionEngine + GrooveSynth).
+    /// (sin captura, getMagnitudes usa ProceduralMotionEngine + VisualizerMotion).
     public static let previewAnalysisEnabled = false
     
     // Estados públicos
@@ -1493,7 +1493,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     // MARK: - Generador Dinámico para Llamadas de Voz (FaceTime / Teléfono)
     public func generateRealisticCallMagnitudes() -> [Float] {
         // Voz sintética determinista (misma lógica para todas las vistas de llamada)
-        GrooveSynth.speechLevels(at: CACurrentMediaTime(), seed: 0xC0FFEE)
+        VisualizerMotion.speechLevels(at: CACurrentMediaTime(), seed: 0xC0FFEE)
     }
     
     // MARK: - Generador Psicoacústico Hiperrealista Multiespectral (Punchy & Rítmico)

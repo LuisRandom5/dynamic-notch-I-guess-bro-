@@ -53,6 +53,8 @@ public final class ClaudeActivityProvider: ObservableObject {
     /// Tamaño de la tarjeta al fusionarse con el notch
     public static let cardWidth: CGFloat = 440
     public static let cardHeight: CGFloat = 216
+    /// Radio de las 4 esquinas de la tarjeta (redondeada completa, como el reproductor)
+    public static let cardCornerRadius: CGFloat = 40
 
     @Published public private(set) var sessions: [String: ClaudeSessionState] = [:]
     @Published public private(set) var usage: ClaudeUsage?

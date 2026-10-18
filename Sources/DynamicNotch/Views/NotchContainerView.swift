@@ -218,6 +218,9 @@ public struct NotchContainerView: View {
             return NotchTuning.expandedTopRadius
         } else if agentProvider.isProgressHUDExpanded {
             return 0
+        } else if activityCenter.expandedActivity?.kind == .claude {
+            // Radios propios: los radios compartidos (customTopRadius) los sobrescriben otras actividades
+            return ClaudeActivityProvider.cardCornerRadius
         } else if activityCenter.expandedActivity != nil {
             return activityCenter.customTopRadius ?? 24
         } else if appState.isDropInvitationActive {
@@ -248,6 +251,8 @@ public struct NotchContainerView: View {
             return NotchTuning.expandedBottomRadius
         } else if agentProvider.isProgressHUDExpanded {
             return 28
+        } else if activityCenter.expandedActivity?.kind == .claude {
+            return ClaudeActivityProvider.cardCornerRadius
         } else if activityCenter.expandedActivity != nil {
             return activityCenter.customBottomRadius ?? 32
         } else if appState.isDropInvitationActive {
