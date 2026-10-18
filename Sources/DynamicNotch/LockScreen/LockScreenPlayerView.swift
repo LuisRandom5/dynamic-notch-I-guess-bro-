@@ -114,6 +114,12 @@ public struct LockScreenPlayerView: View {
             let regionTop = height * 0.28 - appState.lockScreenVerticalOffset
             let regionBottom = height * 0.79 - appState.lockScreenVerticalOffset
             let available = regionBottom - regionTop
+            // El reproductor se apoya abajo del hueco, justo arriba de la foto de perfil (no centrado)
+            let playerBottom = height * 0.755 - appState.lockScreenVerticalOffset
+            let heroHeight = LockScreenHeroMetrics.cardHeight(showsVolume: appState.lockScreenShowVolumeSlider)
+            let compactHeight = appState.lockScreenShowVolumeSlider
+                ? LockScreenPlayerMetrics.compactCardHeightWithVolume
+                : (isPrivacyMode ? 120 : LockScreenPlayerMetrics.compactCardHeight)
             let heroFits = available >= LockScreenHeroMetrics.cardHeight(showsVolume: appState.lockScreenShowVolumeSlider)
             let namespace = isReduceMotion ? nil : stageNamespace
             
@@ -129,12 +135,12 @@ public struct LockScreenPlayerView: View {
                         onExpand: { setFullscreen(true) },
                         isShowingRoutePicker: $isShowingRoutePicker
                     )
-                    .position(x: geo.size.width / 2, y: (regionTop + regionBottom) / 2)
+                    .position(x: geo.size.width / 2, y: playerBottom - heroHeight / 2)
                     .transition(.opacity)
                 } else {
                     // Variante horizontal: estilo elegido o pantallas donde la vertical no cabe legible
                     compactCardView
-                        .position(x: geo.size.width / 2, y: (regionTop + regionBottom) / 2)
+                        .position(x: geo.size.width / 2, y: playerBottom - compactHeight / 2)
                         .transition(.opacity)
                 }
                 
