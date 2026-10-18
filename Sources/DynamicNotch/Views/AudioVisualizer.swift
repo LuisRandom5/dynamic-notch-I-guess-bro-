@@ -153,13 +153,16 @@ public struct AudioVisualizer: View {
     
     @ObservedObject private var appState = AppState.shared
     
-    // Altura de las 6 barras (animadas independientemente)
-    @State private var barHeights: [CGFloat] = [9.0, 13.0, 8.0, 14.0, 10.0, 12.0]
-    @State private var timer: Timer?
     @State private var gradientColors: [Color] = [
         PlayerMetrics.visualizerTopGradient,
         PlayerMetrics.visualizerBottomGradient
     ]
+    // Fundido entre reproducir y pausa: momento del último cambio y si el reloj de pantalla debe correr
+    @State private var playStateChangedAt: Date = .distantPast
+    @State private var isAnimating: Bool = false
+    @State private var stopToken: Int = 0
+    
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     public init(
         isPlaying: Bool,
@@ -183,34 +186,39 @@ public struct AudioVisualizer: View {
     }
     
     public var body: some View {
-        // HStack centrado verticalmente: las barras crecen simétricamente hacia arriba y hacia abajo
-        HStack(alignment: .center, spacing: PlayerMetrics.visualizerBarSpacing) {
-            ForEach(0..<PlayerMetrics.visualizerBarCount, id: \.self) { index in
-                let h = max(PlayerMetrics.visualizerPausedDotSize, barHeights[safe: index] ?? PlayerMetrics.visualizerPausedDotSize)
-                let normH = Double((h - PlayerMetrics.visualizerMinHeight) / (PlayerMetrics.visualizerMaxHeight - PlayerMetrics.visualizerMinHeight))
-                let glowAlpha = min(0.42, max(0.0, normH * 0.42))
-                
-                Capsule(style: .continuous)
-                    .fill(resolvedGradient)
-                    .frame(
-                        width: PlayerMetrics.visualizerBarWidth,
-                        height: h
-                    )
-                    .shadow(
-                        color: (gradientColors.first ?? Color.white).opacity(glowAlpha),
-                        radius: 1.6,
-                        x: 0,
-                        y: 0
-                    )
+        // Sincronizado al refresco de pantalla: cada cuadro lee el motor una vez, sin timers ni animaciones encadenadas
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isAnimating)) { context in
+            let heights = barHeights(at: context.date)
+            // HStack centrado verticalmente: las barras crecen simétricamente hacia arriba y hacia abajo
+            HStack(alignment: .center, spacing: PlayerMetrics.visualizerBarSpacing) {
+                ForEach(0..<PlayerMetrics.visualizerBarCount, id: \.self) { index in
+                    let h = heights[index]
+                    let normH = Double((h - PlayerMetrics.visualizerMinHeight) / (PlayerMetrics.visualizerMaxHeight - PlayerMetrics.visualizerMinHeight))
+                    let glowAlpha = min(0.42, max(0.0, normH * 0.42))
+                    
+                    Capsule(style: .continuous)
+                        .fill(resolvedGradient)
+                        .frame(
+                            width: PlayerMetrics.visualizerBarWidth,
+                            height: h
+                        )
+                        .shadow(
+                            color: (gradientColors.first ?? Color.white).opacity(glowAlpha),
+                            radius: 1.6,
+                            x: 0,
+                            y: 0
+                        )
+                }
             }
         }
         .frame(height: PlayerMetrics.visualizerMaxHeight, alignment: .center)
         .onAppear {
             updateColors()
-            updateAnimation()
+            // Al aparecer (p. ej. al expandir el reproductor) no hay fundido: entra ya en movimiento
+            isAnimating = isPlaying
         }
-        .onChange(of: isPlaying) { _, _ in
-            updateAnimation()
+        .onChange(of: isPlaying) { _, playing in
+            handlePlayingChange(playing)
         }
         .onChange(of: colorMode) { _, _ in
             updateColors()
@@ -218,57 +226,53 @@ public struct AudioVisualizer: View {
         .onChange(of: appState.visualizerColorStyle) { _, _ in
             updateColors()
         }
-        .onDisappear {
-            timer?.invalidate()
-            timer = nil
+    }
+    
+    // MARK: - Movimiento
+    
+    private static let fadeIn: TimeInterval = 0.22
+    private static let fadeOut: TimeInterval = 0.30
+    
+    /// Alturas de las barras en este cuadro: niveles del motor × fundido de reproducción/pausa.
+    private func barHeights(at date: Date) -> [CGFloat] {
+        let rest = PlayerMetrics.visualizerPausedDotSize
+        let maxH = PlayerMetrics.visualizerMaxHeight
+        let count = PlayerMetrics.visualizerBarCount
+        
+        let sinceChange = date.timeIntervalSince(playStateChangedAt)
+        let gain: Double = isPlaying
+            ? Self.smoothstep(sinceChange / Self.fadeIn)
+            : 1 - Self.smoothstep(sinceChange / Self.fadeOut)
+        guard gain > 0.001 else { return Array(repeating: rest, count: count) }
+        
+        // Reducir movimiento: perfil fijo y tranquilo en lugar de ritmo
+        let levels: [Float] = reduceMotion
+            ? [0.45, 0.70, 0.55, 0.80, 0.60, 0.50]
+            : AudioSpectrumEngine.shared.getMagnitudes()
+        
+        return (0..<count).map { i in
+            let level = CGFloat(levels.indices.contains(i) ? levels[i] : 0) * CGFloat(gain)
+            return max(rest, min(maxH, rest + level * (maxH - rest)))
         }
     }
     
-    @State private var animPhase: Double = 0.0
-    
-    // Renderizado reactivo a 60 fps sincronizado al espectro real por banda (Sub-Bass a Brilliance)
-    private func updateAnimation() {
-        timer?.invalidate()
-        timer = nil
-        
-        let restingDot = PlayerMetrics.visualizerPausedDotSize
-        let maxH = PlayerMetrics.visualizerMaxHeight
-        let bandMultipliers: [CGFloat] = [1.05, 1.02, 1.04, 1.00, 0.98, 0.95]
-        
-        if isPlaying {
-            let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { _ in
-                let engine = AudioSpectrumEngine.shared
-                let levels = engine.getMagnitudes()
-                
-                var newHeights: [CGFloat] = []
-                newHeights.reserveCapacity(PlayerMetrics.visualizerBarCount)
-                
-                for i in 0..<PlayerMetrics.visualizerBarCount {
-                    let rawLvl = CGFloat(levels[safe: i] ?? 0.0)
-                    let targetH: CGFloat
-                    if rawLvl <= 0.015 {
-                        // Banda en silencio real -> punto de reposo exacto (sin elevar bandas vacías)
-                        targetH = restingDot
-                    } else {
-                        let scaled = min(1.0, rawLvl * (bandMultipliers[safe: i] ?? 1.0))
-                        targetH = restingDot + scaled * (maxH - restingDot)
-                    }
-                    newHeights.append(max(restingDot, min(maxH, targetH)))
-                }
-                
-                withAnimation(.linear(duration: 0.022)) {
-                    self.barHeights = newHeights
-                }
-            }
-            t.tolerance = 0.003
-            RunLoop.main.add(t, forMode: .common)
-            timer = t
-        } else {
-            // EN PAUSA: Transición suave a reposo circular
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                self.barHeights = Array(repeating: restingDot, count: PlayerMetrics.visualizerBarCount)
+    private func handlePlayingChange(_ playing: Bool) {
+        playStateChangedAt = Date()
+        isAnimating = true
+        stopToken += 1
+        guard !playing else { return }
+        // Tras el fundido a pausa, detener el reloj de pantalla (cero CPU mientras está pausado)
+        let token = stopToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.fadeOut + 0.1) {
+            if token == stopToken && !isPlaying {
+                isAnimating = false
             }
         }
+    }
+    
+    private static func smoothstep(_ x: Double) -> Double {
+        let t = min(1, max(0, x))
+        return t * t * (3 - 2 * t)
     }
     
     private func updateColors() {

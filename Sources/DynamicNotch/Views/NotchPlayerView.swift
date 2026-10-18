@@ -341,7 +341,7 @@ public struct NotchPlayerView: View {
                 
                 // Visualizador de Audio (Perfectamente centrado en la fila)
                 AudioVisualizer(
-                    isPlaying: track.isPlaying || !AudioSpectrumEngine.shared.isSilent,
+                    isPlaying: track.isPlaying,
                     colorMode: .fromArtwork(track.artwork)
                 )
                 .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
@@ -501,7 +501,7 @@ public struct NotchPlayerView: View {
                     Spacer(minLength: 2)
                     
                     AudioVisualizer(
-                        isPlaying: track.isPlaying || !AudioSpectrumEngine.shared.isSilent,
+                        isPlaying: track.isPlaying,
                         colorMode: .fromArtwork(track.artwork)
                     )
                     .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))

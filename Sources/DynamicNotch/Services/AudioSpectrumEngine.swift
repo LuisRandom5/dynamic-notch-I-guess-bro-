@@ -40,6 +40,11 @@ public final class AudioSpectrumEngine: ObservableObject {
     /// El visualizador usa ProceduralMotionEngine.
     public static let systemCaptureAllowed = false
     
+    /// Pipeline experimental que descarga el preview de 30 s de iTunes y le corre FFT a 60 Hz.
+    /// Apagado: ese fragmento no está alineado con lo que suena, gasta CPU/red y su salida no llega a las barras
+    /// (sin captura, getMagnitudes usa ProceduralMotionEngine + GrooveSynth).
+    public static let previewAnalysisEnabled = false
+    
     // Estados públicos
     @Published public private(set) var isRunning: Bool = false
     @Published public private(set) var isRealAudioActive: Bool = false
@@ -177,7 +182,9 @@ public final class AudioSpectrumEngine: ObservableObject {
         if tapEnabled {
             setupProcessTapCapture()
         }
-        startZeroIndicatorPipeline()
+        if Self.previewAnalysisEnabled {
+            startZeroIndicatorPipeline()
+        }
     }
     
     deinit {
@@ -820,7 +827,7 @@ public final class AudioSpectrumEngine: ObservableObject {
         if enableSystemAudioTap && tapIOProcID == nil {
             setupProcessTapCapture()
         }
-        if zeroIndicatorTimer == nil {
+        if zeroIndicatorTimer == nil && Self.previewAnalysisEnabled {
             startZeroIndicatorPipeline()
         }
         isRunning = true

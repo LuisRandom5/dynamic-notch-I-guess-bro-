@@ -95,7 +95,6 @@ public struct NotchBolitaView: View {
             return Color(red: 0.72, green: 0.40, blue: 1.00)
         case .claude:
             switch claudeSession?.phase {
-            case .done: return Color(red: 0.35, green: 0.85, blue: 0.55)
             case .waiting: return .yellow // Claude espera tu respuesta o un permiso
             default: return ClaudeMarkView.orange
             }

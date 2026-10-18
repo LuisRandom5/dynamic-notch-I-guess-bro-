@@ -150,7 +150,7 @@ public struct ClaudeStatusView: View {
             if state.phase == .done {
                 Image(systemName: "checkmark")
                     .font(.system(size: size, weight: .bold))
-                    .foregroundColor(Color(red: 0.35, green: 0.85, blue: 0.55))
+                    .foregroundColor(ClaudeMarkView.orange)
             } else {
                 Text("\(Int((state.progress * 100).rounded()))%")
                     .font(.system(size: size, weight: .semibold, design: .rounded))
@@ -166,7 +166,7 @@ public struct ClaudeStatusView: View {
             switch phase {
             case .working: return ("Trabajando", ClaudeMarkView.orange)
             case .waiting: return ("Te necesita", .yellow)
-            case .done, .ended: return ("Listo", Color(red: 0.35, green: 0.85, blue: 0.55))
+            case .done, .ended: return ("Listo", .white.opacity(0.7))
             }
         }()
         return Text(text)

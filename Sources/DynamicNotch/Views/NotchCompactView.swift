@@ -123,7 +123,7 @@ public struct NotchCompactView: View {
                 }
                 
                 AudioVisualizer(
-                    isPlaying: musicService.currentTrack.isPlaying || (!AudioSpectrumEngine.shared.isSilent && AudioSpectrumEngine.shared.isRealAudioActive),
+                    isPlaying: musicService.currentTrack.isPlaying,
                     colorMode: .fromArtwork(musicService.currentTrack.artwork)
                 )
                 .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
