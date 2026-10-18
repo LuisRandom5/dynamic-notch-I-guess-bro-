@@ -128,7 +128,7 @@ public final class ActivityCenter: ObservableObject {
     public func publish(_ activity: LiveActivity) {
         // Durante la pausa posterior al HUD, las actualizaciones de otras actividades (temporizador, Claude…)
         // no deben hacer reaparecer el reproductor antes de tiempo
-        if Date() >= hudHoldUntil || activity.style == .sliderPill {
+        if Date() >= hudHoldUntil || activity.style == .sliderPill || activity.style == .airpodsPill {
             AppState.shared.isHoldingBareNotch = false
         }
         
@@ -234,8 +234,10 @@ public final class ActivityCenter: ObservableObject {
             AppState.shared.isHoldingBareNotch = true
         }
         
-        // HUD del sistema: al cerrarse, notch limpio unos segundos y después regresa lo que había
-        let isSystemHUD = current.style == .sliderPill
+        // HUD del sistema (volumen/brillo) y animación de AirPods: al cerrarse, el notch se recoge por completo
+        // y queda limpio unos segundos; después lo que había (p. ej. el reproductor) vuelve a abrirse con su
+        // animación, como en el sistema (antes la de AirPods saltaba directo al reproductor)
+        let isSystemHUD = current.style == .sliderPill || current.style == .airpodsPill
         if isSystemHUD {
             hudHoldUntil = Date().addingTimeInterval(duration + Self.hudReturnDelay)
             if MusicService.shared.hasActiveMusic {
