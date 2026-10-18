@@ -135,7 +135,8 @@ public struct NotchContainerView: View {
             }
             switch activity.style {
             case .pill:
-                return geometry.width + 170
+                // Una píldora puede pedir su propio ancho (p. ej. AirDrop ensancha las alas al confirmar)
+                return activity.customExpandedWidth ?? (geometry.width + 170)
             case .sliderPill:
                 return geometry.width + 292
             case .airpodsPill:

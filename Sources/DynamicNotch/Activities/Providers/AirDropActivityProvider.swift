@@ -1,141 +1,229 @@
 import SwiftUI
 
-// MARK: - AirDropActivityProvider (Transferencia en Progreso -> Completado Expandido - Imagen 2)
+// MARK: - AirDropActivityProvider (Transferencia en Progreso -> Completado)
 public final class AirDropActivityProvider: ObservableObject {
     public static let shared = AirDropActivityProvider()
-    
+
+    public static let blue = Color(red: 0x0A / 255.0, green: 0x84 / 255.0, blue: 0xFF / 255.0)
+    private static let activityId = "airdrop_live"
+    /// Ancho de las alas: en progreso y, más amplias, al confirmar el envío
+    private static let progressExtraWidth: CGFloat = 150
+    private static let resultExtraWidth: CGFloat = 220
+
     @Published public private(set) var isTransferring: Bool = false
     @Published public private(set) var progress: Double = 0.0
     private var transferTimer: Timer?
-    
+    private var safetyTimer: Timer?
+    private var activeDirection: AirDropTransferMonitor.Direction?
+    /// Último momento en que se mostró la tarjeta de "recibido" (para no duplicarla)
+    private var lastReceivedCardAt: Date = .distantPast
+
     public init() {}
-    
-    /// Inicia una transferencia simulada de AirDrop con progreso en tiempo real
-    public func startSimulatedTransfer(fileName: String = "Proyecto Final.zip", sender: String = "iPhone de Luis") {
-        transferTimer?.invalidate()
+
+    // MARK: - Transferencias reales (AirDropTransferMonitor)
+
+    /// Empieza un envío o una recepción: alas con el icono de AirDrop y un anillo que avanza
+    /// (sharingd no publica el porcentaje real, así que el anillo avanza de forma estimada).
+    public func beginTransfer(_ direction: AirDropTransferMonitor.Direction) {
+        activeDirection = direction
         isTransferring = true
-        progress = 0.0
-        
-        publishTransferActivity(progress: 0.0)
-        
-        let totalSteps = 24
-        let stepDuration = 0.10 // 2.4s en total
-        var currentStep = 0
-        
-        transferTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] timer in
-            guard let self = self else { return }
-            currentStep += 1
-            let newProgress = min(1.0, Double(currentStep) / Double(totalSteps))
-            self.progress = newProgress
-            self.publishTransferActivity(progress: newProgress)
-            
-            if currentStep >= totalSteps {
-                timer.invalidate()
-                self.isTransferring = false
-                
-                // Al terminar: se agranda automáticamente a la tarjeta de éxito que le gustó al usuario
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    self.publishCompletedCard(fileName: fileName, sender: sender)
-                }
-            }
+        AppState.shared.hapticService.triggerSnap()
+        publishTransferActivity(progress: 0, startedAt: Date())
+
+        // Seguridad: si nunca llega el resultado, retirar las alas
+        safetyTimer?.invalidate()
+        safetyTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { [weak self] _ in
+            guard let self = self, self.isTransferring else { return }
+            self.isTransferring = false
+            ActivityCenter.shared.dismissWithAnimation(id: Self.activityId)
         }
     }
-    
-    /// Publica la fase compacta en progreso (Alas del notch: AirDrop a la izquierda, Anillo azul a la derecha)
-    public func publishTransferActivity(progress: Double) {
-        let blue = Color(red: 0x0A / 255.0, green: 0x84 / 255.0, blue: 0xFF / 255.0)
-        
-        // Icono de AirDrop con ondas concéntricas en azul a la izquierda (Imagen 2)
-        let leading = AnyView(
-            AirDropIconView(size: 18, color: blue)
-        )
-        
-        // Anillo circular con arco azul de progreso a la derecha (Imagen 2)
-        let trailing = AnyView(
-            ZStack {
-                // Pista de fondo circular oscura
-                Circle()
-                    .stroke(Color.white.opacity(0.20), lineWidth: 2.2)
-                    .frame(width: 17, height: 17)
-                
-                // Arco de progreso azul que se va completando
-                Circle()
-                    .trim(from: 0, to: CGFloat(max(0.04, progress)))
-                    .stroke(
-                        blue,
-                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 17, height: 17)
-                    .animation(.linear(duration: 0.10), value: progress)
+
+    public func finishTransfer(_ direction: AirDropTransferMonitor.Direction, success: Bool) {
+        safetyTimer?.invalidate()
+        isTransferring = false
+        activeDirection = nil
+
+        switch (direction, success) {
+        case (.sending, _):
+            // Envío: sin tarjeta. Las alas se ensanchan con la palomita (o la X) y el notch vuelve a su estado
+            publishSendResult(success: success)
+        case (.receiving, true):
+            // La tarjeta con el archivo la muestra AirDropObserverService al ver el archivo en Descargas.
+            // Si en 2.5 s no apareció (otra carpeta de destino), mostrar una tarjeta genérica.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                guard let self = self, Date().timeIntervalSince(self.lastReceivedCardAt) > 4 else { return }
+                let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                self.publishCompletedCard(fileName: "Toca para abrir Descargas", sender: "AirDrop", fileURL: downloads)
             }
-        )
-        
+        case (.receiving, false):
+            publishSendResult(success: false, title: "No se recibió")
+        }
+    }
+
+    /// Inicia una transferencia simulada (menú de pruebas)
+    public func startSimulatedTransfer(fileName: String = "Proyecto Final.zip", sender: String = "iPhone de Luis") {
+        transferTimer?.invalidate()
+        beginTransfer(.receiving)
+        transferTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: false) { [weak self] _ in
+            self?.isTransferring = false
+            self?.publishCompletedCard(fileName: fileName, sender: sender)
+        }
+    }
+
+    // MARK: - Vistas
+
+    /// Fase en progreso (alas: AirDrop a la izquierda, anillo azul a la derecha)
+    public func publishTransferActivity(progress: Double, startedAt: Date = Date()) {
+        let blue = Self.blue
+        let leading = AnyView(AirDropIconView(size: 18, color: blue))
+        let trailing = AnyView(AirDropProgressRing(startedAt: startedAt, fixedProgress: progress > 0 ? progress : nil))
+
         let activity = LiveActivity(
-            id: "airdrop_live",
+            id: Self.activityId,
             priority: 88,
             style: .pill,
             leading: leading,
             center: nil,
             trailing: trailing,
             tint: blue,
-            duration: 0.8 // Se mantiene viva mientras el timer la refresca
+            duration: nil,
+            customExpandedWidth: ScreenService.shared.currentGeometry.width + Self.progressExtraWidth
         )
-        
         ActivityCenter.shared.publish(activity)
     }
-    
-    /// Al terminar la transferencia: muestra la tarjeta expandida (.card) con checkmark verde
+
+    /// Resultado del envío: alas más anchas con un círculo verde y palomita (o rojo con X), y se retira sola
+    private func publishSendResult(success: Bool, title: String? = nil) {
+        let blue = Self.blue
+        let leading = AnyView(AirDropIconView(size: 18, color: blue))
+        let trailing = AnyView(AirDropResultMark(success: success))
+        if success {
+            AppState.shared.hapticService.triggerExpand()
+        }
+        let activity = LiveActivity(
+            id: Self.activityId,
+            priority: 90,
+            style: .pill,
+            title: title ?? (success ? "Enviado" : "No se envió"),
+            leading: leading,
+            center: nil,
+            trailing: trailing,
+            tint: success ? DesignTokens.green : .red,
+            // ~2.4 s visible + la animación de cierre ≈ 3 s y el notch vuelve a como estaba
+            duration: 2.4,
+            customExpandedWidth: ScreenService.shared.currentGeometry.width + Self.resultExtraWidth
+        )
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+            ActivityCenter.shared.publish(activity)
+        }
+    }
+
+    /// Tarjeta de "recibido": al tocarla abre la ubicación del archivo en Finder
     public func publishCompletedCard(fileName: String, sender: String, fileSize: String? = nil, fileURL: URL? = nil) {
-        let blue = Color(red: 0x0A / 255.0, green: 0x84 / 255.0, blue: 0xFF / 255.0)
-        
+        lastReceivedCardAt = Date()
+        let blue = Self.blue
+
         let leading = AnyView(
             ZStack {
                 Circle()
                     .fill(blue.opacity(0.20))
                     .frame(width: 46, height: 46)
-                
                 AirDropIconView(size: 24, color: blue)
             }
         )
-        
-        let subtitleText = (fileSize != nil && !fileSize!.isEmpty) ? "\(fileName) (\(fileSize!))" : "\(fileName)"
+
+        let subtitleText = (fileSize?.isEmpty == false) ? "\(fileName) (\(fileSize!))" : fileName
         let titleText = (!sender.isEmpty && sender != "AirDrop") ? "AirDrop de \(sender)" : "AirDrop recibido"
-        
+
         let center = AnyView(
             VStack(alignment: .leading, spacing: 3) {
                 Text(titleText)
                     .liveActivityTitle()
                 Text(subtitleText)
                     .liveActivitySubtitle()
+                if fileURL != nil {
+                    Text("Toca para ver en Finder")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(blue.opacity(0.95))
+                }
             }
         )
-        
+
         let trailing = AnyView(
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(DesignTokens.green)
         )
-        
+
         let activity = LiveActivity(
-            id: "airdrop_live",
+            id: Self.activityId,
             priority: 90,
             style: .card,
             leading: leading,
             center: center,
             trailing: trailing,
             tint: blue,
-            duration: 4.5,
+            duration: 5.0,
             onTap: {
                 if let url = fileURL {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
+                    ActivityCenter.shared.dismissWithAnimation(id: Self.activityId)
                 } else {
                     AppState.shared.expand()
                 }
             }
         )
-        
         ActivityCenter.shared.publish(activity)
     }
 }
 
+// MARK: - Piezas visuales
+
+/// Anillo azul de progreso. Sin porcentaje real disponible, avanza de forma estimada y nunca llega al
+/// 100% por sí solo (el resultado real lo cierra).
+private struct AirDropProgressRing: View {
+    let startedAt: Date
+    let fixedProgress: Double?
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: fixedProgress != nil)) { context in
+            let elapsed = context.date.timeIntervalSince(startedAt)
+            let progress = fixedProgress ?? min(0.92, 1 - exp(-elapsed / 1.6))
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.20), lineWidth: 2.2)
+                Circle()
+                    .trim(from: 0, to: CGFloat(max(0.04, progress)))
+                    .stroke(AirDropActivityProvider.blue, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 17, height: 17)
+        }
+    }
+}
+
+/// Círculo verde con palomita que se dibuja (o rojo con X si falló). Minimalista.
+private struct AirDropResultMark: View {
+    let success: Bool
+    @State private var drawn = false
+
+    var body: some View {
+        let color = success ? DesignTokens.green : Color.red
+        ZStack {
+            Circle()
+                .trim(from: 0, to: drawn ? 1 : 0)
+                .stroke(color, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Image(systemName: success ? "checkmark" : "xmark")
+                .font(.system(size: 9, weight: .heavy))
+                .foregroundColor(color)
+                .scaleEffect(drawn ? 1 : 0.3)
+                .opacity(drawn ? 1 : 0)
+        }
+        .frame(width: 19, height: 19)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.45)) { drawn = true }
+        }
+    }
+}

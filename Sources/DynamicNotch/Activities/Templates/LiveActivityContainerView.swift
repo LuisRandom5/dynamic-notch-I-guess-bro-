@@ -92,6 +92,11 @@ public struct LiveActivityContainerView: View {
                             ))
                     } else {
                         ActivityCardView(activity: activity)
+                            // Toda la tarjeta responde al toque (p. ej. "AirDrop recibido" abre el archivo)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                activity.onTap?()
+                            }
                             .transition(.asymmetric(
                                 insertion: .opacity.animation(.easeInOut(duration: 0.18)),
                                 removal: .opacity.animation(.easeOut(duration: 0.10))

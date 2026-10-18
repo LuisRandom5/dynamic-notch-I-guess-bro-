@@ -171,7 +171,7 @@ public final class NotchWindowManager: ObservableObject {
             }
             switch activity.style {
             case .pill:
-                updateHitArea(width: geom.width + 190, height: max(50, geom.height + 14))
+                updateHitArea(width: (activity.customExpandedWidth ?? (geom.width + 170)) + 20, height: max(50, geom.height + 14))
             case .sliderPill:
                 updateHitArea(width: geom.width + 296, height: max(50, geom.height + 14))
             case .airpodsPill:

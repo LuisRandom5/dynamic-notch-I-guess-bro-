@@ -339,6 +339,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Iniciar observador en tiempo real de transferencias AirDrop
         AirDropObserverService.shared.startObserving()
+        // Envíos y recepciones en tiempo real desde el registro de sharingd
+        AirDropTransferMonitor.shared.start()
         
         // Iniciar servidor local de interacción con herramientas de IA (Antigravity / dnotch)
         AgentIPCService.shared.start()
@@ -378,6 +380,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NowPlayingService.shared.stop()
         AudioSpectrumEngine.shared.stopCapture()
         AirDropObserverService.shared.stopObserving()
+        AirDropTransferMonitor.shared.stop()
         LockScreenManager.shared.cleanup()
         LockScreenSkyLightBridge.shared.cleanupActiveSpace()
         print("Dynamic Notch finalizado limpiamente.")

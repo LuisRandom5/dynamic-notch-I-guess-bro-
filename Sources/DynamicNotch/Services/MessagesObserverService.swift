@@ -116,6 +116,15 @@ public final class MessagesObserverService: ObservableObject {
                 continue
             }
             
+            // AirDrop: Dynamic Notch muestra su propia animación (AirDropTransferMonitor), así que el aviso
+            // nativo de macOS se cierra al instante
+            let isAirDrop = strings.contains { $0.lowercased().contains("airdrop") }
+            if isAirDrop {
+                DNDLogger.log("MessagesObserverService: aviso nativo de AirDrop cerrado: \(strings.prefix(3))")
+                dismissNativeBanner(win)
+                continue
+            }
+            
             // Detectar el origen
             let isWhatsApp = strings.contains { s in
                 let l = s.lowercased()

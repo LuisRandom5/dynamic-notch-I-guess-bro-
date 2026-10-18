@@ -179,21 +179,15 @@ public final class AirDropObserverService {
         
         DispatchQueue.main.async {
             print("📦 [AirDropObserverService] Archivo de AirDrop detectado: \(fileName) (\(formattedSize))")
-            AppState.shared.hapticService.triggerSnap()
-            
-            // 1. Mostrar fase inicial de alas de progreso (0.75s)
-            AirDropActivityProvider.shared.publishTransferActivity(progress: 1.0)
-            
-            // 2. Transición orgánica a la tarjeta de éxito
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                AppState.shared.hapticService.triggerExpand()
-                AirDropActivityProvider.shared.publishCompletedCard(
-                    fileName: fileName,
-                    sender: "AirDrop",
-                    fileSize: formattedSize,
-                    fileURL: url
-                )
-            }
+            AppState.shared.hapticService.triggerExpand()
+            // Las alas de progreso ya las mostró AirDropTransferMonitor al empezar la recepción;
+            // aquí sólo se pasa a la tarjeta con el archivo (al tocarla abre su ubicación en Finder)
+            AirDropActivityProvider.shared.publishCompletedCard(
+                fileName: fileName,
+                sender: "AirDrop",
+                fileSize: formattedSize,
+                fileURL: url
+            )
         }
     }
 }
