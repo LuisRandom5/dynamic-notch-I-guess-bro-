@@ -105,6 +105,7 @@ public struct DynamicNotchBackgroundView: View {
     public var stretch: CGFloat
     public var verticalStretch: CGFloat
     public var isExpanded: Bool
+    public var topBleed: CGFloat
 
     public init(
         topRadius: CGFloat,
@@ -113,8 +114,10 @@ public struct DynamicNotchBackgroundView: View {
         darknessOpacity: Double = 0.55,
         stretch: CGFloat = 0,
         verticalStretch: CGFloat = 0,
-        isExpanded: Bool = true
+        isExpanded: Bool = true,
+        topBleed: CGFloat = 0
     ) {
+        self.topBleed = topBleed
         self.topRadius = topRadius
         self.bottomRadius = bottomRadius
         self.isLiquidGlass = isLiquidGlass
@@ -129,7 +132,8 @@ public struct DynamicNotchBackgroundView: View {
             topRadius: topRadius,
             bottomRadius: bottomRadius,
             stretch: stretch,
-            verticalStretch: verticalStretch
+            verticalStretch: verticalStretch,
+            topBleed: topBleed
         )
         
         // Accesibilidad: Si el usuario activó "Reducir transparencia" o "Aumentar contraste", usar Negro Puro OLED

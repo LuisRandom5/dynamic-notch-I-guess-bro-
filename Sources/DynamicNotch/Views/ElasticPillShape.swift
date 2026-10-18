@@ -6,17 +6,23 @@ public struct ElasticPillShape: Shape {
     public var bottomRadius: CGFloat
     public var stretch: CGFloat // Negativo = jala izquierda, Positivo = jala derecha
     public var verticalStretch: CGFloat // Positivo = jala hacia abajo, anclado arriba
+    /// Sangrado (pt) del tramo superior plano por encima de `rect.minY`.
+    /// Con la forma pegada al bisel, ese tramo queda fuera de la ventana: el borde de contacto nunca cae en
+    /// un subpíxel parcialmente cubierto (parpadeo de 1 px en monitores 1x durante el overscroll).
+    public var topBleed: CGFloat
     
     public init(
         topRadius: CGFloat = 0,
         bottomRadius: CGFloat = 50,
         stretch: CGFloat = 0,
-        verticalStretch: CGFloat = 0
+        verticalStretch: CGFloat = 0,
+        topBleed: CGFloat = 0
     ) {
         self.topRadius = topRadius
         self.bottomRadius = bottomRadius
         self.stretch = stretch
         self.verticalStretch = verticalStretch
+        self.topBleed = topBleed
     }
     
     public var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
@@ -56,11 +62,17 @@ public struct ElasticPillShape: Shape {
         let topR = max(0, min(topRadius, width / 2.0, activeHeight / 2.0))
         let botR = max(0, min(bottomRadius, width / 2.0, activeHeight / 2.0))
         
-        // 1. Inicia en borde superior tras esquina superior izquierda
-        path.move(to: CGPoint(x: minX + topR, y: minY))
+        let bleed = max(0, topBleed)
         
-        // 2. Línea superior
-        path.addLine(to: CGPoint(x: maxX - topR, y: minY))
+        // 1. Inicia en borde superior tras esquina superior izquierda (sangrado hacia arriba si aplica)
+        path.move(to: CGPoint(x: minX + topR, y: minY - bleed))
+        
+        // 2. Línea superior; si hay sangrado, baja en vertical hasta el inicio del arco: el arco sigue
+        //    naciendo con tangente horizontal exacta en y = minY
+        path.addLine(to: CGPoint(x: maxX - topR, y: minY - bleed))
+        if bleed > 0 {
+            path.addLine(to: CGPoint(x: maxX - topR, y: minY))
+        }
         
         // 3. Esquina superior derecha
         if topR > 0 {
@@ -105,6 +117,9 @@ public struct ElasticPillShape: Shape {
             )
         } else {
             path.addLine(to: CGPoint(x: minX, y: minY))
+        }
+        if bleed > 0 {
+            path.addLine(to: CGPoint(x: minX + topR, y: minY - bleed))
         }
         
         path.closeSubpath()

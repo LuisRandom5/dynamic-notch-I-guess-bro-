@@ -295,6 +295,12 @@ public struct NotchContainerView: View {
         return currentHeight + notifPull
     }
     
+    /// Sangrado superior de la silueta mientras está pegada al bisel (ver ElasticPillShape.topBleed).
+    /// Si la isla se despega hacia abajo, se anula para no asomar por encima.
+    private var shapeTopBleed: CGFloat {
+        containerOffsetY <= 0.5 ? 2.0 : 0.0
+    }
+    
     private var containerOffsetY: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return 0 // Anclado arriba contra el notch físico: solo se estira hacia abajo sin separarse
@@ -628,7 +634,8 @@ public struct NotchContainerView: View {
                         darknessOpacity: appState.glassDarknessOpacity,
                         stretch: 0,
                         verticalStretch: 0,
-                        isExpanded: appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil
+                        isExpanded: appState.mode == .expanded || appState.mode == .shelf || isCollapsing || appState.isDropInvitationActive || (activityCenter.currentActivity?.style == .card) || agentProvider.isProgressHUDExpanded || activityCenter.expandedActivity != nil,
+                        topBleed: shapeTopBleed
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                     
