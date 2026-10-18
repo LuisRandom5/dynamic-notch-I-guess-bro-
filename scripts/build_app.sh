@@ -64,6 +64,8 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>Dynamic Notch necesita controlar la música para mostrar canciones y controles.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Sólo mientras reproduces música o video, para que las barras del notch sigan el sonido. No se graba ni se guarda nada.</string>
     <key>NSContactsUsageDescription</key>
     <string>Dynamic Notch necesita acceder a tus contactos para mostrar la foto y el nombre de quien te llama.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>

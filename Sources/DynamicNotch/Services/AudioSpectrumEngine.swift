@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CoreAudio
 import AudioToolbox
 import Accelerate
@@ -34,11 +35,19 @@ public struct SpectrumTelemetryFrame {
 public final class AudioSpectrumEngine: ObservableObject {
     public static let shared = AudioSpectrumEngine()
     
-    /// Política de privacidad del producto: Dynamic Notch NO graba audio del sistema ni del micrófono.
-    /// Con esto en false ninguna ruta (Ajustes, laboratorio, restauración de UserDefaults) puede crear un
-    /// Process Tap ni abrir la entrada de audio, así que macOS nunca muestra el indicador morado/naranja.
-    /// El visualizador usa ProceduralMotionEngine.
-    public static let systemCaptureAllowed = false
+    /// Opción del usuario "Barras que siguen la música" (Ajustes). Si está activa, se captura el audio del
+    /// sistema (Process Tap privado) SÓLO mientras algo se reproduce: macOS muestra el indicador morado
+    /// únicamente en ese tiempo. Apagada: nunca se crea un tap y las barras usan el motor procedural.
+    /// El micrófono nunca se usa.
+    public static var systemCaptureAllowed: Bool {
+        UserDefaults.standard.object(forKey: realAudioBarsKey) as? Bool ?? true
+    }
+    private static let realAudioBarsKey = "realAudioBarsEnabled"
+    /// El micrófono nunca se usa para el visualizador (ni desde el laboratorio de depuración)
+    public static let microphoneCaptureAllowed = false
+    
+    /// Margen tras pausar antes de soltar la captura: evita que el indicador parpadee entre canciones
+    private static let captureReleaseDelay: TimeInterval = 2.5
     
     /// Pipeline experimental que descarga el preview de 30 s de iTunes y le corre FFT a 60 Hz.
     /// Apagado: ese fragmento no está alineado con lo que suena, gasta CPU/red y su salida no llega a las barras
@@ -46,6 +55,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     public static let previewAnalysisEnabled = false
     
     // Estados públicos
+    @Published public private(set) var realAudioBarsEnabled: Bool = AudioSpectrumEngine.systemCaptureAllowed
     @Published public private(set) var isRunning: Bool = false
     @Published public private(set) var isRealAudioActive: Bool = false
     @Published public private(set) var isSilent: Bool = true
@@ -179,9 +189,7 @@ public final class AudioSpectrumEngine: ObservableObject {
         tapEnabled = tapEnabled && Self.systemCaptureAllowed
         self.enableSystemAudioTap = tapEnabled
         cleanupOrphanedAggregateDevicesAndTaps()
-        if tapEnabled {
-            setupProcessTapCapture()
-        }
+        // La captura NO arranca aquí: sólo mientras algo se reproduce (ver startPlaybackGatedCapture)
         if Self.previewAnalysisEnabled {
             startZeroIndicatorPipeline()
         }
@@ -228,7 +236,7 @@ public final class AudioSpectrumEngine: ObservableObject {
     
     // MARK: - Captura de Hardware (Micrófono / Entrada Predeterminada)
     private func setupHardwareInputCapture() {
-        guard Self.systemCaptureAllowed else { return }
+        guard Self.microphoneCaptureAllowed else { return }
         var devID = AudioObjectID(0)
         var size = UInt32(MemoryLayout<AudioObjectID>.size)
         var address = AudioObjectPropertyAddress(
@@ -453,10 +461,70 @@ public final class AudioSpectrumEngine: ObservableObject {
     }
     
     private func restartProcessTap() {
+        // Cambio de salida (AirPods, HDMI…): rehacer el tap sólo si estaba capturando
+        let wasCapturing = tapIOProcID != nil
         teardownProcessTap()
-        if enableSystemAudioTap {
+        if enableSystemAudioTap && wasCapturing {
             setupProcessTapCapture()
         }
+    }
+    
+    // MARK: - Captura sólo durante la reproducción
+    
+    private var playbackObserver: AnyCancellable?
+    private var pendingCaptureRelease: DispatchWorkItem?
+    
+    /// Enciende la captura cuando algo empieza a sonar y la suelta (con margen) al pausar o terminar.
+    /// Se llama una vez al arrancar la app.
+    public func startPlaybackGatedCapture() {
+        guard playbackObserver == nil else { return }
+        playbackObserver = MusicService.shared.$currentTrack
+            .map(\.isPlaying)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isPlaying in
+                self?.updateCaptureForPlayback(isPlaying: isPlaying)
+            }
+    }
+    
+    /// Opción de Ajustes "Barras que siguen la música".
+    public func setRealAudioBarsEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.realAudioBarsKey)
+        realAudioBarsEnabled = enabled
+        pendingCaptureRelease?.cancel()
+        if enabled {
+            // Sólo captura si en este momento algo suena
+            updateCaptureForPlayback(isPlaying: MusicService.shared.currentTrack.isPlaying)
+        } else {
+            enableSystemAudioTap = false // didSet destruye el tap: el indicador morado se va de inmediato
+        }
+    }
+    
+    private func updateCaptureForPlayback(isPlaying: Bool) {
+        pendingCaptureRelease?.cancel()
+        pendingCaptureRelease = nil
+        
+        if isPlaying && Self.systemCaptureAllowed {
+            if !enableSystemAudioTap {
+                enableSystemAudioTap = true // didSet ya arranca el tap
+            }
+            if tapIOProcID == nil {
+                DNDLogger.log("AudioSpectrumEngine: ▶️ Reproducción detectada → captura de audio encendida")
+                setupProcessTapCapture()
+            }
+            return
+        }
+        
+        guard tapIOProcID != nil || aggregateDeviceID != 0 || tapID != 0 else { return }
+        let release = DispatchWorkItem { [weak self] in
+            guard let self = self, !MusicService.shared.currentTrack.isPlaying else { return }
+            DNDLogger.log("AudioSpectrumEngine: ⏸ Sin reproducción → captura de audio apagada (sin indicador morado)")
+            self.teardownProcessTap()
+            self.isRealAudioActive = false
+            self.isRunning = false
+        }
+        pendingCaptureRelease = release
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureReleaseDelay, execute: release)
     }
     
     private func teardownProcessTap() {

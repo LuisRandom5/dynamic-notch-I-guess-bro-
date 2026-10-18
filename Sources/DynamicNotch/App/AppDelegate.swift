@@ -346,6 +346,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // El temporizador cede el notch a la música/video (y vuelve cuando se detiene)
         ActivityCenter.shared.startObservingPlayback()
         
+        // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
+        AudioSpectrumEngine.shared.startPlaybackGatedCapture()
+        
         // Precalentar la canalización de Liquid Glass en GPU para evitar saltos en el primer despliegue
         if #available(macOS 26.0, *) {
             DispatchQueue.main.async {
