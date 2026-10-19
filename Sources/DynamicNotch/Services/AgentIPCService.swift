@@ -334,6 +334,43 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("POST", "/debug/expand"):
+            // Diagnóstico: expande la tarjeta de una actividad como mantener presionada su bolita ({"id": "..."})
+            let targetId = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["id"] as? String
+            DispatchQueue.main.async {
+                let center = ActivityCenter.shared
+                if let id = targetId, let activity = center.activeActivities.first(where: { $0.id == id }) {
+                    center.initiateFusion(for: activity)
+                } else if center.expandedActivity != nil {
+                    center.collapseExpandedActivity()
+                }
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
+        case ("POST", "/debug/sample-activity"):
+            // Diagnóstico: una descarga de ejemplo sin tarjeta propia (usa la plantilla expandida por defecto).
+            // {"progress": 0.4, "subtitle": "...", "remove": true}
+            let json = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any]) ?? [:]
+            DispatchQueue.main.async {
+                if json["remove"] as? Bool == true {
+                    ActivityCenter.shared.end(id: "sample_download", dismissAfter: 0)
+                    return
+                }
+                let progress = json["progress"] as? Double ?? 0.4
+                ActivityCenter.shared.publish(LiveActivity(
+                    id: "sample_download",
+                    kind: .download,
+                    style: .pill,
+                    title: "Descargando",
+                    subtitle: json["subtitle"] as? String ?? "macOS 27.1.ipsw · \(Int(progress * 8)) de 8 GB",
+                    progress: progress,
+                    bolitaVariant: .progressRing(progress: progress, strokeColor: DesignTokens.blue, iconName: "arrow.down"),
+                    tint: DesignTokens.blue,
+                    onTap: { NSWorkspace.shared.open(FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]) }
+                ))
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]

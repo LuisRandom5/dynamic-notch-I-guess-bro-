@@ -437,7 +437,8 @@ private struct TimerPillTrailingView: View {
         Text(provider.compactFormattedDuration)
             .font(.system(size: 13, weight: .bold, design: .rounded))
             .monospacedDigit()
-            .contentTransition(.numericText())
+            // La cuenta regresiva rueda hacia abajo, como el temporizador de la Isla Dinámica
+            .contentTransition(.numericText(countsDown: provider.mode == .countdown))
             .foregroundColor(DesignTokens.orange)
             .padding(.trailing, 6)
     }

@@ -557,30 +557,8 @@ public struct NotchContainerView: View {
         } else if let customView = expandedAct.customView {
             customView
         } else {
-            let titleText: String = expandedAct.title ?? expandedAct.kind.rawValue.capitalized
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: expandedAct.bolitaVariant?.iconName ?? "star.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(expandedAct.tint)
-                    Text(titleText)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Button("Cerrar") {
-                        activityCenter.collapseExpandedActivity()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                if let subtitle = expandedAct.subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 22)
-            .padding(.top, 36)
-            .padding(.bottom, 18)
+            // Plantilla de Apple: regiones alrededor de la cámara, márgenes concéntricos y alto según el contenido
+            DefaultActivityExpandedView(activity: expandedAct)
         }
     }
     

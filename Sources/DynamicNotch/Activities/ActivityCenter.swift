@@ -205,6 +205,18 @@ public final class ActivityCenter: ObservableObject {
         recalculateRoles()
     }
     
+    /// Alto dinámico de la expandida (IslandExpandedTemplate): la tarjeta se ajusta a lo que mide su contenido,
+    /// dentro del rango de Apple, y cambia con una animación de layout cuando llega más o menos información
+    public func reportExpandedContentHeight(_ height: CGFloat) {
+        guard expandedActivity != nil, height > 0 else { return }
+        let target = IslandMetrics.expandedHeight(forContent: height)
+        guard abs((customCardHeight ?? 0) - target) > 0.5 else { return }
+        withAnimation(AnimationSpeedManager.shared.spring(response: 0.42, dampingFraction: 0.86)) {
+            customCardHeight = target
+        }
+        NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
+    
     // MARK: - Ciclo de vida: alertas, 8 h, obsoleto y cierre con resumen
     
     /// Alerta de una actualización (ActivityAlertConfiguration): se espera un instante para que la bolita o el
@@ -698,10 +710,11 @@ public final class ActivityCenter: ObservableObject {
             
             withAnimation(AnimationSpeedManager.shared.spring(response: 0.40, dampingFraction: 0.82)) {
                 self.expandedActivity = activity
-                self.customCardWidth = activity.customExpandedWidth ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudWidth : 420)
-                self.customCardHeight = activity.customExpandedHeight ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudHeight : 160)
+                // Sin medidas propias: la plantilla expandida de Apple (ancho 408, alto según su contenido)
+                self.customCardWidth = activity.customExpandedWidth ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudWidth : IslandMetrics.expandedWidth.upperBound)
+                self.customCardHeight = activity.customExpandedHeight ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudHeight : IslandExpandedTemplateMetrics.initialHeight)
                 self.customTopRadius = 24
-                self.customBottomRadius = 28
+                self.customBottomRadius = IslandExpandedTemplateMetrics.defaultOuterRadius
                 self.recalculateRoles()
             }
             
@@ -758,10 +771,10 @@ public final class ActivityCenter: ObservableObject {
         
         withAnimation(AnimationSpeedManager.shared.spring(response: 0.38, dampingFraction: 0.82)) {
             self.expandedActivity = newActivity
-            self.customCardWidth = newActivity.customExpandedWidth ?? (newActivity.kind == .agentAI ? AgentLiveProgressView.hudWidth : 420)
-            self.customCardHeight = newActivity.customExpandedHeight ?? (newActivity.kind == .agentAI ? AgentLiveProgressView.hudHeight : 160)
+            self.customCardWidth = newActivity.customExpandedWidth ?? (newActivity.kind == .agentAI ? AgentLiveProgressView.hudWidth : IslandMetrics.expandedWidth.upperBound)
+            self.customCardHeight = newActivity.customExpandedHeight ?? (newActivity.kind == .agentAI ? AgentLiveProgressView.hudHeight : IslandExpandedTemplateMetrics.initialHeight)
             self.customTopRadius = 24
-            self.customBottomRadius = 28
+            self.customBottomRadius = IslandExpandedTemplateMetrics.defaultOuterRadius
             self.fusionProgress = 1.0
             self.recalculateRoles()
         }
@@ -873,8 +886,8 @@ public final class ActivityCenter: ObservableObject {
         
         withAnimation(AnimationSpeedManager.shared.spring(response: 0.38, dampingFraction: 0.82)) {
             self.expandedActivity = activity
-            self.customCardWidth = activity.customExpandedWidth ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudWidth : 420)
-            self.customCardHeight = activity.customExpandedHeight ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudHeight : 160)
+            self.customCardWidth = activity.customExpandedWidth ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudWidth : IslandMetrics.expandedWidth.upperBound)
+            self.customCardHeight = activity.customExpandedHeight ?? (activity.kind == .agentAI ? AgentLiveProgressView.hudHeight : IslandExpandedTemplateMetrics.initialHeight)
             self.customTopRadius = 24
             self.customBottomRadius = 28
             self.recalculateRoles()
