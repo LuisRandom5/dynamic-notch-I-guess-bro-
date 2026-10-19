@@ -44,6 +44,7 @@ public enum ArtworkGradientCache {
                     if cache.count > 32 {
                         cache.removeAll(keepingCapacity: true)
                     }
+                    if cache.count > 64 { cache.removeAll() }
                     cache[key] = extracted
                 }
                 lock.unlock()
@@ -164,14 +165,20 @@ public struct AudioVisualizer: View {
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
+    /// Cuadros por segundo de las barras: en las alas del notch (pequeñas) 30 se ve igual de fluido y cuesta la
+    /// mitad del hilo principal que 60
+    public var framesPerSecond: Double = 60
+
     public init(
         isPlaying: Bool,
         colorMode: VisualizerColorMode = .fixedGradient,
-        customGradient: LinearGradient? = nil
+        customGradient: LinearGradient? = nil,
+        framesPerSecond: Double = 60
     ) {
         self.isPlaying = isPlaying
         self.colorMode = colorMode
         self.customGradient = customGradient
+        self.framesPerSecond = framesPerSecond
     }
     
     private var resolvedGradient: LinearGradient {
@@ -187,7 +194,7 @@ public struct AudioVisualizer: View {
     
     public var body: some View {
         // Sincronizado al refresco de pantalla: cada cuadro lee el motor una vez, sin timers ni animaciones encadenadas
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isAnimating)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / max(15, framesPerSecond), paused: !isAnimating)) { context in
             let heights = barHeights(at: context.date)
             // HStack centrado verticalmente: las barras crecen simétricamente hacia arriba y hacia abajo
             HStack(alignment: .center, spacing: PlayerMetrics.visualizerBarSpacing) {

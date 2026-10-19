@@ -209,6 +209,13 @@ public final class AppState: ObservableObject {
             ScreenService.shared.updateScreenGeometry()
         }
     }
+    /// Separación de la isla flotante con el borde superior (pt); -1 = automática (≈ 30 % del alto, como el iPhone)
+    @Published public var islandTopInset: Double = UserDefaults.standard.object(forKey: "islandTopInset") as? Double ?? -1 {
+        didSet {
+            UserDefaults.standard.set(islandTopInset, forKey: "islandTopInset")
+            ScreenService.shared.updateScreenGeometry()
+        }
+    }
     /// La isla flotante se ve en reposo (como el iPhone) o sólo cuando hay algo
     @Published public var islandVisibleAtRest: Bool = UserDefaults.standard.object(forKey: "islandVisibleAtRest") != nil
         ? UserDefaults.standard.bool(forKey: "islandVisibleAtRest") : true {

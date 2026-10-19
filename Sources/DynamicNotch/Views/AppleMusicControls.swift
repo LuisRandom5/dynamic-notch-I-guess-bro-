@@ -126,18 +126,41 @@ private struct SkipGlyphFrame: View, Animatable {
 
 // MARK: - Cambio de carátula
 
+/// Giro de la carátula alrededor de su eje vertical (como pasar una página)
+private struct ArtworkFlipModifier: ViewModifier {
+    let angle: Double
+    let opacity: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+            .opacity(opacity)
+    }
+}
+
 public extension AnyTransition {
-    /// Carátula que cambia de canción, como Apple Music: la nueva crece con un rebote leve mientras la vieja se
-    /// encoge y se desvanece; un poco hacia el lado del salto (siguiente → desde la derecha)
+    /// Carátula que cambia de canción: la vieja gira hasta quedar de canto y, ya de canto, la nueva sigue el giro
+    /// hasta quedar de frente, como pasar una página (hacia la derecha al ir a la siguiente; al revés al regresar)
     static func artworkSwap(direction: CGFloat = 1) -> AnyTransition {
-        .asymmetric(
-            insertion: .scale(scale: 0.78).combined(with: .opacity).combined(with: .offset(x: 6 * direction)),
-            removal: .scale(scale: 0.78).combined(with: .opacity).combined(with: .offset(x: -6 * direction))
+        let turn = direction >= 0 ? 1.0 : -1.0
+        let half = ArtworkSwapTiming.half
+        return .asymmetric(
+            insertion: .modifier(active: ArtworkFlipModifier(angle: -90 * turn, opacity: 0),
+                                 identity: ArtworkFlipModifier(angle: 0, opacity: 1))
+                .animation(.spring(response: half * 2.1, dampingFraction: 0.78).delay(half)),
+            removal: .modifier(active: ArtworkFlipModifier(angle: 90 * turn, opacity: 0),
+                               identity: ArtworkFlipModifier(angle: 0, opacity: 1))
+                .animation(.easeIn(duration: half))
         )
     }
 }
 
+public enum ArtworkSwapTiming {
+    /// Media vuelta (la vieja hasta quedar de canto)
+    public static let half: Double = 0.16
+}
+
 public extension Animation {
-    /// Resorte del cambio de carátula
-    static var artworkSwap: Animation { .spring(response: 0.42, dampingFraction: 0.68) }
+    /// Transacción del cambio de carátula (cada mitad trae su propia curva, ver artworkSwap)
+    static var artworkSwap: Animation { .easeInOut(duration: ArtworkSwapTiming.half * 2) }
 }

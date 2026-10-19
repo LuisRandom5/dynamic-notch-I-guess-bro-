@@ -31,6 +31,8 @@ public final class ScreenService: ObservableObject {
         let placement = SurfaceGeometry.ScreenPlacement(rawValue: defaults.string(forKey: "islandScreenPlacement") ?? "") ?? .automatic
         let style = SurfaceGeometry.IslandStyle(rawValue: defaults.string(forKey: "islandStyle") ?? "") ?? .floating
         let sizeMode = defaults.string(forKey: "islandSizeMode") ?? "menuBar"
+        // Separación elegida por el usuario (Ajustes); < 0 = automática, como el iPhone
+        let customInset = defaults.object(forKey: "islandTopInset") as? Double ?? -1
         let screens = NSScreen.screens
         let main = NSScreen.main ?? screens.first
         let cursorIndex = Self.screenIndex(containing: NSEvent.mouseLocation, in: screens)
@@ -44,18 +46,23 @@ public final class ScreenService: ObservableObject {
             cursorIndex: cursorIndex,
             islandStyle: style,
             islandMetrics: { index in
-                // "Barra de menús" (por defecto): la isla cabe en la barra y no tapa ventanas; "iPhone": 126 × 32
-                guard sizeMode != "iphone", screens.indices.contains(index) else {
-                    return (SurfaceGeometry.floatingIslandSize, SurfaceGeometry.floatingIslandTopInset)
-                }
-                let screen = screens[index]
-                return SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: screen.frame.maxY - screen.visibleFrame.maxY)
+                let metrics = Self.islandMetrics(index: index, screens: screens, sizeMode: sizeMode)
+                return customInset >= 0 ? (metrics.size, CGFloat(customInset)) : metrics
             }
         )
         let screen = resolved.screenIndex.map { screens[$0] } ?? main
         if screen != targetScreen { self.targetScreen = screen }
         if resolved.geometry != currentGeometry { self.currentGeometry = resolved.geometry }
         updateCursorFollowing(enabled: placement == .followCursor && screens.count > 1)
+    }
+
+    /// "Barra de menús" (por defecto): la isla cabe en la barra y no tapa ventanas; "iPhone": 126 × 32
+    private static func islandMetrics(index: Int, screens: [NSScreen], sizeMode: String) -> (size: CGSize, topInset: CGFloat) {
+        guard sizeMode != "iphone", screens.indices.contains(index) else {
+            return (SurfaceGeometry.floatingIslandSize, SurfaceGeometry.floatingIslandTopInset)
+        }
+        let screen = screens[index]
+        return SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: screen.frame.maxY - screen.visibleFrame.maxY)
     }
 
     private static func screenIndex(containing point: NSPoint, in screens: [NSScreen]) -> Int? {

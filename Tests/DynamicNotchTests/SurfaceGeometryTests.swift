@@ -116,11 +116,11 @@ import Testing
         #expect(r.geometry.kind == .floatingIsland)
     }
 
-    @Test func menuBarIslandFitsInsideTheBar() {
+    @Test func menuBarIslandIsSizedToTheBar() {
         let m = SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: 24)
         #expect(m.size.height == 22)
-        #expect(m.topInset == 1)
-        #expect(m.topInset + m.size.height <= 24)
+        // Separada del borde como en el iPhone (≈ 30 % del alto)
+        #expect(m.topInset == 7)
         // Barra oculta: alto típico
         #expect(SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: 0).size.height == 22)
     }

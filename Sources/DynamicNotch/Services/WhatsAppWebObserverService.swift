@@ -109,7 +109,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
             self.isEnabled = UserDefaults.standard.bool(forKey: "enableWhatsAppWebObserver")
         }
         let savedInterval = UserDefaults.standard.double(forKey: "whatsAppWebPollInterval")
-        self.pollInterval = savedInterval >= 0.5 ? savedInterval : 0.8
+        // 1.5 s por defecto (escanear el navegador por accesibilidad cuesta; 0.8 s gastaba ~5 % de CPU). El valor
+        // viejo por defecto (0.8) se migra
+        self.pollInterval = savedInterval >= 0.5 && abs(savedInterval - 0.8) > 0.001 ? savedInterval : 1.5
     }
     
     /// Inicia el monitor en segundo plano
@@ -137,6 +139,11 @@ public final class WhatsAppWebObserverService: ObservableObject {
     
     /// Realiza un sondeo inmediato de WhatsApp Web
     private var runningBundleIdsCache: Set<String>?
+    /// Último sondeo encontró WhatsApp Web (si no, se sondea más espaciado)
+    private var foundWhatsAppLastTime = true
+    private var idleSkips = 0
+    /// App al frente al iniciar el sondeo
+    private var frontmostBundleIdSnapshot = ""
     private var runningAppsObservers: [NSObjectProtocol] = []
 
     private func cachedRunningBundleIds() -> Set<String> {
@@ -169,6 +176,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
         ]
         let activeBrowsers = supportedBrowsers.filter { runningBundleIds.contains($0) }
         guard !activeBrowsers.isEmpty else { return }
+        // Sin pestaña de WhatsApp en el último sondeo: se revisa cada ~4 s en vez de cada 0.8 s (escanear los
+        // navegadores por accesibilidad es lo más caro del app)
+        idleSkips += 1
+        if !foundWhatsAppLastTime && idleSkips < 5 { return }
+        idleSkips = 0
+        frontmostBundleIdSnapshot = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         
         isQuerying = true
         
@@ -178,10 +191,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
             
             // 1. Escaneo en tiempo real de chats vía Accessibility API
             let didScanAX = self.scanChatsViaAccessibility(activeBrowsers: activeBrowsers)
+            if didScanAX { DispatchQueue.main.async { self.foundWhatsAppLastTime = true } }
             
             // 2. Si AX no encontró tablas activas, respaldo con título de ventana
             if !didScanAX {
                 let titles = self.fetchWhatsAppTitlesFromBrowsers(activeBrowsers: activeBrowsers)
+                DispatchQueue.main.async { self.foundWhatsAppLastTime = !titles.isEmpty }
                 guard !titles.isEmpty else { return }
                 
                 // Seleccionar la mejor pestaña de WhatsApp Web en el ciclo actual
@@ -514,11 +529,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
         // Si el usuario no tiene la ventana del navegador en primer plano, debe recibir la notificación emergente.
         if unread == 0 {
             if let prev = knownChatRecords[contact] {
-                let isFrontmostBrowser = NSWorkspace.shared.runningApplications.contains { app in
-                    guard app.isActive else { return false }
-                    let b = app.bundleIdentifier ?? ""
-                    return b == "com.apple.Safari" || b == "com.google.Chrome" || b == "company.thebrowser.Browser" || b == "com.brave.Browser" || b == "net.whatsapp.WhatsApp"
-                }
+                // App al frente leída una vez por sondeo (antes se recorría la lista de apps por cada chat)
+                let b = frontmostBundleIdSnapshot
+                let isFrontmostBrowser = b == "com.apple.Safari" || b == "com.google.Chrome" || b == "company.thebrowser.Browser" || b == "com.brave.Browser" || b == "net.whatsapp.WhatsApp"
                 
                 let lowerMsg = msg.lowercased()
                 let isOutgoing = lowerMsg.hasPrefix("tú:") || lowerMsg.hasPrefix("tu:") || lowerMsg.hasPrefix("you:") || lowerMsg.hasPrefix("✓")

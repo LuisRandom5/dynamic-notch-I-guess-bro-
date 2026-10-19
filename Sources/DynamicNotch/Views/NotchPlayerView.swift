@@ -745,7 +745,8 @@ public struct NotchPlayerView: View {
                     Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: PlayerMetrics.playIconSize, weight: .bold))
                         .foregroundColor(.white)
-                        .contentTransition(.symbolEffect(.replace))
+                        // Al doble de velocidad: la transformación por defecto se sentía lenta
+                        .contentTransition(.symbolEffect(.replace.downUp, options: .speed(2.2)))
                         .frame(width: PlayerMetrics.playPauseWidth, height: PlayerMetrics.playPauseHeight)
                 }
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: track.isPlaying)

@@ -58,7 +58,8 @@ public final class ArtworkResolverService {
         let rasterizedImage = image.rasterized()
         
         cacheLock.lock()
-        if memoryCache.count > 50 { memoryCache.removeAll(keepingCapacity: true) }
+        // Pocas carátulas en memoria: cada una decodificada pesa ~1–2 MB (antes 50 → la memoria crecía con las horas)
+        if memoryCache.count > 12 { memoryCache.removeAll(keepingCapacity: true) }
         memoryCache[key] = rasterizedImage
         cacheLock.unlock()
         

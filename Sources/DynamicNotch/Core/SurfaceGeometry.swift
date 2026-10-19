@@ -113,8 +113,13 @@ public struct SurfaceGeometry: Equatable {
 
     /// Tamaño en reposo de la isla flotante: proporción del iPhone (126 × 37 pt) al alto del notch del Mac
     public static let floatingIslandSize = CGSize(width: 126, height: 32)
-    /// Separación de la isla flotante y el borde superior
-    public static let floatingIslandTopInset: CGFloat = 6
+    /// Separación de la isla flotante y el borde superior: en el iPhone ronda el 30 % del alto de la isla
+    public static let floatingIslandTopInset: CGFloat = iPhoneTopInset(forHeight: floatingIslandSize.height)
+
+    /// Separación proporcional del iPhone (11 pt sobre una isla de 37 pt)
+    public static func iPhoneTopInset(forHeight height: CGFloat) -> CGFloat {
+        (height * 0.3).rounded()
+    }
 
     /// Superficie según la preferencia del usuario:
     /// - automatic: notch físico si existe (en cualquier pantalla); si no, la pantalla principal
@@ -130,7 +135,8 @@ public struct SurfaceGeometry: Equatable {
         let height = max(20, bar - 2)
         // Proporción de la isla flotante (126 × 32)
         let width = (height * floatingIslandSize.width / floatingIslandSize.height).rounded()
-        return (CGSize(width: width, height: height), max(0, (bar - height) / 2))
+        // Como en el iPhone, la isla se separa del borde (se asoma un poco bajo la barra)
+        return (CGSize(width: width, height: height), iPhoneTopInset(forHeight: height))
     }
 
     public static func resolve(screens: [(frame: CGRect, auxiliaryTopLeft: CGRect?, auxiliaryTopRight: CGRect?)],

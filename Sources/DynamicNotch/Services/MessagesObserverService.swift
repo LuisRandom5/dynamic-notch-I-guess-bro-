@@ -62,20 +62,45 @@ public final class MessagesObserverService: ObservableObject {
         timer = nil
     }
     
+    private var tick = 0
+    private static var pidCache: [String: pid_t] = [:]
+    private static var pidCacheObservers: [NSObjectProtocol] = []
+
+    /// pid de una app (en caché; se limpia al abrir o cerrar apps). Sólo en el hilo principal
+    private static func cachedPid(for bundleId: String) -> pid_t? {
+        if pidCacheObservers.isEmpty {
+            let center = NSWorkspace.shared.notificationCenter
+            for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+                pidCacheObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                    pidCache.removeAll()
+                })
+            }
+        }
+        if let pid = pidCache[bundleId] { return pid > 0 ? pid : nil }
+        let pid = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first?.processIdentifier ?? 0
+        pidCache[bundleId] = pid
+        return pid > 0 ? pid : nil
+    }
+
     public func pollMessages() {
         guard isEnabled, !isQuerying else { return }
         isQuerying = true
+        // Los procesos se buscan en caché (pedir la lista de apps 8 veces por segundo costaba ~2 % de CPU) y la
+        // lista de conversaciones de Mensajes se revisa una vez por segundo, no en cada vuelta
+        let ncPid = Self.cachedPid(for: "com.apple.notificationcenterui")
+        tick &+= 1
+        let smsPid = tick % 8 == 0 ? Self.cachedPid(for: "com.apple.MobileSMS") : nil
         
         queue.async { [weak self] in
             defer { self?.isQuerying = false }
             guard let self = self else { return }
             
             // 1. Detección en tiempo real de Banners de Notificación del Sistema (com.apple.notificationcenterui)
-            let didDetectBanner = self.checkNotificationCenterBanners()
+            let didDetectBanner = self.checkNotificationCenterBanners(pid: ncPid)
             
             // 2. Si la app Mensajes (com.apple.MobileSMS) está abierta, inspección profunda de la lista de conversaciones
-            if !didDetectBanner {
-                self.checkMessagesAppConversations()
+            if !didDetectBanner, let smsPid {
+                self.checkMessagesAppConversations(pid: smsPid)
             }
             
             if self.isFirstCheck {
@@ -85,13 +110,10 @@ public final class MessagesObserverService: ObservableObject {
     }
     
     // MARK: - Canal 1: Banners del Centro de Notificaciones (Intercepción y Reemplazo)
-    private func checkNotificationCenterBanners() -> Bool {
-        let apps = NSWorkspace.shared.runningApplications
-        guard let nc = apps.first(where: { $0.bundleIdentifier == "com.apple.notificationcenterui" }) else {
-            return false
-        }
+    private func checkNotificationCenterBanners(pid: pid_t?) -> Bool {
+        guard let pid else { return false }
         
-        let appRef = AXUIElementCreateApplication(nc.processIdentifier)
+        let appRef = AXUIElementCreateApplication(pid)
         var winRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winRef) == .success,
               let wins = winRef as? [AXUIElement], wins.count > 2 else {
@@ -292,13 +314,8 @@ public final class MessagesObserverService: ObservableObject {
     }
     
     // MARK: - Canal 2: App Mensajes Abierta (com.apple.MobileSMS)
-    private func checkMessagesAppConversations() {
-        let apps = NSWorkspace.shared.runningApplications
-        guard let msgApp = apps.first(where: { $0.bundleIdentifier == "com.apple.MobileSMS" }) else {
-            return
-        }
-        
-        let appRef = AXUIElementCreateApplication(msgApp.processIdentifier)
+    private func checkMessagesAppConversations(pid: pid_t) {
+        let appRef = AXUIElementCreateApplication(pid)
         var winRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &winRef) == .success,
               let wins = winRef as? [AXUIElement], let mainWindow = wins.first else {

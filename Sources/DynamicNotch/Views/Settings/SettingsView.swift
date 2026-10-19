@@ -1788,6 +1788,13 @@ extension SettingsView {
                 subtitle: "La isla flotante cabe en la barra de menús y no tapa las ventanas de abajo. Apagado: tamaño del iPhone (126 × 32 pt), un poco más grande.",
                 isOn: $appState.islandFitsMenuBar
             )
+            SliderRow(
+                title: "Separación del borde",
+                subtitle: "Espacio entre la parte de arriba de la pantalla y la isla flotante. Automática: como el iPhone (≈ 30 % del alto de la isla).",
+                value: $appState.islandTopInset,
+                range: -1...16, step: 1,
+                display: { $0 < 0 ? "Auto" : "\(Int($0)) pt" }
+            )
             ToggleRow(
                 title: "Visible en reposo",
                 subtitle: "En una pantalla sin notch, la isla se ve aunque no haya nada (como el iPhone). Apagado: aparece sólo con música o actividades.",

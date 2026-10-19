@@ -105,7 +105,8 @@ public struct NotchCompactView: View {
                 HStack(spacing: 5) {
                     AudioVisualizer(
                         isPlaying: musicService.currentTrack.isPlaying,
-                        colorMode: .fromArtwork(musicService.currentTrack.artwork)
+                        colorMode: .fromArtwork(musicService.currentTrack.artwork),
+                        framesPerSecond: 30
                     )
                     .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
                 }
