@@ -371,6 +371,16 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("POST", "/debug/appearance"):
+            // Diagnóstico: cambia el estilo del notch en vivo ({"mode": "oled" | "darkGlass" | "clearGlass"})
+            let mode = (((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["mode"] as? String)
+                .flatMap(NotchAppearanceMode.init(rawValue:))
+            if let mode {
+                DispatchQueue.main.async { AppState.shared.appearanceMode = mode }
+            }
+            sendHTTPResponse(connection: connection, statusCode: mode == nil ? 400 : 200, statusText: mode == nil ? "Bad Request" : "OK",
+                             jsonObject: ["status": mode == nil ? "modo inválido" : "ok"])
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]

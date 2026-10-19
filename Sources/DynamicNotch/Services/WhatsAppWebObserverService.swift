@@ -136,11 +136,30 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
     
     /// Realiza un sondeo inmediato de WhatsApp Web
+    private var runningBundleIdsCache: Set<String>?
+    private var runningAppsObservers: [NSObjectProtocol] = []
+
+    private func cachedRunningBundleIds() -> Set<String> {
+        if let cache = runningBundleIdsCache { return cache }
+        let ids = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+        runningBundleIdsCache = ids
+        if runningAppsObservers.isEmpty {
+            let center = NSWorkspace.shared.notificationCenter
+            for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+                runningAppsObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    self?.runningBundleIdsCache = nil
+                })
+            }
+        }
+        return ids
+    }
+
     public func pollWhatsAppWeb() {
         guard isEnabled && !isQuerying else { return }
         
-        // Verificar en el hilo principal qué navegadores están activos antes de despachar
-        let runningBundleIds = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+        // Navegadores abiertos: lista en caché (pedirla a NSWorkspace en cada sondeo costaba tiempo del hilo
+        // principal); se actualiza al abrir o cerrar apps
+        let runningBundleIds = cachedRunningBundleIds()
         let supportedBrowsers = [
             "com.apple.Safari",
             "com.google.Chrome",

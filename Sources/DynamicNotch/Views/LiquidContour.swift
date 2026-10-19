@@ -155,8 +155,13 @@ public struct LiquidContourShape: Shape {
             .intersection(rect.insetBy(dx: -1, dy: -1))
         let contour = LiquidContour.path(pillRect: pillRect, drop: drop, in: bounds)
         if subtractPill {
-            let pill = Path(roundedRect: pillRect, cornerRadius: pillRect.height / 2)
-            return contour.subtracting(pill)
+            // Cristal: se quita el notch, alargado hacia su cuerpo. Con la cápsula exacta quedaba una franja finita
+            // en su otro extremo (dentro del notch) que el vidrio dibujaba como un contorno sobre el centro negro
+            let far: CGFloat = 4000
+            let endX = notchIsLeading ? pillRect.maxX : pillRect.minX
+            let body = CGRect(x: notchIsLeading ? endX - far : endX, y: pillRect.minY - 0.5,
+                              width: far, height: pillRect.height + 1)
+            return contour.subtracting(Path(roundedRect: body, cornerRadius: body.height / 2))
         }
         // Negro: se quita el notch (ya lo dibuja el propio notch) salvo un borde de 1 pt que se encima negro
         // sobre negro, para que no quede costura. Antes se quitaba sólo el cuerpo y el extremo redondeado se

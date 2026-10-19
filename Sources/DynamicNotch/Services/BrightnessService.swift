@@ -72,19 +72,31 @@ public final class BrightnessService: ObservableObject {
     /// este timer sincroniza `currentBrightness` y `lastPolledBrightness` de forma puramente silenciosa.
     /// Únicamente las interacciones explícitas del usuario (teclas de brillo F1/F2 o controles manuales)
     /// llamarán a `publishBrightnessActivity` para mostrar el HUD en la Isla Dinámica.
+    private let pollingQueue = DispatchQueue(label: "com.luisrandom.DynamicNotch.Brightness", qos: .utility)
+    private var isPollingBrightness = false
+
     private func startBrightnessMonitoring() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             self?.isInitialMonitoring = false
         }
         
         pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let current = self.readCurrentBrightness()
-            if abs(current - self.lastPolledBrightness) > 0.005 {
-                self.lastPolledBrightness = current
-                self.currentBrightness = current
-                // Omitir en automático: NO publicar actividad en polling del sistema
-                // para que el notch no salte cuando macOS ajusta el brillo por sensor ambiental.
+            guard let self = self, !self.isPollingBrightness else { return }
+            // La lectura (DisplayServices) se hace fuera del hilo principal: cada 0.15 s robaba tiempo a las
+            // animaciones del notch
+            self.isPollingBrightness = true
+            self.pollingQueue.async { [weak self] in
+                guard let self = self else { return }
+                let current = self.readCurrentBrightness()
+                DispatchQueue.main.async {
+                    self.isPollingBrightness = false
+                    if abs(current - self.lastPolledBrightness) > 0.005 {
+                        self.lastPolledBrightness = current
+                        self.currentBrightness = current
+                        // Omitir en automático: NO publicar actividad en polling del sistema
+                        // para que el notch no salte cuando macOS ajusta el brillo por sensor ambiental.
+                    }
+                }
             }
         }
     }

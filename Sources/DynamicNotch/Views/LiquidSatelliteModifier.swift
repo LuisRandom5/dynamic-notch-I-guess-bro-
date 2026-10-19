@@ -285,7 +285,8 @@ private struct LiquidGlassContour: View {
             notchCenterOffset: notchCenterOffset, notchRadius: notchRadius, bubbleRadius: bubbleRadius,
             scaleX: scaleX, scaleY: scaleY, notchIsLeading: notchIsLeading
         )
-        let shape = LiquidContourShape(pillRect: geometry.pillRect, drop: geometry.dropRect, subtractPill: true)
+        let shape = LiquidContourShape(pillRect: geometry.pillRect, drop: geometry.dropRect, subtractPill: true,
+                                       notchIsLeading: notchIsLeading)
         ZStack {
             if #available(macOS 26.0, *) {
                 Color.black.opacity(max(0.22, NotchGlassMetrics.veilOpacity(for: appState.effectiveAppearanceMode)))

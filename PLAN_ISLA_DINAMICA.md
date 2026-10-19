@@ -317,7 +317,7 @@ Proveedores ──▶ ActivityStore (modelo: identidad, datos, relevancia, ciclo
 | A-4 ✅ | **Alertas y ciclo de vida unificados:** `ActivityAlertConfiguration` por actualización (expande en bolita o en el notch, sonido opcional, máx. una cada 30 s por actividad salvo urgentes, nunca si el usuario está usando el notch); límite de 8 h; `staleDate` → bolita atenuada (Claude a los 10 min sin reportar, agentes a los 30 s); `ActivityCenter.end` muestra el resumen (ajuste "Resumen al terminar", 15 s) y se reabsorbe. Reglas puras en `ActivityLifecycle` con tests. | L3, L1, L2 |
 | A-5 ✅ | **Plantillas:** `IslandExpandedTemplate` con regiones (lados de la cámara, centro, abajo), márgenes de 14 pt y `ContainerRelativeShape` concéntrico; alto dinámico 84–160 pt según el contenido (`reportExpandedContentHeight`); `DefaultActivityExpandedView` para las actividades sin tarjeta propia (antes un botón "Cerrar"); `IslandMetrics` con las medidas de la HIG; auditoría ≤ 2 s (las únicas > 2 s son de la pantalla bloqueada y la salida/regreso de las bolitas, que Apple trata aparte). | D1, D2, D3, D5 |
 | A-6 ✅ | **Integraciones:** `SystemStatusActivityProvider` (Bloq Mayús, sin internet/conectado, VPN de túnel completo, cámara y micrófono en uso consultando `IsRunningSomewhere` sin abrirlos) y `DownloadsActivityProvider` (progreso de archivos publicado en Descargas, una sola actividad, resumen al terminar). Batería baja (20/10/5 %) y cronómetro ya existían. Las de indicador usan `prefersBubble` para no quitarle el notch a la música. Ajustes > Actividades > Integraciones del sistema. Sin probar en vivo: pérdida de red y VPN. | 3.4 (✅) |
-| A-7 | **Pulido y rendimiento:** precalentar el reproductor, verificar el cristal a ojo y recorrer la matriz completa. | S2, S3, S1 |
+| A-7 ✅ | **Pulido y rendimiento:** fuera del hilo principal la detección de pantalla completa (CGWindowList cada 0.8 s), el sondeo de brillo (cada 0.15 s) y la lista de apps de WhatsApp; 0 cuadros lentos en reposo. La apertura del reproductor queda en 1 cuadro lento (crear su vista; dejarla montada subiría el CPU). Cristal verificado a ojo (alas, gota con cuello, tarjeta, reproductor) y corregido un contorno que se veía sobre el centro negro. Ver resultado de la matriz en §6. | S2, S3, S1 |
 | A-8 | **Release 2.0** "notch estable": changelog y `ARCHITECTURE.md` actualizado. | S6 |
 
 ### Fase B — Isla Dinámica para Macs sin notch
@@ -355,6 +355,24 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 9. **Accesibilidad:** Reducir movimiento, Reducir transparencia y Aumentar contraste.
 10. **Rendimiento:** ≤ 1 cuadro lento por apertura del reproductor; CPU en reposo < 1 %.
 11. **Ajustes:** todo lo nuevo es configurable y se guarda.
+
+### Resultado de la matriz (A-7, 19 de octubre de 2026)
+
+| # | Punto | Estado |
+|---|---|---|
+| 1 | Reposo sin tirones | ✅ 0 cuadros lentos en 60 s (3604 cuadros) con música en las alas |
+| 2 | Música: alas, abrir y cerrar | ✅ abrir/cerrar sin congelarse · ⏳ swipe y cambio de canción, en tus manos |
+| 3 | HUD de volumen / AirPods | ✅ volumen: aparece, se va y regresa lo anterior · ✅ sin animación de AirPods al relanzar |
+| 4 | Varias actividades | ✅ música + Claude + temporizador + agente: sin encimarse, lugares estables, recorrido con swipe (simulado) |
+| 5 | Alertas | ✅ resumen al terminar (agente) · ⏳ Claude terminó / llamada / AirDrop / mensaje en vivo |
+| 6 | Repisa | ⏳ soltar archivos reales |
+| 7 | Pantalla bloqueada | ⏳ (no se puede bloquear desde aquí) |
+| 8 | Pantalla completa | ⏳ |
+| 9 | Accesibilidad | ⏳ (son ajustes del sistema) |
+| 10 | Rendimiento | ✅ 1 cuadro lento por apertura del reproductor · ⚠️ CPU con música 17 % (captura de audio y barras); sin música, por medir |
+| 11 | Ajustes | ✅ todo lo nuevo en Ajustes > Actividades, guardado en UserDefaults |
+
+⏳ = lo tienes que probar tú (necesita manos, el sistema o bloquear la Mac).
 
 ---
 

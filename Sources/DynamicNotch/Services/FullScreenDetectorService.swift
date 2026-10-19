@@ -37,16 +37,29 @@ public final class FullScreenDetectorService: ObservableObject {
         }
     }
     
+    /// La lista de ventanas del sistema cuesta decenas de ms: se consulta fuera del hilo principal (antes, cada
+    /// 0.8 s, robaba cuadros a las animaciones del notch)
+    private let queue = DispatchQueue(label: "com.luisrandom.DynamicNotch.FullScreenDetector", qos: .utility)
+    private var isChecking = false
+
     public func checkFullScreenState() {
-        guard let screen = ScreenService.shared.targetScreen ?? NSScreen.main else { return }
+        guard !isChecking, let screen = ScreenService.shared.targetScreen ?? NSScreen.main else { return }
+        isChecking = true
         let screenFrame = screen.frame
         let myPID = ProcessInfo.processInfo.processIdentifier
-        
-        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            return
+        queue.async { [weak self] in
+            let isFS = Self.anotherAppCoversScreen(screenFrame: screenFrame, myPID: myPID)
+            DispatchQueue.main.async {
+                self?.isChecking = false
+                self?.apply(isFS: isFS)
+            }
         }
-        
-        var isFS = false
+    }
+
+    private static func anotherAppCoversScreen(screenFrame: CGRect, myPID: pid_t) -> Bool {
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
         for win in windowList {
             guard let layer = win[kCGWindowLayer as String] as? Int, layer == 0,
                   let pid = win[kCGWindowOwnerPID as String] as? pid_t, pid != myPID,
@@ -54,14 +67,15 @@ public final class FullScreenDetectorService: ObservableObject {
                   let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else {
                 continue
             }
-            
             // Si la ventana de otra aplicación ocupa esencialmente toda la pantalla (con tolerancia de 4pt)
             if rect.width >= (screenFrame.width - 4) && rect.height >= (screenFrame.height - 4) {
-                isFS = true
-                break
+                return true
             }
         }
-        
+        return false
+    }
+
+    private func apply(isFS: Bool) {
         if self.isFullScreenActive != isFS {
             DispatchQueue.main.async {
                 self.isFullScreenActive = isFS
