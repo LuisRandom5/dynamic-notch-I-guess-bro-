@@ -26,8 +26,10 @@ public struct NotchPlayerView: View {
     @State private var isHoveringVolume: Bool = false
     @State private var isDraggingVolume: Bool = false
     @State private var dragVolumeLevel: Float? = nil
-    @State private var artworkTilt: Double = 0.0
     @State private var skipDirection: Double = 1.0
+    /// Toques en siguiente / anterior (disparan la animación de los triángulos, ver SkipGlyph)
+    @State private var nextTick: Int = 0
+    @State private var previousTick: Int = 0
     
     public init(
         namespace: Namespace.ID? = nil,
@@ -243,17 +245,7 @@ public struct NotchPlayerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onChange(of: track.title) { oldTitle, newTitle in
-            guard !newTitle.isEmpty, newTitle != oldTitle else { return }
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.65)) {
-                artworkTilt = skipDirection * 24.0
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
-                    artworkTilt = 0.0
-                }
-            }
-        }
+
     }
     
     // MARK: - Vista Estándar (Reproductor Clásico Compacto)
@@ -279,6 +271,9 @@ public struct NotchPlayerView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: PlayerMetrics.artworkSize, height: PlayerMetrics.artworkSize)
                                 .clipShape(RoundedRectangle(cornerRadius: PlayerMetrics.artworkCornerRadius, style: .continuous))
+                                // Cambio de canción como Apple Music: la nueva crece con un rebote leve
+                                .id(track.title + track.artist)
+                                .transition(.artworkSwap(direction: CGFloat(skipDirection)))
                         } else {
                             RoundedRectangle(cornerRadius: PlayerMetrics.artworkCornerRadius, style: .continuous)
                                 .fill(
@@ -299,8 +294,8 @@ public struct NotchPlayerView: View {
                                 )
                         }
                     }
-                    .rotation3DEffect(.degrees(artworkTilt), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
                     .shadow(color: Color.black.opacity(0.35), radius: 5, x: 0, y: 2)
+                    .animation(.artworkSwap, value: track.title + track.artist)
                 }
                 .buttonStyle(BouncyButtonStyle(scaleAmount: PlayerMetrics.buttonPressScale))
                 .modifier(OptionalMatchedGeometry(id: "albumArtwork", namespace: namespace))
@@ -460,6 +455,8 @@ public struct NotchPlayerView: View {
                             .frame(width: 72, height: 72)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .shadow(color: Color.black.opacity(0.40), radius: 8, x: 0, y: 4)
+                            .id(track.title + track.artist)
+                            .transition(.artworkSwap(direction: CGFloat(skipDirection)))
                     } else {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(
@@ -473,7 +470,7 @@ public struct NotchPlayerView: View {
                             .overlay(Image(systemName: "music.note").font(.system(size: 26)).foregroundColor(.white))
                     }
                 }
-                .rotation3DEffect(.degrees(artworkTilt), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+                .animation(.artworkSwap, value: track.title + track.artist)
                 .modifier(OptionalMatchedGeometry(id: "albumArtwork", namespace: namespace))
                 
                 VStack(alignment: .leading, spacing: 3) {
@@ -729,22 +726,14 @@ public struct NotchPlayerView: View {
             
             // Tres controles centrales
             HStack(spacing: PlayerMetrics.controlsCenterSpacing - PlayerMetrics.playPauseWidth) {
-                PlayerControlButton(xOffset: -4.5, scaleAmount: 0.82, haloSize: 32) {
+                PlayerControlButton(scaleAmount: 0.82, haloSize: 32) {
                     appState.hapticService.triggerSnap()
                     skipDirection = -1.0
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.65)) {
-                        artworkTilt = -24.0
-                    }
+                    previousTick += 1
                     musicService.previousTrack()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
-                            artworkTilt = 0.0
-                        }
-                    }
                 } content: {
-                    Image(systemName: "backward.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
+                    // Como Apple Music: los triángulos se recorren al tocar
+                    SkipGlyph(direction: .backward, trigger: previousTick)
                         .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                 }
                 
@@ -752,45 +741,22 @@ public struct NotchPlayerView: View {
                     appState.hapticService.triggerExpand()
                     musicService.togglePlayPause()
                 } content: {
-                    ZStack {
-                        if track.isPlaying {
-                            HStack(spacing: PlayerMetrics.pauseBarSpacing) {
-                                RoundedRectangle(cornerRadius: PlayerMetrics.pauseBarRadius, style: .continuous)
-                                    .fill(Color.white)
-                                    .frame(width: PlayerMetrics.pauseBarWidth, height: PlayerMetrics.pauseBarHeight)
-                                RoundedRectangle(cornerRadius: PlayerMetrics.pauseBarRadius, style: .continuous)
-                                    .fill(Color.white)
-                                    .frame(width: PlayerMetrics.pauseBarWidth, height: PlayerMetrics.pauseBarHeight)
-                            }
-                            .transition(.scale(scale: 0.85).combined(with: .opacity))
-                        } else {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: PlayerMetrics.playIconSize, weight: .bold))
-                                .foregroundColor(.white)
-                                .offset(x: 1.5)
-                                .transition(.scale(scale: 0.85).combined(with: .opacity))
-                        }
-                    }
-                    .frame(width: PlayerMetrics.playPauseWidth, height: PlayerMetrics.playPauseHeight)
+                    // Como Apple Music: el símbolo se transforma de play a pausa (y de regreso)
+                    Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: PlayerMetrics.playIconSize, weight: .bold))
+                        .foregroundColor(.white)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: PlayerMetrics.playPauseWidth, height: PlayerMetrics.playPauseHeight)
                 }
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: track.isPlaying)
                 
-                PlayerControlButton(xOffset: 4.5, scaleAmount: 0.82, haloSize: 32) {
+                PlayerControlButton(scaleAmount: 0.82, haloSize: 32) {
                     appState.hapticService.triggerSnap()
                     skipDirection = 1.0
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.65)) {
-                        artworkTilt = 24.0
-                    }
+                    nextTick += 1
                     musicService.nextTrack()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
-                            artworkTilt = 0.0
-                        }
-                    }
                 } content: {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
+                    SkipGlyph(direction: .forward, trigger: nextTick)
                         .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                 }
             }

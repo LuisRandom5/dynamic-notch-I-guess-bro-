@@ -11,8 +11,6 @@ public struct NotchCompactView: View {
     private var wingWidth: CGFloat { minimalWingWidth ?? NotchTuning.compactWingWidth }
     /// La repisa ya no ocupa espacio en las alas (es una bolita)
     private let wingExtra: CGFloat = 0
-    @State private var artworkRotationY: Double = 0.0
-    @State private var artworkScale: CGFloat = 1.0
     
     public init(namespace: Namespace.ID? = nil, minimalWingWidth: CGFloat? = nil) {
         self.namespace = namespace
@@ -59,10 +57,7 @@ public struct NotchCompactView: View {
                                 .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                         )
                         .id(musicService.currentTrack.title + musicService.currentTrack.artist)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.82)),
-                            removal: .opacity
-                        ))
+                        .transition(.artworkSwap())
                 } else {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(
@@ -86,28 +81,14 @@ public struct NotchCompactView: View {
                                 .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                         )
                         .id(musicService.currentTrack.title + musicService.currentTrack.artist)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.82)),
-                            removal: .opacity
-                        ))
+                        .transition(.artworkSwap())
                 }
             }
             .frame(width: 19, height: 19)
+            // Cambio de canción como Apple Music: la carátula nueva crece con un rebote leve mientras la vieja
+            // se encoge y se desvanece (antes daba una vuelta 3D completa)
+            .animation(.artworkSwap, value: musicService.currentTrack.title + musicService.currentTrack.artist)
             .modifier(OptionalMatchedGeometry(id: "albumArtwork", namespace: namespace))
-            .scaleEffect(artworkScale)
-            .rotation3DEffect(.degrees(artworkRotationY), axis: (x: 0, y: 1, z: 0), perspective: 0.40)
-            .onChange(of: musicService.currentTrack.title) { oldTitle, newTitle in
-                guard !newTitle.isEmpty, newTitle != oldTitle else { return }
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
-                    artworkRotationY += 360.0
-                    artworkScale = 0.84
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
-                        artworkScale = 1.0
-                    }
-                }
-            }
             .frame(width: wingWidth + wingExtra, height: screenService.currentGeometry.height)
             .contentShape(Rectangle())
             
