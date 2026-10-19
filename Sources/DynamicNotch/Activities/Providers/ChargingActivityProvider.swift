@@ -66,8 +66,9 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         }
     }
     
+    /// Como en el iPhone: al conectar el cargador la isla se abre a lo ancho con "Cargando" a la izquierda y la
+    /// batería con su porcentaje a la derecha; verde normal, amarilla en Modo de bajo consumo
     public func publishChargingActivity(percentage: Int, isLowPower: Bool, isPluggedIn: Bool) {
-        // Color por estado: verde normal, amarillo si Low Power Mode, rojo si <=10% y sin cargar
         let tintColor: Color
         if !isPluggedIn && percentage <= 10 {
             tintColor = DesignTokens.red
@@ -76,107 +77,61 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         } else {
             tintColor = DesignTokens.green
         }
-        
-        // Icono circular a la izquierda idéntico a la plantilla Card de AirDrop
-        let leadingView = AnyView(
-            ZStack {
-                Circle()
-                    .fill(tintColor.opacity(0.18))
-                    .frame(width: 46, height: 46)
-                
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(tintColor)
-            }
-        )
-        
-        // Textos centrales alineados idénticos a AirDrop
-        let centerView = AnyView(
-            VStack(alignment: .leading, spacing: 3) {
-                Text(isPluggedIn ? "Cargando" : "Batería")
-                    .liveActivityTitle()
-                Text(isPluggedIn ? "Adaptador de corriente conectado" : "\(percentage)% restante")
-                    .liveActivitySubtitle()
-            }
-        )
-        
-        // Batería animada con porcentaje a la derecha
-        let trailingView = AnyView(
-            ChargingTrailingView(
-                percentage: percentage,
-                tintColor: tintColor
-            )
-        )
-        
-        // Proteger contra interferencia del brillo automático de macOS al conectar el cargador
+        // Protege contra el brillo automático de macOS al conectar el cargador
         BrightnessService.shared.suppressAutoBrightnessSlider(duration: 3.5)
-        
-        // Actividad con plantilla .card (390 x 105 pt, radio 40 pt) con prioridad 100 para no ser pisada
-        let activity = LiveActivity(
+        publishBatteryNotice(
             id: providerId,
-            priority: ActivityRelevance.systemStatus,
-            style: .card,
-            leading: leadingView,
-            center: centerView,
-            trailing: trailingView,
+            label: isPluggedIn ? "Cargando" : "Batería",
+            labelColor: Color.white.opacity(0.92),
+            percentage: percentage,
             tint: tintColor,
-            duration: 3.5,
-            onTap: {
-                AppState.shared.expand()
-            }
+            showBolt: isPluggedIn,
+            duration: 3.0
         )
-        
-        ActivityCenter.shared.publish(activity)
     }
-    
+
+    /// Como en el iPhone: "Batería baja" en rojo con la batería casi vacía
     public func publishLowBatteryActivity(percentage: Int) {
-        let tintColor = DesignTokens.red
-        
-        let leadingView = AnyView(
-            ZStack {
-                Circle()
-                    .fill(tintColor.opacity(0.18))
-                    .frame(width: 46, height: 46)
-                
-                Image(systemName: "battery.25")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(tintColor)
-            }
-        )
-        
-        let centerView = AnyView(
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Batería baja")
-                    .liveActivityTitle()
-                Text("\(percentage)% restante • Conecta el adaptador")
-                    .liveActivitySubtitle()
-            }
-        )
-        
-        let trailingView = AnyView(
-            ChargingTrailingView(
-                percentage: percentage,
-                tintColor: tintColor,
-                showBolt: false
-            )
-        )
-        
-        let activity = LiveActivity(
+        publishBatteryNotice(
             id: "low_battery",
-            priority: ActivityRelevance.systemStatus,
-            style: .card,
-            leading: leadingView,
-            center: centerView,
-            trailing: trailingView,
-            tint: tintColor,
-            duration: 4.5,
-            onTap: {
-                AppState.shared.expand()
-            }
+            label: "Batería baja",
+            labelColor: DesignTokens.red,
+            percentage: percentage,
+            tint: DesignTokens.red,
+            showBolt: false,
+            duration: 4.0
         )
-        
-        ActivityCenter.shared.publish(activity)
         AppState.shared.hapticService.triggerAlert()
+    }
+
+    /// Aviso breve en las alas de la isla (como el volumen o Bloq Mayús): entra de inmediato, todo lo demás se
+    /// recoge y regresa al terminar
+    private func publishBatteryNotice(id: String, label: String, labelColor: Color, percentage: Int, tint: Color,
+                                      showBolt: Bool, duration: TimeInterval) {
+        var notice = LiveActivity(
+            id: id,
+            priority: ActivityRelevance.systemStatus,
+            style: .pill,
+            title: label,
+            leading: AnyView(
+                Text(label)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(labelColor)
+                    .lineLimit(1)
+                    .fixedSize()
+            ),
+            trailing: AnyView(ChargingTrailingView(percentage: percentage, tintColor: tint, showBolt: showBolt, compact: true)),
+            bolitaVariant: .color(bgColor: tint.opacity(0.22), fgColor: tint, iconName: showBolt ? "bolt.fill" : "battery.25"),
+            tint: tint,
+            duration: duration,
+            isUrgent: true
+        )
+        notice.isSystemNotice = true
+        // Alas un poco más anchas cuando el texto es largo ("Batería baja")
+        if label.count > 9 {
+            notice.customExpandedWidth = ScreenService.shared.currentGeometry.width + 200
+        }
+        ActivityCenter.shared.publish(notice)
     }
 }
 
@@ -185,20 +140,26 @@ public struct ChargingTrailingView: View {
     public let percentage: Int
     public let tintColor: Color
     public var showBolt: Bool = true
+    /// Tamaño para las alas de la isla (más chico que en la tarjeta)
+    public var compact: Bool = false
     
     @State private var animatedFill: CGFloat = 0.0
     
-    public init(percentage: Int, tintColor: Color, showBolt: Bool = true) {
+    public init(percentage: Int, tintColor: Color, showBolt: Bool = true, compact: Bool = false) {
         self.percentage = percentage
         self.tintColor = tintColor
         self.showBolt = showBolt
+        self.compact = compact
     }
+
+    private var bodyWidth: CGFloat { compact ? 22 : 25 }
+    private var bodyHeight: CGFloat { compact ? 11 : 13 }
     
     public var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: compact ? 5 : 7) {
             // Número en semibold con diseño redondeado nativo
             Text("\(percentage)%")
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: compact ? 12.5 : 15, weight: .semibold, design: compact ? .default : .rounded))
                 .monospacedDigit()
                 .foregroundColor(tintColor)
             
@@ -208,27 +169,27 @@ public struct ChargingTrailingView: View {
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                         .stroke(tintColor.opacity(0.85), lineWidth: 1.2)
-                        .frame(width: 25, height: 13)
+                        .frame(width: bodyWidth, height: bodyHeight)
                     
                     // Relleno animado proporcional con spring elástico
                     RoundedRectangle(cornerRadius: 2.2, style: .continuous)
                         .fill(tintColor)
-                        .frame(width: max(2, 21.0 * animatedFill), height: 9.5)
+                        .frame(width: max(2, (bodyWidth - 4) * animatedFill), height: bodyHeight - 3.5)
                         .padding(.leading, 2)
                     
                     if showBolt {
                         // Pequeño rayo centrado
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 8, weight: .heavy))
+                            .font(.system(size: compact ? 7 : 8, weight: .heavy))
                             .foregroundColor(.black.opacity(0.85))
-                            .frame(width: 25, height: 13)
+                            .frame(width: bodyWidth, height: bodyHeight)
                     }
                 }
                 
                 // Borne / pezón de la batería
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
                     .fill(tintColor.opacity(0.85))
-                    .frame(width: 1.8, height: 5)
+                    .frame(width: 1.8, height: compact ? 4 : 5)
             }
         }
         .onAppear {

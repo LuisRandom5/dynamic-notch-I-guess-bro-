@@ -29,6 +29,10 @@ public final class WhatsAppWebObserverService: ObservableObject {
         }
     }
     
+    /// El navegador no deja leer la lista de chats con JavaScript: sin eso, con la pestaña en segundo plano sólo
+    /// se sabe que hay mensajes nuevos, no de quién ni qué dicen (Ajustes lo explica)
+    @Published public private(set) var javaScriptBlocked = false
+
     private var timer: Timer?
     private var burstTimer: Timer?
     private var burstAttemptsRemaining: Int = 0
@@ -204,9 +208,192 @@ public final class WhatsAppWebObserverService: ObservableObject {
                     ?? titles.first(where: { $0 == "WhatsApp" || $0.hasPrefix("WhatsApp") })
                     ?? titles[0]
                 
+                // 3. La pestaña está en segundo plano (sin tabla de accesibilidad): se lee la lista de chats con
+                // JavaScript para avisar con el mensaje real en vez de "mensajes sin leer"
+                if self.shouldRunJavaScriptScan(title: bestTitle),
+                   self.scanChatsViaJavaScript(activeBrowsers: activeBrowsers, title: bestTitle) {
+                    self.syncTitleBaseline(bestTitle)
+                    return
+                }
+                if self.javaScriptReaderWorks && bestTitle == self.lastJavaScriptTitle {
+                    self.syncTitleBaseline(bestTitle)
+                    return
+                }
                 self.processWhatsAppTitle(bestTitle, activeBrowsers: activeBrowsers)
             }
         }
+    }
+
+    // MARK: - Lectura de la lista de chats con JavaScript (pestaña en segundo plano)
+
+    /// Hasta cuándo no se intenta JavaScript (el navegador no lo permite o WhatsApp no cargó)
+    private var javaScriptBlockedUntil = Date.distantPast
+    private var javaScriptReaderWorks = false
+    private var javaScriptPrimed = false
+    private var lastJavaScriptTitle = ""
+    private var javaScriptSkips = 0
+    private var loggedJavaScriptBlocked = false
+    private var compiledJavaScriptScripts: [String: NSAppleScript] = [:]
+
+    /// Se lee cuando cambia el título (llegó algo) y, por si acaso, cada ~6 s
+    private func shouldRunJavaScriptScan(title: String) -> Bool {
+        guard Date() >= javaScriptBlockedUntil else { return false }
+        javaScriptSkips += 1
+        if title != lastJavaScriptTitle || !javaScriptReaderWorks || javaScriptSkips >= 4 {
+            javaScriptSkips = 0
+            return true
+        }
+        return false
+    }
+
+    /// El conteo del título queda al día para que el respaldo por título no avise de lo que ya se avisó
+    private func syncTitleBaseline(_ title: String) {
+        if let match = title.range(of: #"^\((\d+)\)\s*"#, options: .regularExpression) {
+            lastUnreadCount = Int(title[match].filter { $0.isNumber })
+        } else {
+            lastUnreadCount = nil
+        }
+        lastSeenTitle = title
+    }
+
+    /// Lee las primeras filas de `#pane-side`: nombre, vista previa, hora, no leídos, silenciado y el icono del
+    /// tipo de mensaje (foto, sticker, audio…). Devuelve JSON.
+    private static let chatListJavaScript = #"""
+    (function(){
+    var pane=document.querySelector('#pane-side');
+    if(!pane)return 'NOPANE';
+    var rows=pane.querySelectorAll('[role=listitem],[role=row]');
+    var timeRe=/^(\d{1,2}:\d{2}(\s*[ap]\.?\s?m\.?)?|ayer|hoy|yesterday|today|lunes|martes|miércoles|jueves|viernes|sábado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\/\d{1,2}\/\d{2,4})$/i;
+    var out=[];
+    for(var i=0;i<rows.length&&out.length<15;i++){
+      var r=rows[i];
+      if(r.parentElement&&r.parentElement.closest('[role=listitem],[role=row]'))continue;
+      var lines=(r.innerText||'').split('\n').map(function(x){return x.trim();}).filter(function(x){return x.length>0;});
+      if(!lines.length)continue;
+      var titled=r.querySelector('span[title]');
+      var name=(titled&&titled.getAttribute('title'))||lines[0];
+      var time='';
+      for(var j=0;j<lines.length;j++){if(timeRe.test(lines[j])){time=lines[j];break;}}
+      var unread=0;
+      var badge=r.querySelector('[aria-label*=\'no leído\'],[aria-label*=\'unread\'],[aria-label*=\'sin leer\']');
+      if(badge){var d=(badge.getAttribute('aria-label')||'').replace(/\D/g,'');unread=d?parseInt(d,10):0;}
+      var icons=[].slice.call(r.querySelectorAll('[data-icon]')).map(function(e){return e.getAttribute('data-icon')||'';});
+      var rest=[];var usedName=false,usedTime=false;
+      for(var k=0;k<lines.length;k++){
+        var l=lines[k];
+        if(!usedName&&l===name){usedName=true;continue;}
+        if(!usedTime&&l===time){usedTime=true;continue;}
+        if(/^\d+$/.test(l)&&k===lines.length-1)continue;
+        rest.push(l);
+      }
+      var preview=rest.join(' ').replace(/\s+:\s*/g,': ');
+      out.push({n:name,m:preview,t:time,u:unread,
+        mu:icons.some(function(x){return /mute/.test(x);}),
+        p:icons.some(function(x){return /pin/.test(x);}),
+        o:icons.some(function(x){return /check|msg-time/.test(x);}),
+        i:icons.filter(function(x){return !/mute|pin|check|msg-time|default-|down|chevron|ephemeral/.test(x);})});
+    }
+    return JSON.stringify(out);
+    })()
+    """#
+
+    private func javaScriptScript(for bundleId: String) -> NSAppleScript? {
+        if let cached = compiledJavaScriptScripts[bundleId] { return cached }
+        let js = Self.chatListJavaScript
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: " ")
+        let source: String
+        switch bundleId {
+        case "com.apple.Safari":
+            source = """
+            tell application "Safari"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if URL of t contains "web.whatsapp.com" then return (do JavaScript "\(js)" in t)
+                    end repeat
+                end repeat
+            end tell
+            return "NOTAB"
+            """
+        case "com.google.Chrome", "company.thebrowser.Browser", "com.brave.Browser", "com.microsoft.edgemac":
+            let appName = ["com.google.Chrome": "Google Chrome", "company.thebrowser.Browser": "Arc",
+                           "com.brave.Browser": "Brave Browser", "com.microsoft.edgemac": "Microsoft Edge"][bundleId]!
+            source = """
+            tell application "\(appName)"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if URL of t contains "web.whatsapp.com" then return (execute t javascript "\(js)")
+                    end repeat
+                end repeat
+            end tell
+            return "NOTAB"
+            """
+        default:
+            return nil
+        }
+        guard let script = NSAppleScript(source: source) else { return nil }
+        var error: NSDictionary?
+        script.compileAndReturnError(&error)
+        guard error == nil else { return nil }
+        compiledJavaScriptScripts[bundleId] = script
+        return script
+    }
+
+    /// true si se pudo leer la lista de chats (y se procesaron sus filas)
+    private func scanChatsViaJavaScript(activeBrowsers: [String], title: String) -> Bool {
+        for bundleId in activeBrowsers {
+            guard let script = javaScriptScript(for: bundleId) else { continue }
+            var error: NSDictionary?
+            let output = script.executeAndReturnError(&error).stringValue ?? ""
+            if let error {
+                // Normalmente: Safari → Ajustes → Desarrollador → "Permitir JavaScript desde Apple Events"
+                if !loggedJavaScriptBlocked {
+                    loggedJavaScriptBlocked = true
+                    DispatchQueue.main.async { self.javaScriptBlocked = true }
+                    DNDLogger.log("WhatsAppWebObserverService: JavaScript no disponible en \(bundleId): \((error[NSAppleScript.errorMessage] as? String) ?? "\(error)")")
+                }
+                continue
+            }
+            guard output.hasPrefix("["), let data = output.data(using: .utf8),
+                  let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { continue }
+            if loggedJavaScriptBlocked {
+                loggedJavaScriptBlocked = false
+                DispatchQueue.main.async { self.javaScriptBlocked = false }
+            }
+            javaScriptReaderWorks = true
+            lastJavaScriptTitle = title
+            let rows = items.compactMap(Self.parseJavaScriptRow)
+            // La primera lectura sólo toma la foto del estado actual (lo que ya estaba sin leer es viejo)
+            if !javaScriptPrimed {
+                isFirstCheck = true
+                DNDLogger.log("WhatsAppWebObserverService: lista de chats leída con JavaScript (\(rows.count) filas)")
+            }
+            rows.forEach(processParsedRow)
+            javaScriptPrimed = true
+            isFirstCheck = false
+            return true
+        }
+        javaScriptReaderWorks = false
+        javaScriptBlockedUntil = Date().addingTimeInterval(30)
+        return false
+    }
+
+    private static func parseJavaScriptRow(_ item: [String: Any]) -> ParsedChatRow? {
+        let name = (item["n"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        let icons = item["i"] as? [String] ?? []
+        let media = icons.lazy.compactMap(WhatsAppMediaKind.init(webIcon:)).first
+        var message = WhatsAppMessagePreview.describe(item["m"] as? String ?? "", media: media)
+        if item["o"] as? Bool == true, !message.lowercased().hasPrefix("tú:") { message = "Tú: " + message }
+        return ParsedChatRow(
+            contact: name,
+            message: message.isEmpty ? "Nuevo mensaje" : message,
+            time: item["t"] as? String ?? "",
+            unreadCount: item["u"] as? Int ?? 0,
+            isMuted: item["mu"] as? Bool ?? false,
+            isPinned: item["p"] as? Bool ?? false
+        )
     }
     
     // MARK: - Extracción de Títulos vía AppleScript Pre-compilado
@@ -430,6 +617,62 @@ public final class WhatsAppWebObserverService: ObservableObject {
         self.dispatchNotification(sender: "WhatsApp", message: msg)
     }
     
+    /// Diagnóstico (GET /debug/whatsapp): texto crudo y lectura de las primeras filas de chats
+    public func debugRows() -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        let browsers = ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser", "com.brave.Browser",
+                        "com.microsoft.edgemac", "net.whatsapp.WhatsApp"]
+        for bundleId in browsers {
+            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first else { continue }
+            let appRef = AXUIElementCreateApplication(app.processIdentifier)
+            var childrenRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(appRef, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+                  let windows = childrenRef as? [AnyObject] else { continue }
+            for w in windows {
+                guard let table = findAXChatTable(w as! AXUIElement) else { continue }
+                var rowsRef: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
+                      let rows = rowsRef as? [AnyObject] else { continue }
+                for r in rows.prefix(8) {
+                    let row = r as! AXUIElement
+                    let parsed = parseChatRow(row)
+                    out.append([
+                        "app": bundleId,
+                        "raw": collectStringsFromAX(row),
+                        "roles": collectRolesFromAX(row),
+                        "contact": parsed?.contact ?? "",
+                        "message": parsed?.message ?? "",
+                        "unread": parsed?.unreadCount ?? 0
+                    ])
+                }
+                return out
+            }
+        }
+        return out
+    }
+
+    /// Roles y descripciones de los elementos de una fila (para ver cómo llegan iconos de foto, sticker…)
+    private func collectRolesFromAX(_ elem: AXUIElement, depth: Int = 0) -> [String] {
+        if depth > 8 { return [] }
+        var out: [String] = []
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXRoleAttribute as CFString, &roleRef)
+        var descRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXDescriptionAttribute as CFString, &descRef)
+        var valueRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(elem, kAXValueAttribute as CFString, &valueRef)
+        let role = roleRef as? String ?? "?"
+        if role == "AXImage" || (descRef as? String)?.isEmpty == false {
+            out.append("\(role)[\(descRef as? String ?? "")|\(valueRef as? String ?? "")]")
+        }
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(elem, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AnyObject] {
+            for c in children { out.append(contentsOf: collectRolesFromAX(c as! AXUIElement, depth: depth + 1)) }
+        }
+        return out
+    }
+
     // MARK: - Inspección Profunda y Tiempo Real vía Accessibility API (AXUIElement)
     private struct ParsedChatRow {
         let contact: String
@@ -438,7 +681,6 @@ public final class WhatsAppWebObserverService: ObservableObject {
         let unreadCount: Int
         let isMuted: Bool
         let isPinned: Bool
-        let rowElement: AXUIElement
     }
     
     @discardableResult
@@ -828,12 +1070,11 @@ public final class WhatsAppWebObserverService: ObservableObject {
         let timeString = (timeIndex >= 0 && timeIndex < rawList.count) ? rawList[timeIndex] : ""
         return ParsedChatRow(
             contact: contact,
-            message: message.isEmpty ? "Nuevo mensaje" : message,
+            message: message.isEmpty ? "Nuevo mensaje" : WhatsAppMessagePreview.describe(message),
             time: timeString,
             unreadCount: unreadCount,
             isMuted: isMuted,
-            isPinned: isPinned,
-            rowElement: row
+            isPinned: isPinned
         )
     }
     
@@ -987,7 +1228,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
                         for r in rows.prefix(15) {
                             let row = r as! AXUIElement
                             if let p = parseChatRow(row), p.contact.lowercased() == recipient.lowercased() {
-                                clickAXElement(p.rowElement)
+                                clickAXElement(row)
                                 Thread.sleep(forTimeInterval: 0.12)
                                 break
                             }
@@ -1176,7 +1417,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
                     for r in rows.prefix(15) {
                         let row = r as! AXUIElement
                         if let p = parseChatRow(row), p.contact.lowercased() == recipient.lowercased() {
-                            clickAXElement(p.rowElement)
+                            clickAXElement(row)
                             return
                         }
                     }
@@ -1307,14 +1548,14 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
     
     /// Simula una notificación interactiva de WhatsApp para pruebas de UI y Quick Reply
-    public func simulateTestNotification() {
+    public func simulateTestNotification(message: String = "¡Hola! ¿Cómo va el nuevo reproductor de pantalla de bloqueo?") {
         DNDLogger.log("WhatsAppWebObserverService.simulateTestNotification CALLED")
         NotificationActivityProvider.shared.showNotification(
-            title: "Carlos (WhatsApp)",
-            message: "¡Hola! ¿Cómo va el nuevo reproductor de pantalla de bloqueo?",
+            title: "Carlos",
+            message: message,
             handle: "Carlos",
             appIcon: "message.fill",
-            appName: "WhatsApp Web",
+            appName: "WhatsApp",
             tint: Color(red: 0.15, green: 0.78, blue: 0.45),
             enableQuickReply: true,
             duration: 6.0

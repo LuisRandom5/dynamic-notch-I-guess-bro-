@@ -1497,6 +1497,18 @@ public struct SettingsView: View {
                             .tint(DesignTokens.blue)
                     }
                     .padding(.horizontal, 8)
+
+                    if whatsAppObserver.javaScriptBlocked {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.bubble.fill")
+                                .foregroundColor(DesignTokens.orange)
+                            Text("Para ver quién te escribe y qué dice (también fotos, stickers y audios) con WhatsApp en una pestaña de fondo, activa en Safari → Ajustes → Desarrollador → \"Permitir JavaScript desde Apple Events\". En Chrome: Ver → Desarrollador → \"Permitir JavaScript desde Apple Events\".")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 8)
+                    }
                     
                     HStack(spacing: 10) {
                         Button(action: {

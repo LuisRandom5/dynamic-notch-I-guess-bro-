@@ -1,5 +1,23 @@
 # Dynamic Notch — Historial de cambios
 
+## 2.1 — en preparación
+
+### Isla Dinámica sin notch (Fase B)
+- Isla flotante en Macs y monitores sin notch, con su margen superior como en el iPhone; se elige pantalla y forma (isla o notch) desde el menú.
+- La bolita de una app se oculta mientras ves esa app (p. ej. la ventana de Claude en el otro monitor).
+
+### Reproductor como Apple Music
+- Botones que reaccionan al presionar, salto con triángulos animados y play/pausa más rápido.
+- La carátula cambia volteándose como una página.
+
+### Avisos al estilo iPhone
+- Mensajes de WhatsApp como la notificación del iPhone: foto del contacto con el icono de la app, nombre, "ahora" y el mensaje en dos líneas, sin botones ni textos de ayuda (la X aparece al pasar el puntero).
+- WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
+- Carga y batería baja como en el iPhone: la isla se abre a lo ancho con "Cargando" o "Batería baja" y la batería con su porcentaje.
+
+### Rendimiento
+- Con música, el uso de CPU baja de ~22 % a ~13 %.
+
 ## 2.0 — 19 de octubre de 2026
 
 La "Fase A" del plan: el notch se comporta como la Isla Dinámica del iPhone (estudiada en las guías de Apple de Live Activities y Liquid Glass) y queda listo para llevarse a Macs sin notch.

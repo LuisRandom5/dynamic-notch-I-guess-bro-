@@ -34,6 +34,7 @@ public struct QuickReplyNotificationView: View {
     @State private var isSending: Bool = false
     @State private var isSentSuccess: Bool = false
     @State private var dragOffsetY: CGFloat = 0
+    @State private var isHoveringCard = false
     @FocusState private var isInputFocused: Bool
     
     // Geometría calibrada sincronizada con NotificationActivityProvider
@@ -101,109 +102,89 @@ public struct QuickReplyNotificationView: View {
         }
     }
     
-    // MARK: - Estado Compacto (Tarjeta de Notificación con Despeje de Notch)
+    // MARK: - Estado Compacto (aviso de mensaje como el del iPhone)
+    /// Como la notificación de un mensaje en el iPhone: foto del contacto con el icono de la app en la esquina,
+    /// el nombre en negritas con "ahora" a la derecha y el mensaje en hasta dos líneas. Sin botones ni textos de
+    /// ayuda: tocar o deslizar hacia abajo responde, deslizar hacia arriba lo descarta (la X sólo al pasar el puntero).
     private var compactNotificationView: some View {
-        HStack(alignment: .center, spacing: 14) {
-            // Avatar circular con halo y micro-insignia
+        HStack(alignment: .center, spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
-                if let avatar = avatar {
-                    Image(nsImage: avatar)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 44, height: 44)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 1.5))
-                } else {
-                    Circle()
-                        .fill(LinearGradient(
-                            colors: [tintColor, tintColor.opacity(0.65)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 44, height: 44)
-                    
-                    Image(systemName: appIcon)
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white)
+                Group {
+                    if let avatar = avatar {
+                        Image(nsImage: avatar)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        ZStack {
+                            Circle().fill(LinearGradient(
+                                colors: [Color(white: 0.62), Color(white: 0.42)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ))
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 19, weight: .medium))
+                                .foregroundColor(.white.opacity(0.92))
+                        }
+                    }
                 }
-                
-                // Insignia verde de la app
-                Circle()
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
+
+                // Icono de la app, como en las notificaciones de comunicación del iPhone
+                RoundedRectangle(cornerRadius: 4.5, style: .continuous)
                     .fill(tintColor)
-                    .frame(width: 15, height: 15)
+                    .frame(width: 17, height: 17)
                     .overlay(
                         Image(systemName: appIcon)
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
                     )
-                    .offset(x: 2, y: 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                            .stroke(Color.black, lineWidth: 1.5)
+                    )
+                    .offset(x: 4, y: 3)
             }
-            .frame(width: 46, height: 46)
-            
-            // Textos del mensaje con formato claro y sin cortes
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
-                    
-                    Text("• \(appName)")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(tintColor)
-                    
-                    Spacer()
-                    
-                    Text("ahora")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.40))
-                }
-                
-                let isMedia = message.lowercased().contains("foto") || message.lowercased().contains("video") || message.lowercased().contains("audio") || message.lowercased().contains("imagen")
-                HStack(spacing: 4) {
-                    if isMedia {
-                        Image(systemName: message.lowercased().contains("video") ? "video.fill" : (message.lowercased().contains("audio") ? "waveform" : "photo.fill"))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(tintColor)
-                    }
-                    Text(message)
-                        .font(.system(size: 12.5, weight: .regular))
-                        .foregroundColor(Color.white.opacity(0.95))
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                }
-                
-                // Micro-hint animado con holgura vertical o acceso directo
-                HStack(spacing: 4) {
-                    if enableQuickReply {
-                        Image(systemName: "chevron.compact.down")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("Desliza hacia abajo o toca para responder")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                    Spacer(minLength: 4)
+                    if isHoveringCard {
+                        Button(action: { dismissActivity() }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8.5, weight: .bold))
+                                .foregroundColor(Color.white.opacity(0.7))
+                                .frame(width: 18, height: 18)
+                                .background(Circle().fill(Color.white.opacity(0.14)))
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.7)))
                     } else {
-                        Image(systemName: "arrow.up.right.square.fill")
-                            .font(.system(size: 9.5, weight: .semibold))
-                        Text("Toca para abrir \(appName)")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                        Text("ahora")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(Color.white.opacity(0.45))
+                            .transition(.opacity)
                     }
                 }
-                .foregroundColor(tintColor.opacity(0.95))
-                .padding(.top, 1)
+                .frame(height: 18)
+
+                Text(message)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(Color.white.opacity(0.88))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            
-            // Botón descartar
-            Button(action: {
-                dismissActivity()
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.45))
-                    .padding(6)
-                    .background(Circle().fill(Color.white.opacity(0.10)))
-            }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.18)) { isHoveringCard = hovering }
+        }
+        .padding(.horizontal, 18)
         .padding(.top, 32) // Despeja perfectamente el notch físico sin desperdiciar espacio
         .padding(.bottom, 12)
         .contentShape(Rectangle())

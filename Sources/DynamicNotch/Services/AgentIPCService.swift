@@ -271,6 +271,13 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("POST", "/debug/render-notices"):
+            // Diagnóstico visual: dibuja los avisos (WhatsApp, carga, batería baja) en /tmp/dn_notices.png
+            DispatchQueue.main.async {
+                NoticeRenderer.render()
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("POST", "/debug/tap-shelf"):
             // Diagnóstico: simula el toque en la bolita de la repisa
             DispatchQueue.main.async {
@@ -409,6 +416,10 @@ public final class AgentIPCService {
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: [
                 "kind": g.kind.rawValue, "bounds": "\(g.notchBoundsInScreen)", "topInset": g.topInset
             ])
+            
+        case ("GET", "/debug/whatsapp"):
+            let rows = WhatsAppWebObserverService.shared.debugRows()
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["rows": rows])
             
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
