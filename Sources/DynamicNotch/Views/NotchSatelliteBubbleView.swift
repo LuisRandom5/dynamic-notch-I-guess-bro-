@@ -22,7 +22,10 @@ public struct NotchBolitaView: View {
     
     @State private var isHovered: Bool = false
     @State private var isPressed: Bool = false
-    @GestureState private var isHolding: Bool = false
+    @State private var isHolding: Bool = false
+    /// Presión en curso: el temporizador de "mantener" y si ya se disparó (para no tratar el soltar como clic)
+    @State private var holdWorkItem: DispatchWorkItem?
+    @State private var holdFired: Bool = false
     @State private var hoverTimer: Timer?
     
     @Environment(\.accessibilityReduceMotion) var reduceMotion
@@ -283,12 +286,12 @@ public struct NotchBolitaView: View {
             .animation(.spring(response: 0.16, dampingFraction: 0.75), value: isPressed)
             .animation(.spring(response: 0.30, dampingFraction: 0.70), value: isHolding)
             // Clic = abrir la app · mantener presionado (0.35 s) = expandir, como la Isla Dinámica del iPhone
+            // Un solo gesto que mide la presión: en macOS `LongPressGesture.exclusively(before: TapGesture)` se
+            // quedaba con el clic corto y el TapGesture nunca llegaba (clic muerto)
             .highPriorityGesture(
-                LongPressGesture(minimumDuration: appState.bubbleHoldDuration)
-                    // La bolita se comprime mientras se mantiene, para que se sienta que va a pasar algo
-                    .updating($isHolding) { pressing, state, _ in state = pressing }
-                    .onEnded { _ in handleLongPress() }
-                    .exclusively(before: TapGesture().onEnded { handleTapGesture() })
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { _ in beginPressIfNeeded() }
+                    .onEnded { value in endPress(cancelled: hypot(value.translation.width, value.translation.height) > 12) }
             )
             .contextMenu {
                 bolitaContextMenu
@@ -343,7 +346,12 @@ public struct NotchBolitaView: View {
             handleLongPress()
             return
         }
+        // Si su app ya está al frente, abrirla no haría nada visible: se expande la tarjeta (p. ej. Claude
+        // trabajando mientras lo ves en su ventana → la tarjeta muestra qué está haciendo)
+        let frontmostId = Self.frontmostBundleId()
+        DNDLogger.log("Bolita: clic en \(activity.kind.rawValue) (app al frente: \(frontmostId ?? "-"))")
         if let bundleId = sourceAppBundleId,
+           bundleId != frontmostId,
            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
             isPressed = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { self.isPressed = false }
@@ -358,6 +366,43 @@ public struct NotchBolitaView: View {
         handleLongPress()
     }
     
+    /// App al frente leída de la lista de ventanas: `NSWorkspace.frontmostApplication` se queda viejo en una
+    /// app que nunca se activa (seguía diciendo Safari con Claude al frente)
+    private static func frontmostBundleId() -> String? {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        guard let top = windows.first(where: {
+            ($0[kCGWindowLayer as String] as? Int) == 0 && ($0[kCGWindowOwnerPID as String] as? Int32) != ownPID
+        }), let pid = top[kCGWindowOwnerPID as String] as? Int32 else {
+            return NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        }
+        return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
+    }
+
+    /// Inicio de la presión: la bolita se comprime y, si se mantiene `bubbleHoldDuration`, se expande
+    private func beginPressIfNeeded() {
+        guard holdWorkItem == nil, !holdFired else { return }
+        isHolding = true
+        let item = DispatchWorkItem {
+            holdFired = true
+            isHolding = false
+            holdWorkItem = nil
+            handleLongPress()
+        }
+        holdWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + appState.bubbleHoldDuration, execute: item)
+    }
+
+    /// Al soltar: si no alcanzó a ser "mantener", es un clic (salvo que el cursor se haya ido lejos)
+    private func endPress(cancelled: Bool) {
+        let wasHold = holdFired
+        holdWorkItem?.cancel()
+        holdWorkItem = nil
+        holdFired = false
+        isHolding = false
+        if !wasHold && !cancelled { handleTapGesture() }
+    }
+
     /// Mantener presionado, como en el iPhone: la actividad se expande en su tarjeta
     private func handleLongPress() {
         center.lastSatelliteTapAt = Date()
