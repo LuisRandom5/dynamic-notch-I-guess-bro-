@@ -374,6 +374,19 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 
 ⏳ = lo tienes que probar tú (necesita manos, el sistema o bloquear la Mac).
 
+### Pendientes antes del release 2.0 (reportados el 19 de octubre de 2026)
+
+1. **La bolita de Claude te cambia de escritorio (Space).** Desde otro escritorio, el clic abre Claude y macOS salta a su escritorio; hace falta un segundo clic para ver la tarjeta. Debe abrir la tarjeta ahí mismo, sin mover de escritorio. Pista: `handleTapGesture` (`.openApp`) en `NotchSatelliteBubbleView`; para Claude, expandir la tarjeta, o abrir la app sólo si su ventana está en el escritorio actual.
+2. **Alerta de "terminé" con Claude a la vista.** Si la ventana de Claude está visible (p. ej. en el monitor secundario), no tiene caso asomar la tarjeta. No alertar si la app de la actividad tiene una ventana visible en pantalla (CGWindowList en pantalla).
+3. **Las barras de la música desaparecen con una bolita a la derecha.** Es la "mínima pegada" de A-2 y no gusta: conservar las barras (apagarla por defecto o que la mínima muestre carátula + barras).
+4. **Video a pantalla completa en el navegador: el notch no se esconde.** Revisar `FullScreenMediaMonitor` / `setHiddenForFullScreen` y que el cambio de A-7 a `FullScreenDetectorService` no lo haya roto; probar con YouTube en Safari.
+5. **Zona para soltar archivos (desde la primera versión).** Sólo acepta el archivo en una franja del ancho del notch hacia abajo (rectángulo rojo de la captura); fuera de ella la invitación no se pone verde. Debe aceptar en toda la tarjeta. Revisar el marco del panel y el registro de arrastre (`NotchHitTestView.hitTest` con `isDraggingSessionActive`, `draggingUpdated`, ancho de la ventana 680 pt contra la tarjeta de 460 pt, `DragDetectionProbe`); medir con `/debug/hit` y `/debug/drop-invite`.
+6. **Animación de la bolita de la repisa.** Al soltar un archivo y luego abrir el reproductor u otra cosa, varios cuadros se ven raros (no es grave, pero estorba). Grabar cuadro por cuadro (`screencapture` en serie + `stack`) y corregir.
+7. **"Sacudida" de la isla al soltar la gota.** En el iPhone, la isla reacciona un poquito al desprender la bolita: rebota casi imperceptible, como si la gota saliera con fuerza. Agregar un retroceso elástico mínimo de toda la isla (no sólo el extremo con `pillImpulse`) al salir, y el inverso al absorber.
+8. **"Dynamic Notch Tap" aparece en Salida de audio.** Es el dispositivo agregado de la captura de audio del sistema; ocultarlo del selector (filtrar por nombre/UID en `AudioDeviceService`) y, si se puede, crearlo como privado (`kAudioAggregateDeviceIsPrivateKey`) para que macOS tampoco lo muestre.
+9. **Animaciones en modo Liquid Glass sin terminar.** Revisar cuadro por cuadro en cristal (`/debug/appearance`) las transiciones: abrir y cerrar, bolitas, HUD y tarjetas. Regresar después a `oled`.
+10. **Bloq Mayús.** (a) En "Mayús desact." la "M" queda medio tapada por el notch: el texto de la derecha necesita más ala o un texto más corto. (b) Igual que el volumen: el notch se recoge por completo, muestra el aviso y, a los 3 s, regresan las alas de la música y las barras (sólo si hay algo sonando). Usar el mismo `hudHoldUntil` que el HUD.
+
 ---
 
 ## 7. Límites honestos
