@@ -311,7 +311,7 @@ Proveedores ──▶ ActivityStore (modelo: identidad, datos, relevancia, ciclo
 
 | Paso | Contenido | Ítems |
 |---|---|---|
-| A-1 | **Refactor de base, sin cambios visibles:** `SurfaceGeometry` y `PresentationEngine` con tests de arbitraje. | S5, S4 |
+| A-1 ✅ | **Refactor de base, sin cambios visibles:** `SurfaceGeometry` y `PresentationEngine` con tests de arbitraje (22 tests, `./scripts/test.sh`). | S5, S4 |
 | A-2 | **Política de varias actividades:** 1 pegada + hasta 2 separadas, posiciones estables, sin choques; mínima pegada; ancho limitado. | A2, A3, A1, A4 |
 | A-3 | **Interacción:** swipe a lo ancho para recorrer; clic en la separada (ajuste abrir o traer); relevancia dinámica. | A5, A6, A8 |
 | A-4 | **Alertas y ciclo de vida unificados:** alert config, ≤ 8 h, obsoleto y cierre con resumen. | L3, L1, L2 |

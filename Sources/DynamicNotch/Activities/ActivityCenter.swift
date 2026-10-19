@@ -304,90 +304,24 @@ public final class ActivityCenter: ObservableObject {
             return
         }
         
-        // Ordenamiento determinista:
-        // 1. Urgencia (isUrgent)
-        // 2. Prioridad numérica
-        // 3. Momento de última actualización
-        let sorted = activeActivities.sorted { (a, b) -> Bool in
-            if a.isUrgent != b.isUrgent {
-                return a.isUrgent && !b.isUrgent
-            }
-            if a.priority != b.priority {
-                return a.priority > b.priority
-            }
-            // Como la Isla Dinámica: con la misma relevancia gana la que se INICIÓ primero (estable: una
-            // actualización no le roba el lugar a otra)
-            return a.createdAt < b.createdAt
-        }
-        
+        // La política (orden, histéresis, HUD, bolitas y cola) vive en PresentationEngine, sin estado global
         let now = Date()
-        let mode = AppState.shared.multiActivityMode
         let maxSatellites = max(1, AppState.shared.maxSatelliteBolitas)
-        
-        // Candidatos a actividad principal en el notch físico:
-        // Las actividades de progreso de IA en segundo plano (agentAI no modal) NUNCA deben ocupar
-        // el notch físico en reposo como píldora vacía; deben vivir exclusivamente como bolitas satélite.
-        // HUD del sistema (volumen/brillo): como en la Isla Dinámica, se muestra SIEMPRE al instante y esconde
-        // lo que hubiera en el notch mientras dura; al irse, lo anterior vuelve a su lugar. Lo escondido no
-        // pasa a bolita (eso provocaría animaciones cruzadas de 3 s).
-        let systemHUD = sorted.first { $0.style == .sliderPill }
-        let primaryCandidates = sorted.filter { activity in
-            if activity.style == .sliderPill {
-                return false
-            }
-            if activity.kind == .claude || activity.id == ShelfActivityProvider.activityId {
-                // Claude y la repisa viven siempre como bolita satélite
-                return false
-            }
-            if yieldsToPlayback(activity) {
-                // La música o el video toman el notch; el temporizador sigue visible como bolita en vivo
-                return false
-            }
-            if activity.kind == .agentAI {
-                // Solo puede ser principal si es una interacción modal activa (pregunta o solicitud de permiso)
-                return AgentActivityProvider.shared.isActive && activity.id.hasPrefix("agent_") && activity.id != "agent_live_progress"
-            }
-            return true
-        }
-        
-        // Histéresis de rol (3s) para evitar intercambios constantes ante micro-actualizaciones
-        var chosenPrimary: LiveActivity? = primaryCandidates.first
-        if let current = currentActivity,
-           let isCurrentStillValid = primaryCandidates.first(where: { $0.id == current.id }) {
-            let timeSinceChange = now.timeIntervalSince(lastRoleChangeTime)
-            if let top = primaryCandidates.first, top.id != current.id {
-                if top.isUrgent {
-                    chosenPrimary = top
-                    lastRoleChangeTime = now
-                } else if timeSinceChange < hysteresisDuration {
-                    chosenPrimary = isCurrentStillValid
-                } else {
-                    chosenPrimary = top
-                    lastRoleChangeTime = now
-                }
-            } else {
-                chosenPrimary = isCurrentStillValid
-            }
-        } else {
-            chosenPrimary = primaryCandidates.first
-            lastRoleChangeTime = now
-        }
-        
-        // Mientras el HUD está visible (y unos segundos después), lo que iba en el notch queda en pausa
-        // (ni notch ni bolita). Un aviso urgente sí puede aparecer durante esa pausa.
-        let isHoldingAfterHUD = systemHUD == nil && now < hudHoldUntil && !(chosenPrimary?.isUrgent ?? false)
-        let hiddenByHUD = (systemHUD != nil || isHoldingAfterHUD) ? chosenPrimary?.id : nil
-        if let hud = systemHUD {
-            chosenPrimary = hud
-        } else if isHoldingAfterHUD {
-            chosenPrimary = nil
-        }
-        
-        let primaryId = chosenPrimary?.id
-        let remaining = sorted.filter { $0.id != primaryId && $0.id != hiddenByHUD && $0.style != .sliderPill }
-        let satelliteSlots = mode == .modeA ? maxSatellites : 1
-        var newSecondaries = Array(remaining.prefix(satelliteSlots))
-        let newOverflow = Array(remaining.dropFirst(satelliteSlots))
+        let satelliteSlots = AppState.shared.multiActivityMode == .modeA ? maxSatellites : 1
+        let decision = PresentationEngine.decide(
+            candidates: activeActivities.map(presentationCandidate),
+            currentPrimaryId: currentActivity?.id,
+            lastRoleChangeTime: lastRoleChangeTime,
+            hudHoldUntil: hudHoldUntil,
+            now: now,
+            policy: .init(hysteresis: hysteresisDuration, satelliteSlots: satelliteSlots)
+        )
+        lastRoleChangeTime = decision.lastRoleChangeTime
+        let activitiesById = Dictionary(activeActivities.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let primaryId = decision.primaryId
+        let chosenPrimary = primaryId.flatMap { activitiesById[$0] }
+        var newSecondaries = decision.secondaryIds.compactMap { activitiesById[$0] }
+        let newOverflow = decision.overflowIds.compactMap { activitiesById[$0] }
         
         // Detección de un cambio de rol notch ⇄ bolita (ver RoleHandoff)
         if let handoff = roleHandoff, handoff.until <= now { roleHandoff = nil }
@@ -432,6 +366,36 @@ public final class ActivityCenter: ObservableObject {
         }
         
         NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
+    
+    /// Traduce una actividad a lo que necesita el motor de presentación
+    private func presentationCandidate(_ activity: LiveActivity) -> PresentationCandidate {
+        let canBePrimary: Bool
+        if activity.style == .sliderPill {
+            canBePrimary = false
+        } else if activity.kind == .claude || activity.id == ShelfActivityProvider.activityId {
+            // Claude y la repisa viven siempre como bolita satélite
+            canBePrimary = false
+        } else if yieldsToPlayback(activity) {
+            // La música o el video toman el notch; el temporizador sigue visible como bolita en vivo
+            canBePrimary = false
+        } else if activity.kind == .agentAI {
+            // El progreso de IA en segundo plano nunca ocupa el notch: sólo una interacción modal activa
+            // (pregunta o solicitud de permiso)
+            canBePrimary = AgentActivityProvider.shared.isActive && activity.id.hasPrefix("agent_") && activity.id != "agent_live_progress"
+        } else {
+            canBePrimary = true
+        }
+        return PresentationCandidate(
+            id: activity.id,
+            priority: activity.priority,
+            isUrgent: activity.isUrgent,
+            createdAt: activity.createdAt,
+            // HUD de volumen/brillo: se muestra siempre al instante y esconde lo que hubiera en el notch;
+            // lo escondido no pasa a bolita (eso provocaría animaciones cruzadas)
+            isSystemHUD: activity.style == .sliderPill,
+            canBePrimary: canBePrimary
+        )
     }
     
     private enum PillImpulse { case detach, absorb }

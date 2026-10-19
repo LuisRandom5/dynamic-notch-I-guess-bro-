@@ -1,21 +1,7 @@
 import AppKit
 import SwiftUI
 
-public struct NotchGeometry: Equatable {
-    public var hasPhysicalNotch: Bool
-    public var width: CGFloat
-    public var height: CGFloat
-    public var screenBounds: CGRect
-    public var notchBoundsInScreen: CGRect
-
-    public static let fallback = NotchGeometry(
-        hasPhysicalNotch: false,
-        width: 180,
-        height: 32,
-        screenBounds: CGRect(x: 0, y: 0, width: 1470, height: 956),
-        notchBoundsInScreen: CGRect(x: 645, y: 924, width: 180, height: 32)
-    )
-}
+// NotchGeometry es ahora un alias de SurfaceGeometry (ver SurfaceGeometry.swift)
 
 public enum NotchMode: String, CaseIterable, Equatable {
     case idle

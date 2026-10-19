@@ -70,6 +70,10 @@ Ubicación: `Sources/DynamicNotch/Activities/`
    - `85`: Notificaciones interactivas con Quick Reply (`NotificationActivityProvider`).
    - `70`: HUD de volumen.
 
+3. **Política de presentación (`PresentationEngine`)**: quién va en el notch, en las bolitas y en la cola se decide en una función pura (`PresentationEngine.decide`), sin SwiftUI ni singletons. `ActivityCenter` traduce cada `LiveActivity` a un `PresentationCandidate` (prioridad, urgencia, inicio, si es HUD del sistema y si puede ocupar el notch) y aplica la decisión con sus animaciones. Reglas: urgentes primero, luego prioridad; con la misma gana la que se inició primero; histéresis de 3 s; el HUD de volumen/brillo tiene preferencia y tras él el notch queda limpio unos segundos.
+
+4. **Geometría de la superficie (`SurfaceGeometry`, `Core/SurfaceGeometry.swift`)**: describe dónde vive la isla: notch físico, notch virtual (pantallas sin notch, comportamiento actual) o isla flotante (Fase B). `NotchGeometry` es un alias. `ScreenService` la calcula con `SurfaceGeometry.resolve(screens:preferredIndex:)`, que es pura.
+
 ---
 
 ## 5. Motores de Bajo Nivel y Servicios (`Sources/DynamicNotch/Services/`)
@@ -130,6 +134,12 @@ El script realiza lo siguiente:
 3. Copia los recursos de `Resources/` a `DynamicNotch.app/Contents/Resources/`.
 4. Inyecta el `Info.plist` con permisos de accesibilidad, eventos de Apple, micrófono y automatización.
 5. Firma localmente la aplicación con `codesign` estable.
+
+Pruebas unitarias de la lógica pura (`Tests/DynamicNotchTests`, framework Testing):
+```bash
+./scripts/test.sh
+```
+Usa el toolchain de Xcode (`DEVELOPER_DIR`), porque las Command Line Tools no traen Testing, y compila en `~/Library/Caches/DynamicNotchTests`.
 
 Para ejecutar en segundo plano (daemon):
 ```bash

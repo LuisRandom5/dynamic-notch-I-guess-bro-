@@ -6,6 +6,8 @@ public final class ScreenService: ObservableObject {
     
     @Published public private(set) var currentGeometry: NotchGeometry = .fallback
     @Published public private(set) var targetScreen: NSScreen?
+    /// Superficie actual (notch físico o isla); `currentGeometry` es el nombre histórico
+    public var surface: SurfaceGeometry { currentGeometry }
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -20,54 +22,14 @@ public final class ScreenService: ObservableObject {
     }
     
     public func updateScreenGeometry() {
-        // Find the screen that has a physical notch, or default to the primary display
-        var selectedScreen = NSScreen.main ?? NSScreen.screens.first
-        var foundPhysicalNotch = false
-        var computedGeometry = NotchGeometry.fallback
-        
-        for screen in NSScreen.screens {
-            if let leftArea = screen.auxiliaryTopLeftArea,
-               let rightArea = screen.auxiliaryTopRightArea,
-               leftArea.width > 0, rightArea.width > 0 {
-                
-                let baseWidth = rightArea.minX - leftArea.maxX
-                let baseHeight = screen.frame.maxY - leftArea.minY
-                
-                // Subpixel buffer (+3.0pt width, +1.0pt height) to perfectly embrace the physical bezel
-                let notchWidth = baseWidth + 3.0
-                let notchHeight = baseHeight + 1.0
-                let notchX = leftArea.maxX - 1.5
-                let notchY = leftArea.minY - 1.0
-                
-                computedGeometry = NotchGeometry(
-                    hasPhysicalNotch: true,
-                    width: notchWidth,
-                    height: notchHeight,
-                    screenBounds: screen.frame,
-                    notchBoundsInScreen: CGRect(x: notchX, y: notchY, width: notchWidth, height: notchHeight)
-                )
-                selectedScreen = screen
-                foundPhysicalNotch = true
-                break
-            }
-        }
-        
-        if !foundPhysicalNotch, let screen = selectedScreen {
-            let width: CGFloat = 180
-            let height: CGFloat = 32
-            let x = screen.frame.midX - (width / 2)
-            let y = screen.frame.maxY - height
-            
-            computedGeometry = NotchGeometry(
-                hasPhysicalNotch: false,
-                width: width,
-                height: height,
-                screenBounds: screen.frame,
-                notchBoundsInScreen: CGRect(x: x, y: y, width: width, height: height)
-            )
-        }
-        
-        self.targetScreen = selectedScreen
-        self.currentGeometry = computedGeometry
+        // La primera pantalla con notch físico; si no hay, un notch virtual en la pantalla principal
+        let screens = NSScreen.screens
+        let main = NSScreen.main ?? screens.first
+        let resolved = SurfaceGeometry.resolve(
+            screens: screens.map { ($0.frame, $0.auxiliaryTopLeftArea, $0.auxiliaryTopRightArea) },
+            preferredIndex: main.flatMap { m in screens.firstIndex(where: { $0 == m }) }
+        )
+        self.targetScreen = resolved.screenIndex.map { screens[$0] } ?? main
+        self.currentGeometry = resolved.geometry
     }
 }

@@ -16,6 +16,12 @@ let package = Package(
         .executableTarget(
             name: "DynamicNotch",
             path: "Sources/DynamicNotch"
+        ),
+        // Lógica pura (política de presentación, geometría). Correr con ./scripts/test.sh
+        .testTarget(
+            name: "DynamicNotchTests",
+            dependencies: ["DynamicNotch"],
+            path: "Tests/DynamicNotchTests"
         )
     ]
 )
