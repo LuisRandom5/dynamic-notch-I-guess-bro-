@@ -30,6 +30,7 @@ public final class ScreenService: ObservableObject {
         let defaults = UserDefaults.standard
         let placement = SurfaceGeometry.ScreenPlacement(rawValue: defaults.string(forKey: "islandScreenPlacement") ?? "") ?? .automatic
         let style = SurfaceGeometry.IslandStyle(rawValue: defaults.string(forKey: "islandStyle") ?? "") ?? .floating
+        let sizeMode = defaults.string(forKey: "islandSizeMode") ?? "menuBar"
         let screens = NSScreen.screens
         let main = NSScreen.main ?? screens.first
         let cursorIndex = Self.screenIndex(containing: NSEvent.mouseLocation, in: screens)
@@ -41,7 +42,15 @@ public final class ScreenService: ObservableObject {
             placement: placement,
             mainIndex: main.flatMap { m in screens.firstIndex(where: { $0 == m }) },
             cursorIndex: cursorIndex,
-            islandStyle: style
+            islandStyle: style,
+            islandMetrics: { index in
+                // "Barra de menús" (por defecto): la isla cabe en la barra y no tapa ventanas; "iPhone": 126 × 32
+                guard sizeMode != "iphone", screens.indices.contains(index) else {
+                    return (SurfaceGeometry.floatingIslandSize, SurfaceGeometry.floatingIslandTopInset)
+                }
+                let screen = screens[index]
+                return SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: screen.frame.maxY - screen.visibleFrame.maxY)
+            }
         )
         let screen = resolved.screenIndex.map { screens[$0] } ?? main
         if screen != targetScreen { self.targetScreen = screen }

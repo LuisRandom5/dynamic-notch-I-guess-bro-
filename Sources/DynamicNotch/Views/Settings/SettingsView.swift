@@ -1779,6 +1779,11 @@ extension SettingsView {
                 label: { $0 == .floating ? "Flotante (iPhone)" : "Pegada al borde" }
             )
             ToggleRow(
+                title: "Del alto de la barra de menús",
+                subtitle: "La isla flotante cabe en la barra de menús y no tapa las ventanas de abajo. Apagado: tamaño del iPhone (126 × 32 pt), un poco más grande.",
+                isOn: $appState.islandFitsMenuBar
+            )
+            ToggleRow(
                 title: "Visible en reposo",
                 subtitle: "En una pantalla sin notch, la isla se ve aunque no haya nada (como el iPhone). Apagado: aparece sólo con música o actividades.",
                 isOn: $appState.islandVisibleAtRest

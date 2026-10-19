@@ -291,9 +291,11 @@ public final class NotchWindowManager: ObservableObject {
     }
     
     private func observeScreenChanges() {
+        // El aviso de @Published llega ANTES de guardar el valor: se usa el que trae (antes se colocaba la
+        // ventana con la geometría vieja y, al volver de la isla flotante al notch, quedaba 6 pt abajo del borde)
         ScreenService.shared.$currentGeometry
-            .sink { [weak self] _ in
-                self?.repositionWindow()
+            .sink { [weak self] geometry in
+                self?.repositionWindow(for: geometry)
             }
             .store(in: &cancellables)
             
@@ -406,8 +408,11 @@ public final class NotchWindowManager: ObservableObject {
     }
     
     public func repositionWindow() {
+        repositionWindow(for: ScreenService.shared.currentGeometry)
+    }
+    
+    public func repositionWindow(for geometry: SurfaceGeometry) {
         guard let panel = panel else { return }
-        let geometry = ScreenService.shared.currentGeometry
         let screenFrame = geometry.screenBounds
         
         // Centrada en la superficie; la isla flotante se separa del borde superior (`topInset`)
@@ -424,7 +429,8 @@ public final class NotchWindowManager: ObservableObject {
                 panel.animator().alphaValue = 0
             }, completionHandler: { [weak self] in
                 panel.setFrame(windowRect, display: true, animate: false)
-                self?.updateHitAreaForCurrentState()
+                // Ya con la geometría nueva guardada
+                DispatchQueue.main.async { self?.updateHitAreaForCurrentState() }
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0.28
                     panel.animator().alphaValue = 1
@@ -433,7 +439,8 @@ public final class NotchWindowManager: ObservableObject {
             return
         }
         panel.setFrame(windowRect, display: true, animate: false)
-        updateHitAreaForCurrentState()
+        // La zona de clic se calcula con la geometría guardada: esperar a que el valor nuevo quede publicado
+        DispatchQueue.main.async { [weak self] in self?.updateHitAreaForCurrentState() }
     }
     
     // MARK: - Gestos de Trackpad

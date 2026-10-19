@@ -202,6 +202,13 @@ public final class AppState: ObservableObject {
             ScreenService.shared.updateScreenGeometry()
         }
     }
+    /// Tamaño de la isla flotante: dentro de la barra de menús (no tapa ventanas) o como el iPhone
+    @Published public var islandFitsMenuBar: Bool = (UserDefaults.standard.string(forKey: "islandSizeMode") ?? "menuBar") != "iphone" {
+        didSet {
+            UserDefaults.standard.set(islandFitsMenuBar ? "menuBar" : "iphone", forKey: "islandSizeMode")
+            ScreenService.shared.updateScreenGeometry()
+        }
+    }
     /// La isla flotante se ve en reposo (como el iPhone) o sólo cuando hay algo
     @Published public var islandVisibleAtRest: Bool = UserDefaults.standard.object(forKey: "islandVisibleAtRest") != nil
         ? UserDefaults.standard.bool(forKey: "islandVisibleAtRest") : true {

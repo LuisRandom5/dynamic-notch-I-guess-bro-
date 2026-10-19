@@ -121,9 +121,22 @@ public struct SurfaceGeometry: Equatable {
     /// - withoutNotch: la primera pantalla sin notch; si todas tienen, como automatic
     /// - followCursor: la pantalla del cursor (con notch → notch; sin notch → isla)
     /// En una pantalla sin notch se dibuja una isla flotante o un notch virtual según `islandStyle`.
+    /// Tamaño y separación de la isla flotante en la pantalla `i` (por defecto, proporción del iPhone)
+    public typealias IslandMetricsProvider = (_ screenIndex: Int) -> (size: CGSize, topInset: CGFloat)
+
+    /// Isla del alto de la barra de menús: queda dentro de ella y no tapa las ventanas de abajo
+    public static func menuBarIslandMetrics(menuBarHeight: CGFloat) -> (size: CGSize, topInset: CGFloat) {
+        let bar = menuBarHeight > 0 ? menuBarHeight : 24
+        let height = max(20, bar - 2)
+        // Proporción de la isla flotante (126 × 32)
+        let width = (height * floatingIslandSize.width / floatingIslandSize.height).rounded()
+        return (CGSize(width: width, height: height), max(0, (bar - height) / 2))
+    }
+
     public static func resolve(screens: [(frame: CGRect, auxiliaryTopLeft: CGRect?, auxiliaryTopRight: CGRect?)],
                                placement: ScreenPlacement, mainIndex: Int?, cursorIndex: Int?,
-                               islandStyle: IslandStyle) -> (geometry: SurfaceGeometry, screenIndex: Int?) {
+                               islandStyle: IslandStyle,
+                               islandMetrics: IslandMetricsProvider? = nil) -> (geometry: SurfaceGeometry, screenIndex: Int?) {
         guard !screens.isEmpty else { return (fallback, nil) }
         func notch(at i: Int) -> SurfaceGeometry? {
             physicalNotch(screenFrame: screens[i].frame, auxiliaryTopLeft: screens[i].auxiliaryTopLeft,
@@ -132,7 +145,8 @@ public struct SurfaceGeometry: Equatable {
         func island(at i: Int) -> SurfaceGeometry {
             switch islandStyle {
             case .floating:
-                return floatingIsland(screenFrame: screens[i].frame, size: floatingIslandSize, topInset: floatingIslandTopInset)
+                let metrics = islandMetrics?(i) ?? (size: floatingIslandSize, topInset: floatingIslandTopInset)
+                return floatingIsland(screenFrame: screens[i].frame, size: metrics.size, topInset: metrics.topInset)
             case .hanging:
                 return virtualNotch(screenFrame: screens[i].frame)
             }

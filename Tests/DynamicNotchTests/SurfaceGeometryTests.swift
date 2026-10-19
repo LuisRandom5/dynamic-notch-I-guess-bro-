@@ -115,4 +115,20 @@ import Testing
         let r = SurfaceGeometry.resolve(screens: [(monitorFrame, nil, nil)], placement: .automatic, mainIndex: 0, cursorIndex: nil, islandStyle: .floating)
         #expect(r.geometry.kind == .floatingIsland)
     }
+
+    @Test func menuBarIslandFitsInsideTheBar() {
+        let m = SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: 24)
+        #expect(m.size.height == 22)
+        #expect(m.topInset == 1)
+        #expect(m.topInset + m.size.height <= 24)
+        // Barra oculta: alto típico
+        #expect(SurfaceGeometry.menuBarIslandMetrics(menuBarHeight: 0).size.height == 22)
+    }
+
+    @Test func islandMetricsProviderIsUsed() {
+        let r = SurfaceGeometry.resolve(screens: twoScreens, placement: .withoutNotch, mainIndex: 0, cursorIndex: nil,
+                                        islandStyle: .floating, islandMetrics: { _ in (CGSize(width: 90, height: 22), 1) })
+        #expect(r.geometry.notchBoundsInScreen.size == CGSize(width: 90, height: 22))
+        #expect(r.geometry.topInset == 1)
+    }
 }
