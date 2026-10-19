@@ -382,7 +382,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 900, // Prioridad de llamada activa (prevalece sobre temporizadores y medios en la cápsula)
+            priority: ActivityRelevance.activeCall, // prevalece sobre temporizadores y medios en la cápsula
             style: .pill,
             leading: leading,
             center: nil,
@@ -523,7 +523,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 900,
+            priority: ActivityRelevance.activeCall,
             style: .card,
             leading: leading,
             center: center,
@@ -651,7 +651,7 @@ public final class CallActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: "call_live_activity",
-            priority: 950,
+            priority: ActivityRelevance.incomingCall,
             style: .card,
             leading: leading,
             center: center,

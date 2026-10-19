@@ -2,6 +2,13 @@ import SwiftUI
 import Combine
 import AppKit
 
+/// Bolita que se va: conserva su lugar (índice) para reabsorberse en el lado del notch donde estaba
+public struct DepartingSatellite: Identifiable {
+    public let id: String
+    public let activity: LiveActivity
+    public let index: Int
+}
+
 public final class ActivityCenter: ObservableObject {
     public static let shared = ActivityCenter()
     
@@ -15,6 +22,9 @@ public final class ActivityCenter: ObservableObject {
     @Published public private(set) var secondaryActivities: [LiveActivity] = []
     @Published public private(set) var overflowActivities: [LiveActivity] = []
     @Published public private(set) var overflowCount: Int = 0
+    /// Bolitas que se están reabsorbiendo en el notch (dejaron de estar a la vista): se siguen dibujando
+    /// mientras dura la absorción (ver LiquidSatelliteHost)
+    @Published public private(set) var departingSatellites: [DepartingSatellite] = []
     /// 3 actividades a la vista: bolitas y mínima pegada en ancho limitado (ver PresentationDecision)
     @Published public private(set) var isLimitedWidth: Bool = false
     
@@ -34,6 +44,10 @@ public final class ActivityCenter: ObservableObject {
     private var dismissTimers: [String: Timer] = [:]
     private var fusionExpansionTimer: Timer?
     private var lastRoleChangeTime: Date = Date.distantPast
+    /// Orden del carrusel elegido con el swipe a lo ancho (vale mientras no empiece ni termine una actividad)
+    private var userOrder: [String]?
+    /// Actividad que el usuario trajo al notch con un clic (vale mientras exista)
+    private var preferredPrimaryId: String?
     private let hysteresisDuration: TimeInterval = 3.0 // 3s de estabilidad de rol
     
     private var playbackObserver: AnyCancellable?
@@ -294,6 +308,7 @@ public final class ActivityCenter: ObservableObject {
     
     public func recalculateRoles() {
         guard !activeActivities.isEmpty else {
+            registerDepartures(from: secondaryActivities, to: [])
             withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
                 self.currentActivity = nil
                 self.secondaryActivities = []
@@ -318,9 +333,15 @@ public final class ActivityCenter: ObservableObject {
             hudHoldUntil: hudHoldUntil,
             now: now,
             policy: .init(hysteresis: hysteresisDuration, satelliteSlots: satelliteSlots),
-            previousSecondaryIds: secondaryActivities.map(\.id)
+            previousSecondaryIds: secondaryActivities.map(\.id),
+            userOrder: userOrder,
+            preferredPrimaryId: preferredPrimaryId
         )
         lastRoleChangeTime = decision.lastRoleChangeTime
+        if !decision.appliedUserOrder { userOrder = nil }
+        if let preferred = preferredPrimaryId, !activeActivities.contains(where: { $0.id == preferred }) {
+            preferredPrimaryId = nil
+        }
         let activitiesById = Dictionary(activeActivities.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let primaryId = decision.primaryId
         let chosenPrimary = primaryId.flatMap { activitiesById[$0] }
@@ -362,6 +383,7 @@ public final class ActivityCenter: ObservableObject {
             }
         }
         
+        registerDepartures(from: secondaryActivities, to: newSecondaries)
         withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
             self.currentActivity = displayedPrimary
             self.secondaryActivities = newSecondaries
@@ -371,6 +393,27 @@ public final class ActivityCenter: ObservableObject {
         }
         
         NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
+    
+    /// Lado de la bolita en el lugar `index`: la segunda va a la izquierda si el usuario quiere ambos lados
+    public static func satelliteSideKey(index: Int) -> String {
+        AppState.shared.bubblesOnBothSides && index == 1 ? "L" : "R"
+    }
+    
+    /// Las bolitas que dejan de verse en su lado se siguen dibujando mientras se reabsorben en el notch. Cuenta
+    /// el lado: una que pasa de izquierda a derecha (swipe) se reabsorbe de un lado y brota del otro.
+    private func registerDepartures(from old: [LiveActivity], to new: [LiveActivity]) {
+        let newKeys = Set(new.enumerated().map { "\($0.element.id)|\(Self.satelliteSideKey(index: $0.offset))" })
+        // Si vuelve a su lado antes de terminar de irse, deja de irse
+        departingSatellites.removeAll { newKeys.contains("\($0.activity.id)|\(Self.satelliteSideKey(index: $0.index))") }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, expandedActivity == nil, !isFusing else { return }
+        for (index, activity) in old.enumerated() where !newKeys.contains("\(activity.id)|\(Self.satelliteSideKey(index: index))") {
+            let token = "\(activity.id)#\(UUID().uuidString.prefix(8))"
+            departingSatellites.append(DepartingSatellite(id: token, activity: activity, index: index))
+            DispatchQueue.main.asyncAfter(deadline: .now() + LiquidSatelliteHost<EmptyView>.departureDuration) { [weak self] in
+                self?.departingSatellites.removeAll { $0.id == token }
+            }
+        }
     }
     
     /// Traduce una actividad a lo que necesita el motor de presentación
@@ -393,7 +436,8 @@ public final class ActivityCenter: ObservableObject {
         }
         return PresentationCandidate(
             id: activity.id,
-            priority: activity.priority,
+            // Relevancia dinámica: la que pide atención (p. ej. Claude esperando permiso) sube
+            priority: ActivityRelevance.effective(base: activity.priority, needsAttention: activity.state == .attention),
             isUrgent: activity.isUrgent,
             createdAt: activity.createdAt,
             // HUD de volumen/brillo: se muestra siempre al instante y esconde lo que hubiera en el notch;
@@ -418,7 +462,7 @@ public final class ActivityCenter: ObservableObject {
         case .detach:
             // Como en la Isla Dinámica: el extremo se ensancha un poco para dejar salir la gota y, cuando la
             // cintura se adelgaza, regresa con un pequeño retroceso elástico
-            // Tiempos al doble, al ritmo de la gota (ver AnyTransition.liquidSatellite)
+            // Tiempos al ritmo de la gota (ver LiquidSatelliteHost)
             // Escalan con la duración de la gota (1.32 s fue la referencia) para seguir sincronizados con ella
             let k = LiquidMotionTuning.v.emergeResponse / 1.32
             withAnimation(.easeOut(duration: 0.36 * k)) { pillImpulse = CGFloat(LiquidMotionTuning.v.widenImpulse) }
@@ -656,14 +700,35 @@ public final class ActivityCenter: ObservableObject {
     }
     
     /// Promueve una actividad a principal de forma inmediata
+    /// Trae una actividad al notch (clic en su bolita o "Hacer actividad principal"). Se queda ahí mientras
+    /// exista, salvo que llegue algo urgente.
     public func makePrimary(id: String) {
-        guard let idx = activeActivities.firstIndex(where: { $0.id == id }) else { return }
-        var act = activeActivities[idx]
-        act.priority = (activeActivities.map { $0.priority }.max() ?? 900) + 20
-        act.lastUpdatedAt = Date()
-        activeActivities[idx] = act
+        guard let activity = activeActivities.first(where: { $0.id == id }), canTakeNotch(activity) else { return }
+        preferredPrimaryId = id
         recalculateRoles()
         SoundFeedbackService.shared.playBubblePop()
+    }
+    
+    /// Puede ocupar el notch (Claude, la repisa o el temporizador con música viven sólo como bolita)
+    public func canTakeNotch(_ activity: LiveActivity) -> Bool {
+        presentationCandidate(activity).canBePrimary
+    }
+    
+    /// Hay al menos dos actividades entre bolitas y cola: el swipe a lo ancho las recorre
+    public var canCycleActivities: Bool {
+        secondaryActivities.count + overflowActivities.count >= 2
+    }
+    
+    /// Swipe a lo ancho, como la Isla Dinámica del iPhone 18 Pro: avanza o regresa el carrusel de bolitas
+    /// (la primera visible pasa a la cola y entra la siguiente)
+    public func cycleActivities(forward: Bool) {
+        let ring = secondaryActivities.map(\.id) + overflowActivities.map(\.id)
+        guard ring.count >= 2, expandedActivity == nil, !isFusing else { return }
+        userOrder = PresentationEngine.rotated(ring, forward: forward)
+        recalculateRoles()
+        if AppState.shared.enableHaptics {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
     }
     
     /// Expande directamente una actividad hacia su tarjeta rica

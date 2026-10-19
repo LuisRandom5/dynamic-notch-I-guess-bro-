@@ -35,7 +35,7 @@ public final class ShelfActivityProvider {
         let activity = LiveActivity(
             id: Self.activityId,
             kind: .generic,
-            priority: 40, // la más discreta: nunca desplaza a otra bolita
+            priority: ActivityRelevance.shelf, // la más discreta: nunca desplaza a otra bolita
             style: .pill,
             title: visibleCount == 1 ? "1 archivo en la repisa" : "\(visibleCount) archivos en la repisa",
             bolitaVariant: .color(bgColor: .black, fgColor: Self.blue, iconName: "tray.full.fill", shortText: "\(visibleCount)"),

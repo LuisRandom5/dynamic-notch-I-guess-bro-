@@ -1664,10 +1664,11 @@ extension SettingsView {
                 subtitle: "Si hay bolitas, la música se reduce a su carátula junto a la cámara, como el iPhone. Apagado: conserva sus dos alas.",
                 isOn: $appState.minimalAttachedEnabled
             )
-            ToggleRow(
-                title: "Clic abre la app (estilo iPhone)",
-                subtitle: "Clic en una bolita abre su app; mantener presionado la expande. Apagado: el clic expande la tarjeta.",
-                isOn: $appState.bubbleTapOpensApp
+            PickerRow(
+                title: "Clic en una bolita",
+                subtitle: "Mantener presionado siempre la expande. \"Traerla al notch\" la pone en el lugar principal; las que sólo viven como bolita (Claude, la repisa) se expanden.",
+                selection: $appState.bubbleTapAction,
+                label: { $0.title }
             )
             SliderRow(
                 title: "Tiempo para mantener presionado",
@@ -1766,6 +1767,11 @@ extension SettingsView {
                 isOn: $appState.morphBlurEnabled
             )
             ToggleRow(
+                title: "Deslizar a lo ancho recorre las actividades",
+                subtitle: "Con dos o más actividades entre bolitas y cola, deslizar de lado sobre el notch cerrado las va pasando, como la Isla Dinámica.",
+                isOn: $appState.swipeCyclesActivities
+            )
+            ToggleRow(
                 title: "Deslizar de lado para esconder la música",
                 subtitle: "Sobre el notch cerrado, deslizar de lado esconde las alas de la música; otro deslizamiento o una canción nueva las regresa.",
                 isOn: $appState.swipeToMinimizeMusic
@@ -1825,6 +1831,43 @@ private struct SliderRow: View {
                 .tint(DesignTokens.blue)
         }
         .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+/// Fila con un selector segmentado (mismo estilo que ToggleRow)
+private struct PickerRow<Value: Hashable & Identifiable & CaseIterable>: View where Value.AllCases: RandomAccessCollection {
+    let title: String
+    let subtitle: String
+    @Binding var selection: Value
+    var label: (Value) -> String = { "\($0)" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.primary)
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Picker("", selection: $selection) {
+                ForEach(Value.allCases) { value in
+                    Text(label(value)).tag(value)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))

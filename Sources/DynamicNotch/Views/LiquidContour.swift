@@ -158,12 +158,10 @@ public struct LiquidContourShape: Shape {
             let pill = Path(roundedRect: pillRect, cornerRadius: pillRect.height / 2)
             return contour.subtracting(pill)
         }
-        // Negro: se quita el CUERPO del notch (ya está dibujado por el propio notch). Dibujar su borde dos veces
-        // dejaba una costura vertical visible donde empezaba este tramo
-        let R = pillRect.height / 2
-        let body = notchIsLeading
-            ? CGRect(x: bounds.minX - 4, y: pillRect.minY - 4, width: pillRect.maxX - R - bounds.minX + 4, height: pillRect.height + 8)
-            : CGRect(x: pillRect.minX + R, y: pillRect.minY - 4, width: bounds.maxX - pillRect.minX - R + 4, height: pillRect.height + 8)
-        return contour.subtracting(Path(body))
+        // Negro: se quita el notch (ya lo dibuja el propio notch) salvo un borde de 1 pt que se encima negro
+        // sobre negro, para que no quede costura. Antes se quitaba sólo el cuerpo y el extremo redondeado se
+        // dibujaba encima del contenido del notch (la carátula quedaba tapada mientras la gota brotaba)
+        let inner = pillRect.insetBy(dx: 1, dy: 1)
+        return contour.subtracting(Path(roundedRect: inner, cornerRadius: inner.height / 2))
     }
 }

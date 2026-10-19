@@ -89,18 +89,19 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     /// el notch, así que en vez de cubrirla de negro se disuelve al final de la absorción
     public var isGlass: Bool = false
 
-    /// Fusión extra que inyecta la transición de aparecer/desaparecer (ver `.liquidSatellite`)
-    @Environment(\.liquidSatelliteExtraMerge) private var extraMerge
-    
-    public var animatableData: CGFloat {
-        get { merge }
-        set { merge = newValue }
+    /// Salida o regreso de la bolita (1 = dentro del notch, 0 = en su lugar). Lo anima la transición
+    /// `.liquidSatellite(_:)`, que aplica este mismo modificador con `emerge` en 1 o en 0
+    public var emerge: CGFloat = 0
+
+    public var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(merge, emerge) }
+        set { merge = newValue.first; emerge = newValue.second }
     }
 
     public func body(content: Content) -> some View {
         // `raw` puede bajar de 0 un instante: el resorte de desprendimiento sobrepasa el lugar de reposo y la
         // gota se aleja un poco antes de asentarse (rebote sutil). Todo lo demás usa el valor acotado.
-        let raw = max(merge, extraMerge)
+        let raw = max(merge, emerge)
         let m = min(1, max(0, raw))
         let bubbleRadius = bubbleDiameter / 2
         // Absorbida: el centro de la bolita queda concéntrico con el extremo del notch
@@ -146,6 +147,16 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
             )
             .opacity(glassFade)
             .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+            // La gota sale de DEBAJO de la isla: lo que cae dentro del notch no se dibuja (si no, al nacer en el
+            // extremo tapaba el contenido del notch, p. ej. la carátula de la mínima pegada)
+            .mask(
+                NotchEndExclusionShape(
+                    endCenter: CGPoint(x: bubbleRadius + notchCenterOffset.x, y: bubbleRadius + notchCenterOffset.y),
+                    radius: notchRadius,
+                    notchIsLeading: notchEndX < restingX
+                )
+                .fill(style: FillStyle(eoFill: true))
+            )
             .background(
                 ZStack {
                     if drawsGlassDroplet {
@@ -187,6 +198,25 @@ public struct LiquidSatelliteModifier: ViewModifier, Animatable {
     private static func smoothstep(_ x: CGFloat) -> CGFloat {
         let t = min(1, max(0, x))
         return t * t * (3 - 2 * t)
+    }
+}
+
+/// Todo menos el extremo del notch (cápsula, 1 pt hacia adentro para que el borde se encime sin costura)
+struct NotchEndExclusionShape: Shape {
+    let endCenter: CGPoint
+    let radius: CGFloat
+    /// El cuerpo del notch está a la izquierda del extremo (bolita del lado derecho)
+    let notchIsLeading: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let far: CGFloat = 4000
+        let pill = notchIsLeading
+            ? CGRect(x: endCenter.x - far, y: endCenter.y - radius, width: far + radius, height: radius * 2)
+            : CGRect(x: endCenter.x - radius, y: endCenter.y - radius, width: far + radius, height: radius * 2)
+        let inner = pill.insetBy(dx: 1, dy: 1)
+        var path = Path(rect.insetBy(dx: -far, dy: -far))
+        path.addRoundedRect(in: inner, cornerSize: CGSize(width: inner.height / 2, height: inner.height / 2))
+        return path
     }
 }
 
@@ -342,46 +372,63 @@ extension EnvironmentValues {
     }
 }
 
-// MARK: - Transición de aparecer / desaparecer
+// MARK: - Aparecer / desaparecer
 
-private struct LiquidSatelliteExtraMergeKey: EnvironmentKey {
-    static let defaultValue: CGFloat = 0
-}
+/// Coloca la bolita y anima su salida del notch (al aparecer) o su regreso a él (al irse).
+///
+/// No es una transición de SwiftUI: en macOS 27 el valor de una transición `.modifier` no llegaba a la bolita
+/// (ni por el entorno ni como modificador de identidad, que se queda con la geometría del momento en que
+/// apareció), y las bolitas aparecían y desaparecían de golpe. Aquí el avance es estado propio de la vista:
+/// - `.appearing`: nace dentro del notch (`emerge` = 1) y brota hasta su lugar.
+/// - `.departing`: la dibuja ActivityCenter.departingSatellites mientras se reabsorbe (`emerge` 0 → 1).
+/// - Desprendimiento: resorte con poco amortiguamiento → la gota se separa, sobrepasa apenas su lugar y se
+///   asienta (como mercurio que se suelta).
+/// - Absorción: curva que ACELERA (como atraída por un imán) hasta tocar el notch; ahí la cápsula se abulta
+///   y rebota (ActivityCenter.pillImpulse).
+public struct LiquidSatelliteHost<Content: View>: View {
+    public enum Phase { case appearing, departing }
 
-extension EnvironmentValues {
-    var liquidSatelliteExtraMerge: CGFloat {
-        get { self[LiquidSatelliteExtraMergeKey.self] }
-        set { self[LiquidSatelliteExtraMergeKey.self] = newValue }
-    }
-}
+    let placement: LiquidSatelliteModifier
+    let phase: Phase
+    let animated: Bool
+    /// Espera escondida bajo la isla antes de brotar (p. ej. mientras otra se reabsorbe en el mismo extremo)
+    let delay: TimeInterval
+    let content: Content
+    @State private var emerge: CGFloat
 
-/// Anima la fusión extra durante una transición: al aparecer la bolita sale del notch (1 → 0) y al
-/// desaparecer regresa a él (0 → 1), con el mismo cuello líquido que al tocarla.
-private struct LiquidEmergeModifier: ViewModifier, Animatable {
-    var amount: CGFloat
-    var animatableData: CGFloat {
-        get { amount }
-        set { amount = newValue }
+    public init(placement: LiquidSatelliteModifier, phase: Phase, animated: Bool, delay: TimeInterval = 0, @ViewBuilder content: () -> Content) {
+        self.placement = placement
+        self.phase = phase
+        self.animated = animated
+        self.delay = delay
+        self.content = content()
+        _emerge = State(initialValue: animated && phase == .appearing ? 1 : 0)
     }
-    func body(content: Content) -> some View {
-        content.environment(\.liquidSatelliteExtraMerge, amount)
-    }
-}
 
-public extension AnyTransition {
-    /// La bolita brota del notch al aparecer y se reabsorbe en él al desaparecer.
-    /// - Desprendimiento: resorte con poco amortiguamiento → la gota se separa, sobrepasa apenas su lugar y se
-    ///   asienta (como mercurio que se suelta).
-    /// - Absorción: curva que ACELERA (como atraída por un imán) hasta tocar el notch; ahí la cápsula se abulta
-    ///   y rebota (ActivityCenter.pillImpulse).
-    static var liquidSatellite: AnyTransition {
-        .asymmetric(
-            insertion: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                // Al doble de un cambio normal: se alcanza a leer el nacimiento de la gota
-                .animation(.spring(response: LiquidMotionTuning.v.emergeResponse, dampingFraction: LiquidMotionTuning.v.emergeDamping)),
-            // Guardarse es lo mismo a la inversa: crece la cintura, la gota se encoge y se mete en el extremo
-            removal: .modifier(active: LiquidEmergeModifier(amount: 1), identity: LiquidEmergeModifier(amount: 0))
-                .animation(.spring(response: LiquidMotionTuning.v.absorbResponse, dampingFraction: LiquidMotionTuning.v.absorbDamping))
-        )
+    public var body: some View {
+        var placed = placement
+        placed.emerge = emerge
+        return content
+            .modifier(placed)
+            .onAppear {
+                guard animated else { return }
+                let tuning = LiquidMotionTuning.v
+                switch phase {
+                case .appearing:
+                    withAnimation(.spring(response: tuning.emergeResponse, dampingFraction: tuning.emergeDamping).delay(delay)) {
+                        emerge = 0
+                    }
+                case .departing:
+                    withAnimation(.spring(response: tuning.absorbResponse, dampingFraction: tuning.absorbDamping)) {
+                        emerge = 1
+                    }
+                }
+            }
     }
+
+    /// Cuánto espera la que entra cuando otra se reabsorbe en el mismo extremo: la que se va ya casi está dentro
+    public static var handoverDelay: TimeInterval { LiquidMotionTuning.v.absorbResponse * 0.45 }
+
+    /// Cuánto tarda en reabsorberse (ActivityCenter la quita de la lista al terminar)
+    public static var departureDuration: TimeInterval { LiquidMotionTuning.v.absorbResponse * 1.05 }
 }

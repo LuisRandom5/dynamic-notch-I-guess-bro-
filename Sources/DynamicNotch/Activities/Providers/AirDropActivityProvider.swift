@@ -116,7 +116,7 @@ public final class AirDropActivityProvider: ObservableObject {
 
         let activity = LiveActivity(
             id: Self.activityId,
-            priority: 88,
+            priority: ActivityRelevance.transfer,
             style: .pill,
             leading: leading,
             center: nil,
@@ -139,7 +139,7 @@ public final class AirDropActivityProvider: ObservableObject {
         }
         let activity = LiveActivity(
             id: Self.activityId,
-            priority: 90,
+            priority: ActivityRelevance.transfer,
             style: .pill,
             title: title ?? (success ? "Enviado" : "No se envió"),
             leading: leading,
@@ -194,7 +194,7 @@ public final class AirDropActivityProvider: ObservableObject {
 
         let activity = LiveActivity(
             id: Self.activityId,
-            priority: 90,
+            priority: ActivityRelevance.transfer,
             style: .card,
             leading: leading,
             center: center,

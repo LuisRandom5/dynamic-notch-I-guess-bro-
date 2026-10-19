@@ -324,6 +324,14 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
             
+        case ("POST", "/debug/cycle"):
+            // Diagnóstico: como el swipe a lo ancho sobre el notch ({"forward": false} para regresar)
+            let forward = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["forward"] as? Bool ?? true
+            DispatchQueue.main.async {
+                ActivityCenter.shared.cycleActivities(forward: forward)
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]

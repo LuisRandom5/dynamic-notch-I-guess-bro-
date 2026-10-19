@@ -248,6 +248,10 @@ public final class TimerActivityProvider: ObservableObject {
                 let remaining = self.targetEndDate.timeIntervalSinceNow
                 if remaining > 0.1 {
                     self.remainingTime = remaining
+                    // Al entrar al último minuto se vuelve a publicar con la relevancia nueva
+                    if self.isInFinalMinute != self.publishedFinalMinute {
+                        self.publishCurrentState()
+                    }
                 } else {
                     self.remainingTime = 0
                     self.isRunning = false
@@ -297,14 +301,24 @@ public final class TimerActivityProvider: ObservableObject {
         ActivityCenter.shared.remove(id: activityId)
     }
     
+    /// Relevancia dinámica, como la Isla Dinámica: en su último minuto el temporizador sube de relevancia
+    private var isInFinalMinute: Bool {
+        mode == .countdown && isRunning && remainingTime <= 60
+    }
+    private var publishedFinalMinute = false
+    private var timerRelevance: Int {
+        isInFinalMinute ? ActivityRelevance.timerFinalMinute : ActivityRelevance.timer
+    }
+    
     /// Publica el estado visual actualizado (píldora o tarjeta grande)
     private func publishCurrentState() {
+        publishedFinalMinute = isInFinalMinute
         if isExpandedCard {
             let centerView = AnyView(TimerCardView())
             let activity = LiveActivity(
                 id: activityId,
                 kind: .timer,
-                priority: 88,
+                priority: timerRelevance,
                 style: .card,
                 title: timerTitle,
                 subtitle: formattedDuration,
@@ -325,7 +339,7 @@ public final class TimerActivityProvider: ObservableObject {
             let activity = LiveActivity(
                 id: activityId,
                 kind: .timer,
-                priority: 88,
+                priority: timerRelevance,
                 style: .pill,
                 title: timerTitle,
                 subtitle: formattedDuration,
@@ -369,7 +383,7 @@ public final class TimerActivityProvider: ObservableObject {
             
             let activity = LiveActivity(
                 id: activityId,
-                priority: 95,
+                priority: ActivityRelevance.timerRinging,
                 style: .pill,
                 leading: leading,
                 trailing: trailing,

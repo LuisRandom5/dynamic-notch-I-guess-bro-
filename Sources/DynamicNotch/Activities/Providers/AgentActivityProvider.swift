@@ -156,7 +156,7 @@ public final class AgentActivityProvider: ObservableObject {
             let liveActivity = LiveActivity(
                 id: activityId,
                 kind: .agentAI,
-                priority: 700,
+                priority: ActivityRelevance.backgroundTask,
                 style: .pill,
                 state: payload.isCompleted ? .finished : .active,
                 title: "Antigravity AI",
@@ -385,7 +385,7 @@ public final class AgentActivityProvider: ObservableObject {
             
             let activity = LiveActivity(
                 id: activityId,
-                priority: 85, // Prioridad equilibrada para no tapar llamadas (100) ni mensajes (95)
+                priority: ActivityRelevance.agentInteraction,
                 style: .card,
                 customView: AnyView(view),
                 tint: Color(red: 0.58, green: 0.35, blue: 0.98),

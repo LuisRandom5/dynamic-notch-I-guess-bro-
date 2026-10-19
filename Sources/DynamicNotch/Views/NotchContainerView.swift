@@ -196,6 +196,22 @@ public struct NotchContainerView: View {
         activityCenter.isLimitedWidth ? NotchTuning.minimalWingLimitedWidth : NotchTuning.minimalWingWidth
     }
     
+    /// Bolita en su lugar. La identidad incluye el lado: si cambia de lado (swipe a lo ancho) se reabsorbe en
+    /// el notch de un lado y brota del otro en vez de cruzar por encima de la isla (guía de Apple: mejor salir
+    /// y volver a entrar que encimarse)
+    private struct SatelliteSlot {
+        let activity: LiveActivity
+        let index: Int
+        let isLeft: Bool
+        var key: String { "\(activity.id)|\(isLeft ? "L" : "R")" }
+    }
+    
+    private func satelliteSlots(bothSides: Bool) -> [SatelliteSlot] {
+        activityCenter.secondaryActivities.enumerated().map { index, activity in
+            SatelliteSlot(activity: activity, index: index, isLeft: bothSides && index == 1)
+        }
+    }
+    
     /// La mínima pegada sólo crece hacia la izquierda: la forma se corre para que la cámara quede en su lugar
     private var attachedOffsetX: CGFloat {
         isMinimalAttached ? -minimalWingWidth / 2 : 0
@@ -919,34 +935,57 @@ public struct NotchContainerView: View {
             let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
             // En cristal el cuello también existe: se dibuja como parte de la gota de vidrio (LiquidSatelliteModifier)
             let showsBridge = appState.mode != .expanded && appState.mode != .shelf
-            ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
+            // La identidad incluye el lado (ver SatelliteSlot)
+            // Colocación de una bolita según su lugar (también para las que se están reabsorbiendo)
+            let placementFor: (Int, Bool) -> LiquidSatelliteModifier = { index, isFusingThis in
                 let isLeft = bothSides && index == 1
                 // Lugar en su lado: 0 = pegado al notch (con cuello líquido), 1 = segunda a la derecha
                 let slotIndex = bothSides ? 0 : index
-                let restingX = isLeft
-                    ? restLeft - gap - (bolitaDiam / 2.0)
-                    : restRight + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                return LiquidSatelliteModifier(
+                    merge: isFusingThis ? activityCenter.fusionProgress : 0,
+                    restingX: isLeft
+                        ? restLeft - gap - (bolitaDiam / 2.0)
+                        : restRight + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8)),
+                    // El cuello nace del borde real, que del lado derecho se recoge o abulta con la física
+                    notchEndX: isLeft
+                        ? leftEdge + notchRadius
+                        : rightEdge + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
+                    notchRadius: notchRadius,
+                    bubbleDiameter: bolitaDiam,
+                    offsetY: bubbleOffsetY,
+                    showsBridge: showsBridge && slotIndex == 0,
+                    isGlass: isGlassSurfaceVisible
+                )
+            }
+            
+            // Las que se van: se reabsorben en el notch del lado donde estaban (sin zona de clic)
+            ForEach(activityCenter.departingSatellites) { departing in
+                LiquidSatelliteHost(placement: placementFor(departing.index, false), phase: .departing, animated: !reduceMotion) {
+                    NotchBolitaView(activity: departing.activity, side: (bothSides && departing.index == 1) ? .left : .right)
+                        .allowsHitTesting(false)
+                }
+                .zIndex(99)
+            }
+            
+            ForEach(satelliteSlots(bothSides: bothSides), id: \.key) { slot in
+                let activity = slot.activity
                 let isFusingThis = activityCenter.fusingActivityId == activity.id
+                let slotIndex = bothSides ? 0 : slot.index
                 
-                NotchBolitaView(activity: activity, side: isLeft ? .left : .right)
-                    .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
-                    .notchHitRegion("satellite.\(activity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
-                    .modifier(LiquidSatelliteModifier(
-                        merge: isFusingThis ? activityCenter.fusionProgress : 0,
-                        restingX: restingX,
-                        // El cuello nace del borde real, que del lado derecho se recoge o abulta con la física
-                        notchEndX: isLeft
-                            ? leftEdge + notchRadius
-                            : rightEdge + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
-                        notchRadius: notchRadius,
-                        bubbleDiameter: bolitaDiam,
-                        offsetY: bubbleOffsetY,
-                        showsBridge: showsBridge && slotIndex == 0,
-                        isGlass: isGlassSurfaceVisible
-                    ))
-                    // Al fundirse pasa POR DEBAJO del notch (se reabsorbe en él) en vez de encimarse a las alas
-                    .zIndex(isFusingThis ? -1 : 100 - Double(slotIndex))
-                    .transition(reduceMotion ? .opacity : .liquidSatellite)
+                // Brota del notch al aparecer (LiquidSatelliteHost); al irse la dibuja departingSatellites
+                // Si otra se está reabsorbiendo en este mismo extremo, espera escondida a que termine de entrar
+                let sideIsBusy = activityCenter.departingSatellites.contains { departing in
+                    (bothSides && departing.index == 1) == slot.isLeft && departing.activity.id != activity.id
+                }
+                LiquidSatelliteHost(placement: placementFor(slot.index, isFusingThis), phase: .appearing, animated: !reduceMotion,
+                                    delay: sideIsBusy ? LiquidSatelliteHost<EmptyView>.handoverDelay : 0) {
+                    NotchBolitaView(activity: activity, side: slot.isLeft ? .left : .right)
+                        .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
+                        .notchHitRegion("satellite.\(activity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
+                }
+                // Al fundirse pasa POR DEBAJO del notch (se reabsorbe en él) en vez de encimarse a las alas
+                .zIndex(isFusingThis ? -1 : 100 - Double(slotIndex))
+                .transition(.identity)
             }
             // Como la Isla Dinámica, las que no caben esperan en cola sin indicador (se recorren en A-3)
         }

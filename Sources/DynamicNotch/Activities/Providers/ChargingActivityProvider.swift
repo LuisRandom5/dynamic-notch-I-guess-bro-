@@ -114,7 +114,7 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         // Actividad con plantilla .card (390 x 105 pt, radio 40 pt) con prioridad 100 para no ser pisada
         let activity = LiveActivity(
             id: providerId,
-            priority: 100,
+            priority: ActivityRelevance.systemStatus,
             style: .card,
             leading: leadingView,
             center: centerView,
@@ -163,7 +163,7 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         
         let activity = LiveActivity(
             id: "low_battery",
-            priority: 95,
+            priority: ActivityRelevance.systemStatus,
             style: .card,
             leading: leadingView,
             center: centerView,

@@ -148,6 +148,11 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
 
         context = resolveContext()
         hasTriggeredStretchHaptic = false
+        // Recorrer actividades sólo si el gesto empieza sobre la franja de la isla y sus bolitas (no al
+        // desplazarse de lado en la ventana de abajo)
+        let geometry = ScreenService.shared.currentGeometry
+        let bubbleReach = 2 * (AppState.shared.effectiveBolitaDiameter + AppState.shared.bolitaGap) + NotchTuning.compactWingWidth
+        beganOnIslandRow = dyFromTop <= geometry.height + 10 && dxFromCenter <= geometry.width / 2 + bubbleReach
         let zone = zone(for: context)
         return dxFromCenter <= zone.halfWidth && dyFromTop >= 0 && dyFromTop <= zone.depth
     }
@@ -156,10 +161,20 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         switch context {
         case .expanded, .shelf: return true
         // Notch cerrado con música (o minimizado): deslizar de lado la esconde / la regresa
+        // Con varias actividades, deslizar de lado las recorre (como la Isla Dinámica)
         case .collapsed:
-            return AppState.shared.swipeToMinimizeMusic && (AppState.shared.mode == .compact || AppState.shared.isCompactMinimized)
+            return swipeCyclesActivities
+                || (AppState.shared.swipeToMinimizeMusic && (AppState.shared.mode == .compact || AppState.shared.isCompactMinimized))
         default: return false
         }
+    }
+
+    /// El gesto empezó sobre la isla o sus bolitas (ver gestureShouldBegin)
+    private var beganOnIslandRow = false
+
+    /// El swipe a lo ancho recorre las actividades en vez de esconder la música
+    private var swipeCyclesActivities: Bool {
+        beganOnIslandRow && AppState.shared.swipeCyclesActivities && ActivityCenter.shared.canCycleActivities
     }
 
     // MARK: - Acciones
@@ -260,6 +275,12 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
             }
 
         case (.collapsed, .horizontal):
+            if abs(t) >= 10 && swipeCyclesActivities {
+                // Dedos hacia la izquierda = siguiente, como pasar páginas
+                DNDLogger.log("Gestos: swipe lateral en notch cerrado -> recorrer actividades (\(t < 0 ? "siguiente" : "anterior"))")
+                ActivityCenter.shared.cycleActivities(forward: t < 0)
+                return true
+            }
             if abs(t) >= 10 {
                 let minimize = !app.isCompactMinimized
                 DNDLogger.log("Gestos: swipe lateral en notch cerrado -> \(minimize ? "minimizar" : "restaurar") música")

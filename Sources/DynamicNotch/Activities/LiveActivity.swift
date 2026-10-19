@@ -22,11 +22,11 @@ public enum ActivityKind: String, CaseIterable, Identifiable {
     
     public var defaultPriority: Int {
         switch self {
-        case .call, .recording: return 900
-        case .timer: return 800
-        case .agentAI, .claude, .download, .vpn: return 700
-        case .music: return 500
-        case .generic: return 600
+        case .call, .recording: return ActivityRelevance.activeCall
+        case .timer: return ActivityRelevance.timer
+        case .agentAI, .claude, .download, .vpn: return ActivityRelevance.backgroundTask
+        case .music: return ActivityRelevance.music
+        case .generic: return ActivityRelevance.generic
         }
     }
 }

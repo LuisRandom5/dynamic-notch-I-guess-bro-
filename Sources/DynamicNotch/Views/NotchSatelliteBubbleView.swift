@@ -341,10 +341,21 @@ public struct NotchBolitaView: View {
             center.collapseExpandedActivity()
             return
         }
-        // Ajuste "Clic abre la app": apagado, el clic expande la tarjeta como antes
-        guard appState.bubbleTapOpensApp else {
+        switch appState.bubbleTapAction {
+        case .expand:
             handleLongPress()
             return
+        case .bringToNotch:
+            // Como el iPhone con varias actividades: tocar una la trae al lugar principal. Las que sólo viven
+            // como bolita (Claude, la repisa) no tienen presentación en el notch: se expanden
+            if center.canTakeNotch(activity) {
+                center.makePrimary(id: activity.id)
+            } else {
+                handleLongPress()
+            }
+            return
+        case .openApp:
+            break
         }
         // Si su app ya está al frente, abrirla no haría nada visible: se expande la tarjeta (p. ej. Claude
         // trabajando mientras lo ves en su ventana → la tarjeta muestra qué está haciendo)

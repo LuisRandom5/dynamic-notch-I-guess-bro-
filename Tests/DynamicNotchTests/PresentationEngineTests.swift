@@ -14,13 +14,16 @@ import Testing
 
     func decide(_ candidates: [PresentationCandidate], current: String? = nil, lastChange: TimeInterval = -100,
                 hudHold: TimeInterval = -100, at now: TimeInterval = 0, slots: Int = 1,
-                previous: [String] = []) -> PresentationDecision {
+                previous: [String] = [], userOrder: [String]? = nil,
+                preferred: String? = nil) -> PresentationDecision {
         PresentationEngine.decide(candidates: candidates, currentPrimaryId: current,
                                   lastRoleChangeTime: t0.addingTimeInterval(lastChange),
                                   hudHoldUntil: t0.addingTimeInterval(hudHold),
                                   now: t0.addingTimeInterval(now),
                                   policy: .init(hysteresis: 3, satelliteSlots: slots),
-                                  previousSecondaryIds: previous)
+                                  previousSecondaryIds: previous,
+                                  userOrder: userOrder,
+                                  preferredPrimaryId: preferred)
     }
 
     // MARK: Orden
@@ -167,5 +170,57 @@ import Testing
         #expect(d.primaryId == nil)
         #expect(d.secondaryIds.isEmpty)
         #expect(d.overflowIds.isEmpty)
+    }
+
+    // MARK: Carrusel (swipe a lo ancho)
+
+    @Test func rotationMovesEveryOneOnePlace() {
+        #expect(PresentationEngine.rotated(["a", "b", "c"], forward: true) == ["b", "c", "a"])
+        #expect(PresentationEngine.rotated(["a", "b", "c"], forward: false) == ["c", "a", "b"])
+        #expect(PresentationEngine.rotated(["a"], forward: true) == ["a"])
+    }
+
+    @Test func userOrderBringsAQueuedOneIntoView() {
+        // b y c a la vista, d en cola; el usuario avanza: c pasa a la derecha, d entra y b se va a la cola
+        let all = [candidate("a", priority: 900), candidate("b", priority: 800),
+                   candidate("c", priority: 700), candidate("d", priority: 600)]
+        let first = decide(all, current: "a", slots: 2)
+        #expect(first.ringIds == ["b", "c", "d"])
+        let next = decide(all, current: "a", slots: 2, previous: first.secondaryIds,
+                          userOrder: PresentationEngine.rotated(first.ringIds, forward: true))
+        #expect(next.secondaryIds == ["c", "d"])
+        #expect(next.overflowIds == ["b"])
+        #expect(next.appliedUserOrder)
+    }
+
+    @Test func userOrderEndsWhenAnActivityStartsOrEnds() {
+        let all = [candidate("a", priority: 900), candidate("b", priority: 800), candidate("c", priority: 700),
+                   candidate("e", priority: 650)]
+        let d = decide(all, current: "a", slots: 2, previous: ["c", "d"], userOrder: ["c", "d", "b"])
+        #expect(!d.appliedUserOrder)
+        #expect(d.secondaryIds == ["c", "b"])
+    }
+
+    // MARK: Principal elegida por el usuario
+
+    @Test func preferredPrimarySkipsHysteresisAndRelevance() {
+        let d = decide([candidate("call", priority: 920), candidate("airdrop", priority: 880)],
+                       current: "call", lastChange: -0.5, preferred: "airdrop")
+        #expect(d.primaryId == "airdrop")
+        #expect(d.secondaryIds == ["call"])
+        #expect(d.appliedPreferredPrimary)
+    }
+
+    @Test func urgentBeatsPreferredPrimary() {
+        let d = decide([candidate("incoming", priority: 950, urgent: true), candidate("airdrop", priority: 880)],
+                       current: "airdrop", preferred: "airdrop")
+        #expect(d.primaryId == "incoming")
+        #expect(!d.appliedPreferredPrimary)
+    }
+
+    @Test func bubbleOnlyActivityCannotBePreferredPrimary() {
+        let d = decide([candidate("claude", priority: 700, canBePrimary: false)], preferred: "claude")
+        #expect(d.primaryId == nil)
+        #expect(!d.appliedPreferredPrimary)
     }
 }

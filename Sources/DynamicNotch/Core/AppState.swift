@@ -67,6 +67,22 @@ public enum MultiActivityPresentationMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Clic en una bolita. iPhone: tocar abre la app; en los modelos con varias actividades, tocar una la trae
+public enum BubbleTapAction: String, CaseIterable, Identifiable {
+    case openApp
+    case bringToNotch
+    case expand
+
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .openApp: return "Abrir su app"
+        case .bringToNotch: return "Traerla al notch"
+        case .expand: return "Expandir"
+        }
+    }
+}
+
 public enum SatelliteLocationPreference: String, CaseIterable, Identifiable {
     case automatic = "automatic"
     case bothSides = "bothSides"
@@ -146,10 +162,23 @@ public final class AppState: ObservableObject {
         get { satelliteLocation != .rightOnly }
         set { satelliteLocation = newValue ? .automatic : .rightOnly }
     }
-    /// Clic en una bolita abre su app (mantener presionado la expande), como el iPhone
-    @Published public var bubbleTapOpensApp: Bool = UserDefaults.standard.object(forKey: "bubbleTapOpensApp") != nil
-        ? UserDefaults.standard.bool(forKey: "bubbleTapOpensApp") : true {
-        didSet { UserDefaults.standard.set(bubbleTapOpensApp, forKey: "bubbleTapOpensApp") }
+    /// Qué hace un clic en una bolita (mantener presionado siempre la expande)
+    @Published public var bubbleTapAction: BubbleTapAction = {
+        if let raw = UserDefaults.standard.string(forKey: "bubbleTapAction"), let action = BubbleTapAction(rawValue: raw) {
+            return action
+        }
+        // Migración del ajuste anterior (encendido = abrir la app; apagado = expandir)
+        if UserDefaults.standard.object(forKey: "bubbleTapOpensApp") != nil, !UserDefaults.standard.bool(forKey: "bubbleTapOpensApp") {
+            return .expand
+        }
+        return .openApp
+    }() {
+        didSet { UserDefaults.standard.set(bubbleTapAction.rawValue, forKey: "bubbleTapAction") }
+    }
+    /// Swipe a lo ancho sobre el notch cerrado recorre las actividades (con 2 o más entre bolitas y cola)
+    @Published public var swipeCyclesActivities: Bool = UserDefaults.standard.object(forKey: "swipeCyclesActivities") != nil
+        ? UserDefaults.standard.bool(forKey: "swipeCyclesActivities") : true {
+        didSet { UserDefaults.standard.set(swipeCyclesActivities, forKey: "swipeCyclesActivities") }
     }
     /// Segundos para \"mantener presionado\" una bolita
     @Published public var bubbleHoldDuration: Double = UserDefaults.standard.object(forKey: "bubbleHoldDuration") != nil

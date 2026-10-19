@@ -329,7 +329,7 @@ public final class NotificationActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: activityId,
-            priority: 95,
+            priority: ActivityRelevance.notification,
             style: .card,
             customView: AnyView(replyView),
             tint: tint,

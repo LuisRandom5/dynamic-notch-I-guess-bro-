@@ -26,7 +26,7 @@ public final class AirPodsActivityProvider: ObservableObject {
         
         let activity = LiveActivity(
             id: providerId,
-            priority: 1000, // Máxima prioridad de evento hardware (supera llamadas y volumen)
+            priority: ActivityRelevance.hardwareEvent, // supera llamadas y volumen
             style: .airpodsPill,
             tint: DesignTokens.green,
             duration: duration,
