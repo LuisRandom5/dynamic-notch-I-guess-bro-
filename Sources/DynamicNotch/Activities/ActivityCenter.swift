@@ -561,7 +561,7 @@ public final class ActivityCenter: ObservableObject {
         let canBePrimary: Bool
         if activity.style == .sliderPill {
             canBePrimary = false
-        } else if activity.kind == .claude || activity.id == ShelfActivityProvider.activityId {
+        } else if activity.prefersBubble || activity.kind == .claude || activity.id == ShelfActivityProvider.activityId {
             // Claude y la repisa viven siempre como bolita satélite
             canBePrimary = false
         } else if yieldsToPlayback(activity) {

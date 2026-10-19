@@ -185,6 +185,28 @@ public final class AppState: ObservableObject {
         ? UserDefaults.standard.double(forKey: "liveActivityEndSummaryDuration") : 15 {
         didSet { UserDefaults.standard.set(liveActivityEndSummaryDuration, forKey: "liveActivityEndSummaryDuration") }
     }
+    // MARK: Integraciones del sistema (A-6)
+    /// Aviso breve al activar o desactivar Bloq Mayús (como el interruptor de silencio del iPhone)
+    @Published public var capsLockIndicatorEnabled: Bool = UserDefaults.standard.object(forKey: "capsLockIndicatorEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "capsLockIndicatorEnabled") : true {
+        didSet { UserDefaults.standard.set(capsLockIndicatorEnabled, forKey: "capsLockIndicatorEnabled") }
+    }
+    /// Aviso al perder o recuperar internet y al conectar o desconectar una VPN
+    @Published public var networkIndicatorEnabled: Bool = UserDefaults.standard.object(forKey: "networkIndicatorEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "networkIndicatorEnabled") : true {
+        didSet { UserDefaults.standard.set(networkIndicatorEnabled, forKey: "networkIndicatorEnabled") }
+    }
+    /// Bolita mientras alguna app usa la cámara o el micrófono (sólo se consulta el estado; nunca se abren)
+    @Published public var privacyIndicatorEnabled: Bool = UserDefaults.standard.object(forKey: "privacyIndicatorEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "privacyIndicatorEnabled") : true {
+        didSet { UserDefaults.standard.set(privacyIndicatorEnabled, forKey: "privacyIndicatorEnabled") }
+    }
+    /// Bolita con el progreso de las descargas (Safari y apps que publican su progreso en Descargas)
+    @Published public var downloadsActivityEnabled: Bool = UserDefaults.standard.object(forKey: "downloadsActivityEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "downloadsActivityEnabled") : true {
+        didSet { UserDefaults.standard.set(downloadsActivityEnabled, forKey: "downloadsActivityEnabled") }
+    }
+    
     /// Swipe a lo ancho sobre el notch cerrado recorre las actividades (con 2 o más entre bolitas y cola)
     @Published public var swipeCyclesActivities: Bool = UserDefaults.standard.object(forKey: "swipeCyclesActivities") != nil
         ? UserDefaults.standard.bool(forKey: "swipeCyclesActivities") : true {

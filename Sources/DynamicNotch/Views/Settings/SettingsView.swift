@@ -1688,6 +1688,28 @@ extension SettingsView {
                 Label("Ajustar la animación en Animation Studio…", systemImage: "film.stack")
             }
             
+            SettingsGroupTitle("Integraciones del sistema", systemImage: "switch.2")
+            ToggleRow(
+                title: "Bloq Mayús",
+                subtitle: "Aviso breve al activarlo o desactivarlo, como el interruptor de silencio del iPhone.",
+                isOn: $appState.capsLockIndicatorEnabled
+            )
+            ToggleRow(
+                title: "Conexión y VPN",
+                subtitle: "Aviso al perder o recuperar internet y al conectar o desconectar una VPN de túnel completo.",
+                isOn: $appState.networkIndicatorEnabled
+            )
+            ToggleRow(
+                title: "Cámara y micrófono en uso",
+                subtitle: "Bolita verde (cámara) o naranja (micrófono) mientras alguna app los usa. Sólo se consulta si están en uso; Dynamic Notch nunca los abre.",
+                isOn: $appState.privacyIndicatorEnabled
+            )
+            ToggleRow(
+                title: "Descargas",
+                subtitle: "Bolita con el progreso de lo que se descarga en la carpeta Descargas (Safari y apps que publican su progreso).",
+                isOn: $appState.downloadsActivityEnabled
+            )
+            
             SettingsGroupTitle("Comportamiento de la Isla Dinámica", systemImage: "sparkles.rectangle.stack")
             ToggleRow(
                 title: "Alertas",

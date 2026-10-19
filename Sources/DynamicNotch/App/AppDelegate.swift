@@ -367,6 +367,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         ActivityCenter.shared.startObservingPlayback()
         // La repisa con archivos aparece como bolita
         ShelfActivityProvider.shared.start()
+        // Avisos del sistema (Bloq Mayús, red/VPN, cámara/micrófono en uso) y descargas en curso
+        SystemStatusActivityProvider.shared.start()
+        DownloadsActivityProvider.shared.start()
         
         // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()

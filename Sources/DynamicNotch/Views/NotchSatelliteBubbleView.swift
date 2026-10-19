@@ -115,6 +115,8 @@ public struct NotchBolitaView: View {
     
     /// Tinte del icono central
     private var iconColor: Color {
+        // La actividad eligió su color (p. ej. cámara verde, micrófono naranja)
+        if case .color(_, let foreground, _, _) = activity.bolitaVariant { return foreground }
         switch activity.kind {
         case .call:
             return Color(red: 0.20, green: 0.84, blue: 0.46) // Verde teléfono Apple

@@ -143,6 +143,9 @@ public struct LiveActivity: Identifiable {
     public var alert: ActivityAlertConfiguration? = nil
     /// A partir de cuándo el contenido ya no está al día si no llega otra actualización (se atenúa)
     public var staleDate: Date? = nil
+    /// Vive sólo como bolita, nunca ocupa el notch (indicadores como cámara en uso o una descarga: no le
+    /// quitan el lugar a la música)
+    public var prefersBubble: Bool = false
     
     public init(
         id: String,
