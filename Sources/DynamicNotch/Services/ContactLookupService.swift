@@ -226,7 +226,8 @@ public final class ContactLookupService: ObservableObject {
         let path = NSBezierPath(ovalIn: rect)
         
         // Paletas de gradientes armoniosos estilo Apple
-        let hash = abs(name.hashValue)
+        // Suma de los caracteres (hashValue cambia en cada arranque: el mismo contacto salía de otro color)
+        let hash = name.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
         let palettes: [(NSColor, NSColor)] = [
             (NSColor(red: 0.35, green: 0.40, blue: 0.95, alpha: 1.0), NSColor(red: 0.55, green: 0.25, blue: 0.85, alpha: 1.0)), // Azul/Púrpura
             (NSColor(red: 0.15, green: 0.75, blue: 0.60, alpha: 1.0), NSColor(red: 0.05, green: 0.55, blue: 0.70, alpha: 1.0)), // Teal/Cian

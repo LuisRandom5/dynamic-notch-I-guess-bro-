@@ -32,9 +32,11 @@ public final class FullScreenDetectorService: ObservableObject {
             .store(in: &cancellables)
         
         // 3. Temporizador ligero para detectar cuando una ventana entra o sale de fullscreen
-        timer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
+        // (cada 1.5 s: entrar o salir de pantalla completa cambia el Space y eso ya avisa al instante)
+        timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             self?.checkFullScreenState()
         }
+        timer?.tolerance = 0.3
     }
     
     /// La lista de ventanas del sistema cuesta decenas de ms: se consulta fuera del hilo principal (antes, cada

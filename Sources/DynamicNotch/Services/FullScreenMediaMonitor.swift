@@ -19,7 +19,9 @@ public final class FullScreenMediaMonitor {
 
     public func start() {
         guard timer == nil else { return }
-        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in self?.evaluate() }
+        // Cada 1.5 s; entrar o salir de pantalla completa cambia el Space y eso se atiende al instante (abajo)
+        let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in self?.evaluate() }
+        timer.tolerance = 0.3
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in

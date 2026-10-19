@@ -432,9 +432,11 @@ public final class CallDetectorService: ObservableObject {
         // 3. Centro de notificaciones de macOS (com.apple.notificationcenterui)
         // Sólo por identificador: pedir `localizedName` de cada app es una consulta cara al sistema y esto
         // corre en el hilo principal cada 0.35 s (se comía cuadros de las animaciones del notch)
+        // El Centro de notificaciones sólo mientras tenga un aviso (lo avisa MessagesObserverService)
+        let includeBanners = MessagesObserverService.shared.notificationCenterMayHaveBanner
         let candidateApps = runningApps.filter { app in
             let b = app.bundleIdentifier?.lowercased() ?? ""
-            return b.contains("facetime") || b == "com.apple.notificationcenterui"
+            return b.contains("facetime") || (includeBanners && b == "com.apple.notificationcenterui")
         }
         
         guard !candidateApps.isEmpty else { return }

@@ -47,6 +47,13 @@ public final class BackdropBrightnessMonitor: ObservableObject {
         let screenFrame = screen.frame
         let adapts = AppState.shared.effectiveAppearanceMode == .darkGlass && AppState.shared.adaptGlassToBrightBackdrop
         let wallpaperBright = GlassClearManager.shared.detectedWallpaperLuminance > 0.62
+        // Sin cristal que se adapte (p. ej. OLED) no hace falta leer la lista de ventanas: sólo el modo oscuro
+        guard adapts else {
+            let dark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+            if dark != isSystemDarkMode { isSystemDarkMode = dark }
+            if isBackdropBright { isBackdropBright = false }
+            return
+        }
         queue.async { [weak self] in
             self?.evaluate(screenFrame: screenFrame, mainHeight: mainHeight, adapts: adapts, wallpaperBright: wallpaperBright)
         }

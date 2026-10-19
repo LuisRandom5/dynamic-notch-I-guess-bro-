@@ -185,7 +185,7 @@ public struct QuickReplyNotificationView: View {
             withAnimation(.easeOut(duration: 0.18)) { isHoveringCard = hovering }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 32) // Despeja perfectamente el notch físico sin desperdiciar espacio
+        .padding(.top, NotificationActivityProvider.cardTopInset) // Libra la cámara del notch (en la isla flotante no hay)
         .padding(.bottom, 12)
         .contentShape(Rectangle())
         // Gesto unificado omnidireccional:
@@ -416,7 +416,7 @@ public struct QuickReplyNotificationView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 34) // Despeje para la cámara del notch
+        .padding(.top, NotificationActivityProvider.expandedTopInset) // Despeje para la cámara del notch
         .padding(.bottom, 16)
         .onChange(of: replyText) { _, newText in
             updateHeightForText(newText)

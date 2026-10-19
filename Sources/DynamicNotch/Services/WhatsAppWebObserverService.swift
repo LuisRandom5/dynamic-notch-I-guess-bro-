@@ -146,6 +146,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
     /// Último sondeo encontró WhatsApp Web (si no, se sondea más espaciado)
     private var foundWhatsAppLastTime = true
     private var idleSkips = 0
+    /// Lecturas seguidas de la lista de chats sin ningún cambio
+    private var quietScans = 0
+    private var lastScanSignature = ""
     /// App al frente al iniciar el sondeo
     private var frontmostBundleIdSnapshot = ""
     private var runningAppsObservers: [NSObjectProtocol] = []
@@ -184,6 +187,8 @@ public final class WhatsAppWebObserverService: ObservableObject {
         // navegadores por accesibilidad es lo más caro del app)
         idleSkips += 1
         if !foundWhatsAppLastTime && idleSkips < 5 { return }
+        // La lista no ha cambiado en ~30 s: se lee a la mitad del ritmo hasta que algo cambie
+        if foundWhatsAppLastTime && quietScans > 20 && idleSkips < 2 { return }
         idleSkips = 0
         frontmostBundleIdSnapshot = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         
@@ -746,11 +751,13 @@ public final class WhatsAppWebObserverService: ObservableObject {
                 
                 didFindTable = true
                 let rows = rowArray.map { $0 as! AXUIElement }
-                for r in rows.prefix(15) {
-                    if let p = parseChatRow(r) {
-                        processParsedRow(p)
-                    }
-                }
+                // Los mensajes nuevos suben arriba (debajo de los fijados): 8 filas bastan, y leer cada fila por
+                // accesibilidad es lo más caro del sondeo
+                let parsed = rows.prefix(8).compactMap(parseChatRow)
+                let signature = parsed.map { "\($0.contact)|\($0.message)|\($0.unreadCount)|\($0.time)" }.joined(separator: "\n")
+                quietScans = signature == lastScanSignature ? quietScans + 1 : 0
+                lastScanSignature = signature
+                parsed.forEach(processParsedRow)
                 
                 if isFirstCheck {
                     isFirstCheck = false
@@ -998,6 +1005,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
         return results
     }
     
+    /// Hora de la fila ("8:48 p.m.", "Ayer", "12/10/2026"); se compila una sola vez
+    private static let chatTimeRegex = try? NSRegularExpression(
+        pattern: #"^(?:\d{1,2}:\d{2}\s*(?:p\.?m\.?|a\.?m\.?)|ayer|hoy|\d{1,2}/\d{1,2}/\d{2,4})$"#,
+        options: .caseInsensitive
+    )
+
     private func parseChatRow(_ row: AXUIElement) -> ParsedChatRow? {
         var rawList: [String] = []
         for s in collectStringsFromAX(row) {
@@ -1021,10 +1034,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         
         // En WhatsApp Web la marca de tiempo (ej. "8:48 p.m.", "Ayer", "Hoy", "12/10/2026")
         // separa de forma canónica la cabecera (contacto y estado) del mensaje real
-        let timeRegex = try? NSRegularExpression(
-            pattern: #"^(?:\d{1,2}:\d{2}\s*(?:p\.?m\.?|a\.?m\.?)|ayer|hoy|\d{1,2}/\d{1,2}/\d{2,4})$"#,
-            options: .caseInsensitive
-        )
+        let timeRegex = Self.chatTimeRegex
         var timeIndex = -1
         for (i, s) in rawList.enumerated() {
             if timeRegex?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil {

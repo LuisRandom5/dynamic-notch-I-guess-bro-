@@ -54,9 +54,14 @@ public final class NotificationActivityProvider: ObservableObject {
     
     // Dimensiones canónicas de la tarjeta de notificación compacta y expandida (Quick Reply)
     public static let compactWidth: CGFloat = 396
-    public static let compactHeight: CGFloat = 96
+    /// Con notch (físico o virtual) el contenido baja para librar la cámara; en la isla flotante no hay cámara y
+    /// la tarjeta queda pareja arriba y abajo, como la notificación del iPhone
+    public static var compactHeight: CGFloat { isFloatingIsland ? 76 : 96 }
+    public static var cardTopInset: CGFloat { isFloatingIsland ? 13 : 32 }
+    private static var isFloatingIsland: Bool { ScreenService.shared.currentGeometry.kind == .floatingIsland }
     public static let expandedWidth: CGFloat = 424
-    public static let expandedHeight: CGFloat = 186
+    public static var expandedHeight: CGFloat { isFloatingIsland ? 166 : 186 }
+    public static var expandedTopInset: CGFloat { isFloatingIsland ? 14 : 34 }
     public static let topRadius: CGFloat = 24
     public static let compactBottomRadius: CGFloat = 28
     public static let expandedBottomRadius: CGFloat = 34

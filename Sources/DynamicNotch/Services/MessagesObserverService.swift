@@ -47,22 +47,88 @@ public final class MessagesObserverService: ObservableObject {
     
     public func start() {
         guard isEnabled, timer == nil else { return }
-        
-        // Sondeo ultra-rápido a 0.12s para interceptar y sustituir notificaciones al instante sin latencia visual
-        let newTimer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
-            self?.pollMessages()
-        }
-        newTimer.tolerance = 0.02
-        RunLoop.main.add(newTimer, forMode: .common)
-        timer = newTimer
+        // Antes se sondeaba 8 veces por segundo todo el tiempo. Ahora macOS avisa (AXObserver) cuando el
+        // Centro de notificaciones abre una ventana: entonces se sondea rápido unos segundos para reemplazar el
+        // aviso al instante; el resto del tiempo basta una vuelta por segundo de respaldo
+        setPollInterval(Self.idleInterval)
+        attachBannerObserverIfNeeded()
     }
     
     public func stop() {
         timer?.invalidate()
         timer = nil
+        currentInterval = 0
+        detachBannerObserver()
+    }
+
+    private static let idleInterval: TimeInterval = 1.0
+    private static let burstInterval: TimeInterval = 0.12
+    private var currentInterval: TimeInterval = 0
+    private var burstUntil = Date.distantPast
+    private var lastConversationCheck = Date.distantPast
+    private var bannerObserver: AXObserver?
+
+    /// ¿Puede haber un aviso en el Centro de notificaciones? (para que el detector de llamadas no lo revise de
+    /// balde cada 0.35 s). Sin el observador activo se responde que sí, por seguridad
+    public var notificationCenterMayHaveBanner: Bool {
+        !isEnabled || bannerObserver == nil || Date() < burstUntil
+    }
+    private var observedBannerPid: pid_t = 0
+
+    private func setPollInterval(_ interval: TimeInterval) {
+        guard interval != currentInterval || timer == nil else { return }
+        timer?.invalidate()
+        currentInterval = interval
+        let newTimer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.timerFired() }
+        newTimer.tolerance = interval * 0.15
+        RunLoop.main.add(newTimer, forMode: .common)
+        timer = newTimer
+    }
+
+    private func timerFired() {
+        if currentInterval < Self.idleInterval && Date() > burstUntil {
+            setPollInterval(Self.idleInterval)
+            attachBannerObserverIfNeeded()
+        }
+        pollMessages()
+    }
+
+    /// Llegó (o sigue en pantalla) un aviso: sondeo rápido durante unos segundos
+    fileprivate func beginBurst(seconds: TimeInterval = 4, pollNow: Bool = true) {
+        guard isEnabled else { return }
+        burstUntil = max(burstUntil, Date().addingTimeInterval(seconds))
+        if currentInterval != Self.burstInterval { setPollInterval(Self.burstInterval) }
+        if pollNow { pollMessages() }
+    }
+
+    /// Observa las ventanas nuevas del Centro de notificaciones (se rehace si el proceso se reinicia)
+    private func attachBannerObserverIfNeeded() {
+        guard let pid = Self.cachedPid(for: "com.apple.notificationcenterui"), pid != observedBannerPid else { return }
+        detachBannerObserver()
+        observedBannerPid = pid
+        var created: AXObserver?
+        let callback: AXObserverCallback = { _, _, _, refcon in
+            guard let refcon else { return }
+            DNDLogger.log("MessagesObserverService: ventana nueva en el Centro de notificaciones → sondeo rápido")
+            Unmanaged<MessagesObserverService>.fromOpaque(refcon).takeUnretainedValue().beginBurst()
+        }
+        guard AXObserverCreate(pid, callback, &created) == .success, let observer = created else { return }
+        let appRef = AXUIElementCreateApplication(pid)
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        AXObserverAddNotification(observer, appRef, kAXWindowCreatedNotification as CFString, refcon)
+        AXObserverAddNotification(observer, appRef, kAXCreatedNotification as CFString, refcon)
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+        bannerObserver = observer
+    }
+
+    private func detachBannerObserver() {
+        if let observer = bannerObserver {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+        }
+        bannerObserver = nil
+        observedBannerPid = 0
     }
     
-    private var tick = 0
     private static var pidCache: [String: pid_t] = [:]
     private static var pidCacheObservers: [NSObjectProtocol] = []
 
@@ -88,8 +154,9 @@ public final class MessagesObserverService: ObservableObject {
         // Los procesos se buscan en caché (pedir la lista de apps 8 veces por segundo costaba ~2 % de CPU) y la
         // lista de conversaciones de Mensajes se revisa una vez por segundo, no en cada vuelta
         let ncPid = Self.cachedPid(for: "com.apple.notificationcenterui")
-        tick &+= 1
-        let smsPid = tick % 8 == 0 ? Self.cachedPid(for: "com.apple.MobileSMS") : nil
+        let checkConversations = Date().timeIntervalSince(lastConversationCheck) >= 0.95
+        if checkConversations { lastConversationCheck = Date() }
+        let smsPid = checkConversations ? Self.cachedPid(for: "com.apple.MobileSMS") : nil
         
         queue.async { [weak self] in
             defer { self?.isQuerying = false }
@@ -119,6 +186,8 @@ public final class MessagesObserverService: ObservableObject {
               let wins = winRef as? [AXUIElement], wins.count > 2 else {
             return false
         }
+        // Hay un aviso en pantalla: seguir sondeando rápido mientras esté (cerrar el de AirDrop pide reintentos)
+        DispatchQueue.main.async { [weak self] in self?.beginBurst(seconds: 1.5, pollNow: false) }
         
         for win in wins {
             var titleRef: CFTypeRef?
