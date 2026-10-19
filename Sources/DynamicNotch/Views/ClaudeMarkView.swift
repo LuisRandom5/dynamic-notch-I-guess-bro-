@@ -53,7 +53,6 @@ public struct ClaudeMarkView: View {
     public let isAnimating: Bool
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var spin = false
     @State private var breathe = false
     
     public init(size: CGFloat, isAnimating: Bool = false) {
@@ -69,14 +68,11 @@ public struct ClaudeMarkView: View {
             .frame(width: size, height: size)
             .scaleEffect(active && !breathe ? 0.9 : 1.0)
             .animation(active ? .easeInOut(duration: 1.25).repeatForever(autoreverses: true) : .easeOut(duration: 0.3), value: breathe)
-            .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(active ? .linear(duration: 18).repeatForever(autoreverses: false) : .easeOut(duration: 0.3), value: spin)
             .onAppear { update(active) }
             .onChange(of: active) { _, isActive in update(isActive) }
     }
     
     private func update(_ isActive: Bool) {
-        spin = isActive
         breathe = isActive
     }
 }

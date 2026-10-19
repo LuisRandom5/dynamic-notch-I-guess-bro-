@@ -98,8 +98,8 @@ public final class ActivityCenter: ObservableObject {
     /// escondido un momento antes de volver, como en la Isla Dinámica: el notch queda limpio y luego regresa.
     public static var hudReturnDelay: TimeInterval { AppState.shared.hudReturnDelay }
     private var hudHoldUntil: Date = .distantPast
-    private static let reabsorbDuration: TimeInterval = 0.50
-    private static let notchSettleDuration: TimeInterval = 0.40
+    private static let reabsorbDuration: TimeInterval = 0.58
+    private static let notchSettleDuration: TimeInterval = 0.46
     
     private init() {}
     
@@ -450,21 +450,24 @@ public final class ActivityCenter: ObservableObject {
             // Como en la Isla Dinámica: el extremo se ensancha un poco para dejar salir la gota y, cuando la
             // cintura se adelgaza, regresa con un pequeño retroceso elástico
             // Tiempos al doble, al ritmo de la gota (ver AnyTransition.liquidSatellite)
-            withAnimation(.easeOut(duration: 0.36)) { pillImpulse = CGFloat(LiquidMotionTuning.v.widenImpulse) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.44) { [weak self] in
+            // Escalan con la duración de la gota (1.32 s fue la referencia) para seguir sincronizados con ella
+            let k = LiquidMotionTuning.v.emergeResponse / 1.32
+            withAnimation(.easeOut(duration: 0.36 * k)) { pillImpulse = CGFloat(LiquidMotionTuning.v.widenImpulse) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.44 * k) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
-                withAnimation(.spring(response: 0.92, dampingFraction: 0.62)) { self.pillImpulse = 0 }
+                withAnimation(.spring(response: 0.92 * k, dampingFraction: 0.62)) { self.pillImpulse = 0 }
             }
         case .absorb:
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) { [weak self] in
+            let k = LiquidMotionTuning.v.absorbResponse / 1.12
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.52 * k) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
                 // Si mientras tanto el notch se desplegó (p. ej. la repisa), no abultar la tarjeta
                 let mode = AppState.shared.mode
                 guard mode != .expanded && mode != .shelf, self.expandedActivity == nil else { return }
-                withAnimation(.easeOut(duration: 0.20)) { self.pillImpulse = CGFloat(LiquidMotionTuning.v.absorbBulge) }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+                withAnimation(.easeOut(duration: 0.20 * k)) { self.pillImpulse = CGFloat(LiquidMotionTuning.v.absorbBulge) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.20 * k) {
                     guard self.impulseToken == token else { return }
-                    withAnimation(.spring(response: 0.80, dampingFraction: 0.52)) { self.pillImpulse = 0 }
+                    withAnimation(.spring(response: 0.80 * k, dampingFraction: 0.52)) { self.pillImpulse = 0 }
                 }
             }
         }
