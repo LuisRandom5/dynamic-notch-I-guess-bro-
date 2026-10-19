@@ -1,5 +1,56 @@
 # Dynamic Notch — Historial de cambios
 
+## 2.0 — 19 de octubre de 2026
+
+La "Fase A" del plan: el notch se comporta como la Isla Dinámica del iPhone (estudiada en las guías de Apple de Live Activities y Liquid Glass) y queda listo para llevarse a Macs sin notch.
+
+### Varias actividades, como la Isla Dinámica
+- Hasta 3 a la vista: una en el notch y una bolita a cada lado; el resto espera en cola.
+- Cada bolita recuerda su lado: ya no brincan cuando otra llega o se va.
+- Deslizar a lo ancho sobre la isla recorre las actividades (bolitas y cola).
+- Clic en una bolita configurable: abrir su app, traerla al notch o expandirla; mantener presionado siempre la expande.
+- La bolita de Claude abre su tarjeta en el escritorio donde estás (ya no te lleva al escritorio de la app).
+- Una sola escala de relevancia (0–1000): lo urgente y los avisos del sistema primero; el temporizador sube en su último minuto y lo que pide atención sube.
+- "Mínima pegada" opcional (sólo la carátula junto a la cámara), apagada por defecto para conservar las barras.
+
+### Bolitas líquidas
+- Vuelven a brotar y reabsorberse en vivo: en macOS 27 la transición de SwiftUI no les pasaba su valor y aparecían de golpe.
+- La gota sale de debajo de la isla, sin tapar la carátula ni el contenido del notch.
+- La isla reacciona: retrocede y rebota casi imperceptible al soltar la gota, y se empuja al recibirla.
+- Cuando el notch se abre, la bolita que se va se desvanece; la de la repisa espera a que el notch termine de cerrarse.
+- Duración: salida 1.66 s y regreso 1.40 s.
+
+### Alertas y ciclo de vida
+- Alertas por actualización: la actividad se asoma unos segundos, con sonido opcional. Nunca más de una cada 30 s por actividad, nunca si estás usando el notch y nunca si ya tienes la app a la vista.
+- Resumen al terminar (15 s, configurable) antes de reabsorberse (Claude, agentes, descargas).
+- Límite de 8 h por actividad, y las que dejan de actualizarse se ven atenuadas.
+
+### Tarjetas expandidas
+- Plantilla de Apple con regiones alrededor de la cámara, márgenes concéntricos y alto según el contenido (84–160 pt).
+- Las actividades sin tarjeta propia usan una tarjeta estándar: icono, dato vivo, título, progreso y "Abrir".
+
+### Integraciones nuevas
+- Bloq Mayús: aviso breve que se comporta como el HUD de volumen (notch limpio y la música regresa tras la pausa).
+- Sin internet / conectado y VPN activada o desactivada.
+- Bolita verde (cámara) o naranja (micrófono) mientras alguna app los usa. Sólo se consulta si están en uso: Dynamic Notch nunca los abre.
+- Descargas en curso (Safari y apps que publican su progreso) en una sola bolita con anillo.
+
+### Arreglos
+- Pantalla completa: el notch se esconde con video, música o navegador a pantalla completa (antes no detectaba la pantalla completa en MacBook con notch). Al salir aparece limpio y abre sus alas a los 3 s.
+- Repisa: la invitación aparece y se pone verde en toda la tarjeta, también llegando de lado.
+- AirPods: sin animación al relanzar la app; tras su animación el notch se recoge y la música vuelve con la suya.
+- El clic en las bolitas responde siempre (antes se perdía el clic corto).
+- "Dynamic Notch Tap" ya no aparece en Salida de audio.
+- Liquid Glass: al cerrar, el vidrio se disuelve o se encoge hasta las alas, sin cortes, y sin el contorno que se veía sobre el centro negro.
+- Rendimiento: sin trabajo periódico en el hilo principal (pantalla completa, brillo, WhatsApp); 0 cuadros lentos en reposo.
+- El logo de Claude ya no gira.
+
+### Para desarrolladores
+- `SurfaceGeometry` (notch físico, notch virtual o isla flotante) y `PresentationEngine` (política pura): base para la isla en Macs sin notch.
+- 45 pruebas unitarias (`./scripts/test.sh`).
+- Diagnóstico: `/debug/cycle`, `/debug/expand`, `/debug/sample-activity`, `/debug/appearance`, `/debug/fullscreen`; `/debug/activities` y `/debug/hit` muestran más estado.
+- Plan completo en `PLAN_ISLA_DINAMICA.md`.
+
 ## 1.9 — 18 de octubre de 2026
 
 Versión estable que reúne el trabajo de los días 17 y 18 de octubre: los 7 desafíos del hand-off, Liquid Glass según la guía de Apple, física líquida de las bolitas calcada de la Isla Dinámica, reproductor de pantalla bloqueada rediseñado, AirDrop propio y mucho pulido de animaciones.

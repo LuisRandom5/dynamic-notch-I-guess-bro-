@@ -64,17 +64,17 @@ Ubicación: `Sources/DynamicNotch/Activities/`
    - **`.sliderPill`**: HUDs interactivos con barra deslizante horizontal (HUD de volumen).
    - **`.airpodsPill`**: Conexión de AirPods con modelo 3D fotorrealista en SceneKit (`AirPodsSceneView`).
    - **`.card`**: Tarjetas de contenido enriquecido (Notificaciones interactivas de WhatsApp Web, FaceTime, llamadas telefónicas).
-2. **Prioridades**:
-   - `100`: Llamadas entrantes (`CallDetectorService`).
-   - `90`: AirPods conectados / desconectados (`AirPodsActivityProvider`).
-   - `85`: Notificaciones interactivas con Quick Reply (`NotificationActivityProvider`).
-   - `70`: HUD de volumen.
+2. **Relevancia (`ActivityRelevance`)**: una sola escala 0–1000. AirPods 1000 · llamada entrante y temporizador sonando 950 · llamada en curso 920 · notificación 900 · AirDrop 880 · carga/batería 860 · temporizador en su último minuto 850 · agente pidiendo permiso 820 · temporizador 800 · Claude/agentes/descargas 700 · genérico 600 · música 500 · repisa 400. Lo que pide atención suma 100.
 
 3. **Política de presentación (`PresentationEngine`)**: quién va en el notch, en las bolitas y en la cola se decide en una función pura (`PresentationEngine.decide`), sin SwiftUI ni singletons. `ActivityCenter` traduce cada `LiveActivity` a un `PresentationCandidate` (prioridad, urgencia, inicio, si es HUD del sistema y si puede ocupar el notch) y aplica la decisión con sus animaciones. Reglas: urgentes primero, luego prioridad; con la misma gana la que se inició primero; histéresis de 3 s; el HUD de volumen/brillo tiene preferencia y tras él el notch queda limpio unos segundos.
 
 4. **Ciclo de vida (`ActivityLifecycle`, `ActivityRelevance`)**: escala única de relevancia (0–1000); alertas por actualización (`LiveActivity.alert`), límite de 8 h, contenido obsoleto (`LiveActivity.staleDate`) y `ActivityCenter.end(id:final:dismissAfter:onRemove:)` para terminar con resumen. Las bolitas brotan y se reabsorben con `LiquidSatelliteHost` + `ActivityCenter.departingSatellites` (no con transiciones de SwiftUI: en macOS 27 no les llegaba su valor).
 
-5. **Geometría de la superficie (`SurfaceGeometry`, `Core/SurfaceGeometry.swift`)**: describe dónde vive la isla: notch físico, notch virtual (pantallas sin notch, comportamiento actual) o isla flotante (Fase B). `NotchGeometry` es un alias. `ScreenService` la calcula con `SurfaceGeometry.resolve(screens:preferredIndex:)`, que es pura.
+5. **Bolitas**: vista `NotchSatelliteBubbleView` (`NotchBolitaView`). Hasta 2 a la vista, una por lado; `PresentationEngine.assignSides` les da un lado estable (`ActivityCenter.satelliteLayout`). Swipe a lo ancho → `ActivityCenter.cycleActivities`. Clic: `AppState.bubbleTapAction` (abrir app sólo si tiene ventana en el escritorio actual, ver `ActivitySourceApp`; traer al notch; expandir). Indicadores que nunca ocupan el notch: `LiveActivity.prefersBubble`. Avisos breves que se comportan como el HUD de volumen: `LiveActivity.isSystemNotice`.
+
+6. **Tarjetas expandidas**: `IslandExpandedTemplate` (regiones leading/trailing/center/bottom, márgenes concéntricos, alto 84–160 pt reportado con `ActivityCenter.reportExpandedContentHeight`). Sin tarjeta propia → `DefaultActivityExpandedView`. Medidas de la HIG en `IslandMetrics`.
+
+7. **Geometría de la superficie (`SurfaceGeometry`, `Core/SurfaceGeometry.swift`)**: describe dónde vive la isla: notch físico, notch virtual (pantallas sin notch, comportamiento actual) o isla flotante (Fase B). `NotchGeometry` es un alias. `ScreenService` la calcula con `SurfaceGeometry.resolve(screens:preferredIndex:)`, que es pura.
 
 ---
 
@@ -88,7 +88,7 @@ Ubicación: `Sources/DynamicNotch/Activities/`
   - Debounce de 2.5 segundos para reproductores web antes de confirmar una pausa real.
 
 ### B. Espectro y Visualizador de Audio (`AudioSpectrumEngine.swift`)
-- Monitorea el flujo de audio del sistema o micrófono para generar las barras reactivas del visualizador cuando la música está sonando.
+- Capta el audio del sistema (process tap de Core Audio, nunca el micrófono) sólo mientras algo suena, para que las barras sigan la música. Con audio protegido (DRM) llega silencio: `SongTempoAnalyzer` y `ProceduralMotionEngine` animan las barras al tempo real de la canción.
 
 ### C. Intercepción de Volumen con Sonido (`VolumeInterceptorService.swift`)
 - Utiliza `CGEventTap` a nivel de sesión HID para capturar las pulsaciones de las teclas de subir/bajar volumen de macOS y reproducir el sonido nativo de confirmación (`AudioServicesPlaySystemSound(1001)`).
@@ -105,19 +105,23 @@ Ubicación: `Sources/DynamicNotch/Activities/`
 ### F. Respuesta Rápida (`MessageReplyService.swift` y `QuickReplyNotificationView.swift`)
 - Permite escribir y despachar respuestas directamente desde el notch mediante scripts AppleScript dirigidos a la pestaña activa de WhatsApp Web, sin desenfocar la aplicación actual.
 
+### G. Integraciones del sistema (`Activities/Providers/SystemStatusActivityProvider.swift`, `DownloadsActivityProvider.swift`)
+- Bloq Mayús (monitor de `flagsChanged`), red/VPN (`NWPathMonitor` + interfaz principal en `SCDynamicStore`), cámara y micrófono en uso (`kCMIODevicePropertyDeviceIsRunningSomewhere` / `kAudioDevicePropertyDeviceIsRunningSomewhere`: **sólo se consulta, nunca se abren**).
+- Descargas: `Progress.addSubscriber(forFileURL:)` sobre `~/Downloads`; una sola actividad con el progreso conjunto.
+
+### H. Pantalla completa (`FullScreenMediaMonitor.swift`)
+- Señal: `AXFullScreen` de la ventana enfocada de la app al frente (en MacBook con notch la ventana "Menubar" del Window Server nunca desaparece) y, en pantallas sin notch, la ausencia de "Menubar". Se esconde el notch si algo suena o la app es de video o un navegador; al volver, `ActivityCenter.holdBareNotchThenRestore()`.
+- Todo lo que consulta `CGWindowList` corre fuera del hilo principal.
+
 ---
 
 ## 6. Mecanismo de Gestos (Swipe y Arrastre)
 
-Los gestos en macOS tienen dos naturalezas:
-1. **Swipe con Trackpad (Dos dedos)**: Se emite como un evento `NSEvent.type == .scrollWheel`.
-   - `rawDeltaY > 0` o `fingerDeltaY > 0`: Dedos deslizándose hacia abajo (hacia el usuario).
-   - Se intercepta en `NotchPanel.sendEvent` para disparar `NotificationActivityProvider.shared.expandQuickReply()`.
-2. **Arrastre con Click (Mouse Drag)**:
-   - `leftMouseDown` registra el punto de inicio `y`.
-   - `leftMouseDragged` con `deltaY < -8` (coordenadas de pantalla invertidas de macOS) dispara `expandQuickReply()`.
-3. **Swipe hacia arriba**:
-   - `deltaY > 15` o `scrollWheel` hacia arriba contrae o descarta la notificación.
+- **Trackpad**: `Window/TrackpadGestureRecognizer.swift` (máquina de estados, deduplica eventos por timestamp) → `Window/NotchGestureDispatcher.swift`, que decide según el contexto (notch cerrado, reproductor, repisa, tarjeta, notificación, llamada).
+  - Notch cerrado: deslizar hacia abajo abre; a lo ancho, si empezó sobre la isla y hay 2+ actividades entre bolitas y cola, las recorre (si no, esconde la música).
+  - Abierto: hacia arriba cierra siguiendo los dedos (cierre interactivo con desenfoque sostenido); a lo ancho cambia entre reproductor y repisa.
+- **Clic y arrastre con mouse**: `NotchPanel.sendEvent` (tap al notch, arrastre hacia abajo). Los clics sobre bolitas los atiende la propia bolita (`lastSatelliteTapAt` evita el doble efecto).
+- **Arrastrar archivos**: `DragDetectionProbe` abre la invitación al acercarse o al entrar al rectángulo de la tarjeta; `NotchHitTestView` recibe el arrastre y marca `isShelfDragTargeted` (verde).
 
 ---
 
@@ -143,6 +147,22 @@ Pruebas unitarias de la lógica pura (`Tests/DynamicNotchTests`, framework Testi
 ```
 Usa el toolchain de Xcode (`DEVELOPER_DIR`), porque las Command Line Tools no traen Testing, y compila en `~/Library/Caches/DynamicNotchTests`.
 
+Diagnóstico por HTTP en `127.0.0.1:48123` (`AgentIPCService`):
+
+| Ruta | Para qué |
+|---|---|
+| `GET /debug/activities` | actividades, principal, bolitas, obsoletas y las que se van |
+| `GET /debug/hit` | zonas de clic, estado de arrastre y marco del panel |
+| `GET/POST /debug/hitches` | cuadros lentos (POST reinicia) |
+| `GET /debug/audio` | captura de audio y niveles |
+| `GET /debug/fullscreen` | detección de pantalla completa |
+| `POST /debug/toggle-notch` | abrir/cerrar el reproductor |
+| `POST /debug/cycle` | como el swipe a lo ancho (`{"forward": false}` regresa) |
+| `POST /debug/expand` | expandir la tarjeta de una actividad (`{"id": "..."}`; vacío cierra) |
+| `POST /debug/sample-activity` | descarga de ejemplo (`{"progress": 0.4}`, `{"remove": true}`) |
+| `POST /debug/appearance` | estilo en vivo (`oled`, `darkGlass`, `clearGlass`) |
+| `POST /timer`, `/progress`, `/claude` | temporizador, progreso de agentes, hooks de Claude Code |
+
 Para ejecutar en segundo plano (daemon):
 ```bash
 killall -9 DynamicNotch 2>/dev/null || true
@@ -157,3 +177,5 @@ killall -9 DynamicNotch 2>/dev/null || true
 2. **Cuidado con los hilos**: Todo cambio a `@Published` en `AppState`, `MusicService`, `ActivityCenter` y `NotificationActivityProvider` DEBE ocurrir en el hilo principal (`DispatchQueue.main.async`).
 3. **Conserva `MediaRemoteBridge.swift`**: Este script es copiado al bundle en `Contents/Resources/`. Si modificas la lógica de detección universal de YouTube/navegadores, actualiza tanto `Resources/MediaRemoteBridge.swift` como la versión empaquetada.
 4. **Respeta los resortes de Apple**: Las animaciones usan `AnimationSpeedManager.shared.spring(response:dampingFraction:)`. No uses animaciones lineales o temporizadas fijas (`.linear`, `.easeInOut`) para las formas principales del notch; deben sentirse elásticas y físicas.
+5. **El micrófono nunca se usa**: la captura de audio del sistema (process tap) sólo corre mientras algo suena; la cámara y el micrófono sólo se consultan con `…IsRunningSomewhere`.
+6. **Transiciones de las bolitas**: en macOS 27 una transición `.modifier` no le pasa su valor a la vista; para animar entrada y salida usa estado propio (`LiquidSatelliteHost`) y conserva la vista que se va (`departingSatellites`).
