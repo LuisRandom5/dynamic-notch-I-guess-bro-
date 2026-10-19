@@ -135,6 +135,17 @@ public final class AppState: ObservableObject {
         ? UserDefaults.standard.bool(forKey: "bubbleShrinksOnNotchHover") : true {
         didSet { UserDefaults.standard.set(bubbleShrinksOnNotchHover, forKey: "bubbleShrinksOnNotchHover") }
     }
+    /// Con varias actividades la del notch pasa a "mínima pegada" (sólo su lado izquierdo, junto a la cámara),
+    /// como la Isla Dinámica del iPhone
+    @Published public var minimalAttachedEnabled: Bool = UserDefaults.standard.object(forKey: "minimalAttachedEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "minimalAttachedEnabled") : true {
+        didSet { UserDefaults.standard.set(minimalAttachedEnabled, forKey: "minimalAttachedEnabled") }
+    }
+    /// La segunda bolita va a la izquierda (como el iPhone); apagado, las dos a la derecha
+    public var bubblesOnBothSides: Bool {
+        get { satelliteLocation != .rightOnly }
+        set { satelliteLocation = newValue ? .automatic : .rightOnly }
+    }
     /// Clic en una bolita abre su app (mantener presionado la expande), como el iPhone
     @Published public var bubbleTapOpensApp: Bool = UserDefaults.standard.object(forKey: "bubbleTapOpensApp") != nil
         ? UserDefaults.standard.bool(forKey: "bubbleTapOpensApp") : true {

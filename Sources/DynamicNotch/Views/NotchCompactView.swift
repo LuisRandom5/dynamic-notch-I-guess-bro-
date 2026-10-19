@@ -6,14 +6,17 @@ public struct NotchCompactView: View {
     @EnvironmentObject var screenService: ScreenService
     
     public var namespace: Namespace.ID?
-    private let wingWidth: CGFloat = NotchTuning.compactWingWidth
+    /// Mínima pegada: sólo el ala izquierda (carátula) con este ancho; nil = compacta con sus dos alas
+    public var minimalWingWidth: CGFloat?
+    private var wingWidth: CGFloat { minimalWingWidth ?? NotchTuning.compactWingWidth }
     /// La repisa ya no ocupa espacio en las alas (es una bolita)
     private let wingExtra: CGFloat = 0
     @State private var artworkRotationY: Double = 0.0
     @State private var artworkScale: CGFloat = 1.0
     
-    public init(namespace: Namespace.ID? = nil) {
+    public init(namespace: Namespace.ID? = nil, minimalWingWidth: CGFloat? = nil) {
         self.namespace = namespace
+        self.minimalWingWidth = minimalWingWidth
     }
     
     private var trackColor: Color {
@@ -115,19 +118,23 @@ public struct NotchCompactView: View {
                     height: screenService.currentGeometry.height
                 )
             
-            // Ala derecha compacta (Trailing): Visualizador + Badge activo con pulso de radar si hay archivos
-            HStack(spacing: 5) {
-                AudioVisualizer(
-                    isPlaying: musicService.currentTrack.isPlaying,
-                    colorMode: .fromArtwork(musicService.currentTrack.artwork)
-                )
-                .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
+            // Ala derecha compacta (Trailing): Visualizador + Badge activo con pulso de radar si hay archivos.
+            // En la mínima pegada no existe (como el iPhone: el lado derecho se oculta)
+            if minimalWingWidth == nil {
+                HStack(spacing: 5) {
+                    AudioVisualizer(
+                        isPlaying: musicService.currentTrack.isPlaying,
+                        colorMode: .fromArtwork(musicService.currentTrack.artwork)
+                    )
+                    .modifier(OptionalMatchedGeometry(id: "audioVisualizer", namespace: namespace))
+                }
+                .frame(width: wingWidth + wingExtra, height: screenService.currentGeometry.height)
+                .contentShape(Rectangle())
+                .transition(.opacity)
             }
-            .frame(width: wingWidth + wingExtra, height: screenService.currentGeometry.height)
-            .contentShape(Rectangle())
         }
         .frame(
-            width: screenService.currentGeometry.width + ((wingWidth + wingExtra) * 2),
+            width: screenService.currentGeometry.width + ((wingWidth + wingExtra) * (minimalWingWidth == nil ? 2 : 1)),
             height: screenService.currentGeometry.height
         )
         .contentShape(Rectangle())

@@ -13,12 +13,14 @@ import Testing
     }
 
     func decide(_ candidates: [PresentationCandidate], current: String? = nil, lastChange: TimeInterval = -100,
-                hudHold: TimeInterval = -100, at now: TimeInterval = 0, slots: Int = 1) -> PresentationDecision {
+                hudHold: TimeInterval = -100, at now: TimeInterval = 0, slots: Int = 1,
+                previous: [String] = []) -> PresentationDecision {
         PresentationEngine.decide(candidates: candidates, currentPrimaryId: current,
                                   lastRoleChangeTime: t0.addingTimeInterval(lastChange),
                                   hudHoldUntil: t0.addingTimeInterval(hudHold),
                                   now: t0.addingTimeInterval(now),
-                                  policy: .init(hysteresis: 3, satelliteSlots: slots))
+                                  policy: .init(hysteresis: 3, satelliteSlots: slots),
+                                  previousSecondaryIds: previous)
     }
 
     // MARK: Orden
@@ -58,8 +60,51 @@ import Testing
         #expect(d.overflowIds == ["d"])
     }
 
-    @Test func slotsNeverBelowOne() {
+    @Test func slotsStayBetweenOneAndTwo() {
+        // Como la Isla Dinámica: 1 pegada + hasta 2 separadas
         #expect(PresentationEngine.Policy(satelliteSlots: 0).satelliteSlots == 1)
+        #expect(PresentationEngine.Policy(satelliteSlots: 4).satelliteSlots == 2)
+    }
+
+    @Test func atMostThreeVisible() {
+        let d = decide([candidate("a", priority: 900), candidate("b", priority: 800), candidate("c", priority: 700),
+                        candidate("d", priority: 600), candidate("e", priority: 500)], slots: 4)
+        #expect(d.primaryId == "a")
+        #expect(d.secondaryIds == ["b", "c"])
+        #expect(d.overflowIds == ["d", "e"])
+    }
+
+    // MARK: Lugares estables
+
+    @Test func detachedKeepTheirPlaceWhenAMoreRelevantOneArrives() {
+        // "c" (derecha) y "b" (izquierda) ya estaban; llega "x", más relevante que "b": "c" sigue a la derecha
+        // y "x" toma el lugar que deja "b"
+        let d = decide([candidate("a", priority: 900), candidate("x", priority: 850),
+                        candidate("b", priority: 600), candidate("c", priority: 700)],
+                       current: "a", slots: 2, previous: ["c", "b"])
+        #expect(d.secondaryIds == ["c", "x"])
+        #expect(d.overflowIds == ["b"])
+    }
+
+    @Test func orderIsKeptEvenIfRelevanceSwaps() {
+        // "b" sube de relevancia por encima de "c": no se intercambian de lado
+        let d = decide([candidate("a", priority: 900), candidate("b", priority: 800), candidate("c", priority: 700)],
+                       current: "a", slots: 2, previous: ["c", "b"])
+        #expect(d.secondaryIds == ["c", "b"])
+    }
+
+    @Test func remainingOneMovesToTheFirstPlace() {
+        // Se va la de la derecha: la de la izquierda ocupa el primer lugar (siempre hay una a la derecha)
+        let d = decide([candidate("a", priority: 900), candidate("b", priority: 600)],
+                       current: "a", slots: 2, previous: ["c", "b"])
+        #expect(d.secondaryIds == ["b"])
+    }
+
+    @Test func limitedWidthWithTwoDetached() {
+        let three = decide([candidate("a", priority: 900), candidate("b", priority: 800), candidate("c", priority: 700)], slots: 2)
+        #expect(three.isLimitedWidth)
+        let two = decide([candidate("a", priority: 900), candidate("b", priority: 800)], slots: 2)
+        #expect(!two.isLimitedWidth)
     }
 
     // MARK: Histéresis

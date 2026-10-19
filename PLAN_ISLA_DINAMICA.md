@@ -312,8 +312,8 @@ Proveedores ──▶ ActivityStore (modelo: identidad, datos, relevancia, ciclo
 | Paso | Contenido | Ítems |
 |---|---|---|
 | A-1 ✅ | **Refactor de base, sin cambios visibles:** `SurfaceGeometry` y `PresentationEngine` con tests de arbitraje (22 tests, `./scripts/test.sh`). | S5, S4 |
-| A-2 | **Política de varias actividades:** 1 pegada + hasta 2 separadas, posiciones estables, sin choques; mínima pegada; ancho limitado. | A2, A3, A1, A4 |
-| A-3 | **Interacción:** swipe a lo ancho para recorrer; clic en la separada (ajuste abrir o traer); relevancia dinámica. | A5, A6, A8 |
+| A-2 ✅ | **Política de varias actividades:** 1 pegada + hasta 2 separadas (derecha, luego izquierda), posiciones estables, sin choques; mínima pegada de la música; ancho limitado. Pendiente: mínima pegada para actividades tipo píldora (llamada, temporizador sin música). | A2, A3, A1, A4 |
+| A-3 | **Interacción:** swipe a lo ancho para recorrer; clic en la separada (ajuste abrir o traer); relevancia dinámica, **unificando la escala de prioridades** (hoy conviven 40–100 y 500–1000: el temporizador, con 88, pierde contra el agente, con 700). | A5, A6, A8 |
 | A-4 | **Alertas y ciclo de vida unificados:** alert config, ≤ 8 h, obsoleto y cierre con resumen. | L3, L1, L2 |
 | A-5 | **Plantillas:** expandida con regiones, alto dinámico, tokens de medidas y auditoría ≤ 2 s. | D1, D2, D3, D5 |
 | A-6 | **Integraciones baratas:** cámara/micro en uso, batería baja, descargas, Bloq Mayús, cronómetro, Wi-Fi/VPN. | 3.4 (✅) |

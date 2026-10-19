@@ -41,6 +41,10 @@ public struct NotchTuning {
     //    con ~11 pt de margen a cada lado; el resto del ancho es la cámara, que no se puede reducir
     public static let compactWingWidth: CGFloat = 42
     public static let compactWingsExtraWidth: CGFloat = compactWingWidth * 2
+    /// Mínima pegada (varias actividades): sólo el ala izquierda, más angosta; en ancho limitado (3 a la vista)
+    /// todavía más, como el círculo de 28 pt de la Isla Dinámica
+    public static let minimalWingWidth: CGFloat = 34
+    public static let minimalWingLimitedWidth: CGFloat = 30
 }
 
 public enum NotchInteractionState: Equatable {
@@ -168,11 +172,33 @@ public struct NotchContainerView: View {
                 if appState.isHoldingBareNotch || appState.isCompactMinimized {
                     return geometry.width
                 }
+                if isMinimalAttached {
+                    return geometry.width + minimalWingWidth
+                }
                 return geometry.width + NotchTuning.compactWingsExtraWidth
             case .expanded, .shelf:
                 return NotchTuning.expandedWidth
             }
         }
+    }
+    
+    /// Mínima pegada, como la Isla Dinámica con varias actividades: la música queda sólo con su carátula a la
+    /// izquierda de la cámara y la isla se angosta; las demás actividades son bolitas separadas
+    private var isMinimalAttached: Bool {
+        appState.minimalAttachedEnabled
+            && appState.mode == .compact && !appState.isHoldingBareNotch && !appState.isCompactMinimized
+            && activityCenter.currentActivity == nil && activityCenter.expandedActivity == nil
+            && !activityCenter.secondaryActivities.isEmpty
+            && !appState.isDropInvitationActive && !agentProvider.isProgressHUDExpanded
+    }
+    
+    private var minimalWingWidth: CGFloat {
+        activityCenter.isLimitedWidth ? NotchTuning.minimalWingLimitedWidth : NotchTuning.minimalWingWidth
+    }
+    
+    /// La mínima pegada sólo crece hacia la izquierda: la forma se corre para que la cámara quede en su lugar
+    private var attachedOffsetX: CGFloat {
+        isMinimalAttached ? -minimalWingWidth / 2 : 0
     }
     
     // Alto: altura del notch en reposo, 36pt en SliderPill, altura del notch en alas de AirPods, 144pt en Drop Invitation, 204pt en repisa, 196pt en reproductor
@@ -454,7 +480,7 @@ public struct NotchContainerView: View {
     }
     
     private var cardOffsetX: CGFloat {
-        snapStretch / 2.0
+        snapStretch / 2.0 + attachedOffsetX
     }
     
     private var cardExpandedHeight: CGFloat {
@@ -656,7 +682,7 @@ public struct NotchContainerView: View {
                     Color.clear
                         .frame(width: currentWidth, height: currentHeight)
                 } else {
-                    NotchCompactView(namespace: notchNamespace)
+                    NotchCompactView(namespace: notchNamespace, minimalWingWidth: isMinimalAttached ? minimalWingWidth : nil)
                         .frame(width: currentWidth, height: currentHeight)
                         .blur(radius: dragBlur)
                         .opacity(isTransitioningFromActivity ? 0.0 : 1.0)
@@ -684,7 +710,8 @@ public struct NotchContainerView: View {
                         verticalStretch: 0,
                         isExpanded: isSurfaceExpanded,
                         topBleed: shapeTopBleed,
-                        trailingImpulse: activityCenter.pillImpulse
+                        trailingImpulse: activityCenter.pillImpulse,
+                        cameraCenterOffset: -attachedOffsetX
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                     // Keyline de la Isla Dinámica: en modo oscuro, un borde fino del color de lo que se muestra
@@ -870,91 +897,58 @@ public struct NotchContainerView: View {
         if activityCenter.expandedActivity == nil {
             let bolitaDiam = appState.effectiveBolitaDiameter
             let gap = appState.bolitaGap
-            let isBothSides = appState.satelliteLocation == .bothSides && activityCenter.secondaryActivities.count >= 2
+            // Lugares fijos, como la Isla Dinámica: [0] a la derecha, [1] a la izquierda (o segunda a la derecha si
+            // el usuario las quiere de un solo lado). El orden lo mantiene estable PresentationEngine.
+            let bothSides = appState.bubblesOnBothSides
             
-            // Bolitas a la Derecha
             // Cada bolita se une al notch con un cuello líquido (LiquidSatelliteModifier): brota de él al
             // aparecer, se funde al tocarla (fusionProgress) y se reabsorbe al desaparecer.
-            // Ancho/alto VISIBLES del notch: incluyen la expansión al pasar el cursor y el "apretón" al presionar
-            // (scaleEffect anclado arriba), para que las bolitas se aparten y no queden tapadas
+            // Bordes VISIBLES del notch: incluyen la expansión al pasar el cursor y el "apretón" al presionar
+            // (scaleEffect anclado arriba) y el corrimiento de la mínima pegada, para que las bolitas se aparten
+            // y no queden tapadas
             let visibleHalfWidth = cardExpandedWidth * scaleX / 2.0
             let visibleHeight = geometry.height * scaleY
             let notchRadius = visibleHeight / 2.0
+            let rightEdge = attachedOffsetX + visibleHalfWidth
+            let leftEdge = attachedOffsetX - visibleHalfWidth
             // Al pasar el cursor sólo crece el notch: la bolita se queda donde estaba (independiente) y se hace
             // un poco más pequeña, cediéndole protagonismo. Si el notch creciera mucho, nunca la toca (≥ 3 pt).
             let isNotchHovered = scaleX > 1.001 && interactionState != .pressed && appState.bubbleShrinksOnNotchHover
-            let restHalfWidth = max(cardExpandedWidth / 2.0, visibleHalfWidth + 3 - gap)
+            let restRight = max(attachedOffsetX + cardExpandedWidth / 2.0, rightEdge + 3 - gap)
+            let restLeft = min(attachedOffsetX - cardExpandedWidth / 2.0, leftEdge - 3 + gap)
             let bubbleOffsetY = max(0, (geometry.height - bolitaDiam) / 2.0)
             // En cristal el cuello también existe: se dibuja como parte de la gota de vidrio (LiquidSatelliteModifier)
             let showsBridge = appState.mode != .expanded && appState.mode != .shelf
             ForEach(Array(activityCenter.secondaryActivities.enumerated()), id: \.element.id) { index, activity in
-                let isLeft = isBothSides && index == 1
-                if !isLeft {
-                    let slotIndex = isBothSides ? (index > 1 ? index - 1 : index) : index
-                    let restingX = restHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
-                    let isFusingThis = activityCenter.fusingActivityId == activity.id
-                    
-                    NotchBolitaView(activity: activity, side: .right)
-                        .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
-                        .notchHitRegion("satellite.\(activity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
-                        .modifier(LiquidSatelliteModifier(
-                            merge: isFusingThis ? activityCenter.fusionProgress : 0,
-                            restingX: restingX,
-                            // El cuello nace del borde derecho real, que se recoge o abulta con la física
-                            notchEndX: visibleHalfWidth + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
-                            notchRadius: notchRadius,
-                            bubbleDiameter: bolitaDiam,
-                            offsetY: bubbleOffsetY,
-                            showsBridge: showsBridge && slotIndex == 0,
-                            isGlass: isGlassSurfaceVisible
-                        ))
-                        // Al fundirse pasa POR DEBAJO del notch (se reabsorbe en él) en vez de encimarse a las alas
-                        .zIndex(isFusingThis ? -1 : 100 - Double(slotIndex))
-                        .transition(reduceMotion ? .opacity : .liquidSatellite)
-                }
-            }
-            
-            // Bolita a la Izquierda (si está configurado .bothSides)
-            if isBothSides, let leftActivity = activityCenter.secondaryActivities.dropFirst().first {
-                let restingX = -(restHalfWidth + gap + (bolitaDiam / 2.0))
-                let isFusingThis = activityCenter.fusingActivityId == leftActivity.id
+                let isLeft = bothSides && index == 1
+                // Lugar en su lado: 0 = pegado al notch (con cuello líquido), 1 = segunda a la derecha
+                let slotIndex = bothSides ? 0 : index
+                let restingX = isLeft
+                    ? restLeft - gap - (bolitaDiam / 2.0)
+                    : restRight + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
+                let isFusingThis = activityCenter.fusingActivityId == activity.id
                 
-                NotchBolitaView(activity: leftActivity, side: .left)
+                NotchBolitaView(activity: activity, side: isLeft ? .left : .right)
                     .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
-                    .notchHitRegion("satellite.\(leftActivity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
+                    .notchHitRegion("satellite.\(activity.id)") // dentro del .offset de LiquidSatelliteModifier: lo sigue solo
                     .modifier(LiquidSatelliteModifier(
                         merge: isFusingThis ? activityCenter.fusionProgress : 0,
                         restingX: restingX,
-                        notchEndX: -(visibleHalfWidth - notchRadius),
+                        // El cuello nace del borde real, que del lado derecho se recoge o abulta con la física
+                        notchEndX: isLeft
+                            ? leftEdge + notchRadius
+                            : rightEdge + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
                         notchRadius: notchRadius,
                         bubbleDiameter: bolitaDiam,
                         offsetY: bubbleOffsetY,
-                        showsBridge: showsBridge,
+                        showsBridge: showsBridge && slotIndex == 0,
                         isGlass: isGlassSurfaceVisible
                     ))
-                    .zIndex(isFusingThis ? -1 : 100)
+                    // Al fundirse pasa POR DEBAJO del notch (se reabsorbe en él) en vez de encimarse a las alas
+                    .zIndex(isFusingThis ? -1 : 100 - Double(slotIndex))
                     .transition(reduceMotion ? .opacity : .liquidSatellite)
             }
-            
-            // Indicador de Desbordamiento (+N)
-            if activityCenter.overflowCount > 0 {
-                let slotIndex = isBothSides
-                    ? max(0, activityCenter.secondaryActivities.count - 1)
-                    : activityCenter.secondaryActivities.count
-                let restingX = restHalfWidth + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8))
-                
-                NotchOverflowBolitaView(count: activityCenter.overflowCount)
-                    .offset(
-                        x: restingX,
-                        y: max(0, (geometry.height - bolitaDiam) / 2.0)
-                    )
-                    .notchHitRegion("satellite.overflow", offset: CGSize(width: restingX, height: max(0, (geometry.height - bolitaDiam) / 2.0)))
-                    .zIndex(90)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.4, anchor: .center).combined(with: .opacity),
-                        removal: .scale(scale: 0.4, anchor: .center).combined(with: .opacity)
-                    ))
-            }
+            // Como la Isla Dinámica, las que no caben esperan en cola sin indicador (se recorren en A-3)
         }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

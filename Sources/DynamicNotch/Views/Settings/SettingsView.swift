@@ -1655,6 +1655,16 @@ extension SettingsView {
                 display: { "\(Int($0)) pt" }
             )
             ToggleRow(
+                title: "Segunda bolita a la izquierda",
+                subtitle: "Como la Isla Dinámica: hasta 3 actividades a la vista, una en el notch y una bolita a cada lado. Apagado: las dos bolitas a la derecha.",
+                isOn: $appState.bubblesOnBothSides
+            )
+            ToggleRow(
+                title: "Mínima pegada con varias actividades",
+                subtitle: "Si hay bolitas, la música se reduce a su carátula junto a la cámara, como el iPhone. Apagado: conserva sus dos alas.",
+                isOn: $appState.minimalAttachedEnabled
+            )
+            ToggleRow(
                 title: "Clic abre la app (estilo iPhone)",
                 subtitle: "Clic en una bolita abre su app; mantener presionado la expande. Apagado: el clic expande la tarjeta.",
                 isOn: $appState.bubbleTapOpensApp

@@ -15,6 +15,8 @@ public final class ActivityCenter: ObservableObject {
     @Published public private(set) var secondaryActivities: [LiveActivity] = []
     @Published public private(set) var overflowActivities: [LiveActivity] = []
     @Published public private(set) var overflowCount: Int = 0
+    /// 3 actividades a la vista: bolitas y mínima pegada en ancho limitado (ver PresentationDecision)
+    @Published public private(set) var isLimitedWidth: Bool = false
     
     // MARK: - Coordinador de Morfeo Líquido y Fusión (Bolita <-> Notch)
     @Published public var fusingActivityId: String? = nil
@@ -297,6 +299,7 @@ public final class ActivityCenter: ObservableObject {
                 self.secondaryActivities = []
                 self.overflowActivities = []
                 self.overflowCount = 0
+                self.isLimitedWidth = false
             }
             if expandedActivity != nil {
                 collapseExpandedActivity()
@@ -314,7 +317,8 @@ public final class ActivityCenter: ObservableObject {
             lastRoleChangeTime: lastRoleChangeTime,
             hudHoldUntil: hudHoldUntil,
             now: now,
-            policy: .init(hysteresis: hysteresisDuration, satelliteSlots: satelliteSlots)
+            policy: .init(hysteresis: hysteresisDuration, satelliteSlots: satelliteSlots),
+            previousSecondaryIds: secondaryActivities.map(\.id)
         )
         lastRoleChangeTime = decision.lastRoleChangeTime
         let activitiesById = Dictionary(activeActivities.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -363,6 +367,7 @@ public final class ActivityCenter: ObservableObject {
             self.secondaryActivities = newSecondaries
             self.overflowActivities = newOverflow
             self.overflowCount = newOverflow.count
+            if self.isLimitedWidth != (newSecondaries.count >= 2) { self.isLimitedWidth = newSecondaries.count >= 2 }
         }
         
         NotchWindowManager.shared.updateHitAreaForCurrentState()

@@ -109,6 +109,8 @@ public struct DynamicNotchBackgroundView: View {
     public var topBleed: CGFloat
     /// Ver ElasticPillShape.trailingImpulse (física de desprendimiento/absorción de las bolitas)
     public var trailingImpulse: CGFloat = 0
+    /// Distancia del centro de la cámara al centro de la forma (la mínima pegada sólo crece hacia la izquierda)
+    public var cameraCenterOffset: CGFloat = 0
 
     public init(
         topRadius: CGFloat,
@@ -119,9 +121,11 @@ public struct DynamicNotchBackgroundView: View {
         verticalStretch: CGFloat = 0,
         isExpanded: Bool = true,
         topBleed: CGFloat = 0,
-        trailingImpulse: CGFloat = 0
+        trailingImpulse: CGFloat = 0,
+        cameraCenterOffset: CGFloat = 0
     ) {
         self.trailingImpulse = trailingImpulse
+        self.cameraCenterOffset = cameraCenterOffset
         self.topBleed = topBleed
         self.topRadius = topRadius
         self.bottomRadius = bottomRadius
@@ -222,6 +226,7 @@ public struct DynamicNotchBackgroundView: View {
                                         endPoint: .trailing
                                     )
                                 )
+                                .offset(x: cameraCenterOffset)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                                 .clipShape(pillShape)
                             }
