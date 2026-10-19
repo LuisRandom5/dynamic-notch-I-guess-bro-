@@ -365,6 +365,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // El temporizador cede el notch a la música/video (y vuelve cuando se detiene)
         ActivityCenter.shared.startObservingPlayback()
+        // La bolita de una app se oculta mientras la estás viendo (como el iPhone)
+        ActivityCenter.shared.startObservingAppVisibility()
         // La repisa con archivos aparece como bolita
         ShelfActivityProvider.shared.start()
         // Avisos del sistema (Bloq Mayús, red/VPN, cámara/micrófono en uso) y descargas en curso

@@ -37,6 +37,9 @@ public final class StatusItemManager: NSObject {
         toggleItem.target = self
         menu.addItem(toggleItem)
         
+        // Isla Dinámica: en qué pantalla, con qué forma y de qué tamaño (Fase B)
+        menu.addItem(islandMenuItem())
+        
         // Hover toggle
         let hoverItem = NSMenuItem(
             title: "Expandir al pasar cursor (Hover)",
@@ -212,6 +215,65 @@ public final class StatusItemManager: NSObject {
         AudioSpectrumTestWindowController.shared.show()
     }
     
+    private func islandMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Isla Dinámica", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let app = AppState.shared
+        func add(_ title: String, _ action: Selector, tag: Int = 0, on: Bool, enabled: Bool = true) {
+            let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            entry.target = self
+            entry.tag = tag
+            entry.state = on ? .on : .off
+            entry.isEnabled = enabled
+            submenu.addItem(entry)
+        }
+        let header = NSMenuItem(title: "Dónde se ve", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        submenu.addItem(header)
+        let hasPlainScreen = NSScreen.screens.contains { $0.auxiliaryTopLeftArea == nil }
+        add("En el notch de la MacBook", #selector(setIslandPlacement(_:)), tag: 0, on: app.islandScreenPlacement == .automatic)
+        add("En el monitor sin notch", #selector(setIslandPlacement(_:)), tag: 1, on: app.islandScreenPlacement == .withoutNotch, enabled: hasPlainScreen)
+        add("Seguir al cursor", #selector(setIslandPlacement(_:)), tag: 2, on: app.islandScreenPlacement == .followCursor)
+        submenu.addItem(NSMenuItem.separator())
+        let shapeHeader = NSMenuItem(title: "Forma en pantallas sin notch", action: nil, keyEquivalent: "")
+        shapeHeader.isEnabled = false
+        submenu.addItem(shapeHeader)
+        add("Isla flotante (como el iPhone)", #selector(setIslandStyle(_:)), tag: 0, on: app.islandStyle == .floating)
+        add("Notch pegado al borde", #selector(setIslandStyle(_:)), tag: 1, on: app.islandStyle == .hanging)
+        submenu.addItem(NSMenuItem.separator())
+        add("Del alto de la barra de menús", #selector(toggleIslandFitsMenuBar), on: app.islandFitsMenuBar)
+        add("Visible en reposo", #selector(toggleIslandVisibleAtRest), on: app.islandVisibleAtRest)
+        add("Ocultar bolitas de la app que estás viendo", #selector(toggleHideWhileVisible), on: app.hideActivityWhileAppVisible)
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func setIslandPlacement(_ sender: NSMenuItem) {
+        let placements: [SurfaceGeometry.ScreenPlacement] = [.automatic, .withoutNotch, .followCursor]
+        AppState.shared.islandScreenPlacement = placements[max(0, min(2, sender.tag))]
+        buildMenu()
+    }
+
+    @objc private func setIslandStyle(_ sender: NSMenuItem) {
+        AppState.shared.islandStyle = sender.tag == 0 ? .floating : .hanging
+        buildMenu()
+    }
+
+    @objc private func toggleIslandFitsMenuBar() {
+        AppState.shared.islandFitsMenuBar.toggle()
+        buildMenu()
+    }
+
+    @objc private func toggleIslandVisibleAtRest() {
+        AppState.shared.islandVisibleAtRest.toggle()
+        buildMenu()
+    }
+
+    @objc private func toggleHideWhileVisible() {
+        AppState.shared.hideActivityWhileAppVisible.toggle()
+        buildMenu()
+    }
+
     @objc private func toggleNotch() {
         AppState.shared.toggleExpand()
         buildMenu()

@@ -237,6 +237,14 @@ public final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(downloadsActivityEnabled, forKey: "downloadsActivityEnabled") }
     }
     
+    /// La bolita de una app se oculta mientras estás viendo esa app (como el iPhone)
+    @Published public var hideActivityWhileAppVisible: Bool = UserDefaults.standard.object(forKey: "hideActivityWhileAppVisible") != nil
+        ? UserDefaults.standard.bool(forKey: "hideActivityWhileAppVisible") : true {
+        didSet {
+            UserDefaults.standard.set(hideActivityWhileAppVisible, forKey: "hideActivityWhileAppVisible")
+            ActivityCenter.shared.recalculateRoles()
+        }
+    }
     /// Swipe a lo ancho sobre el notch cerrado recorre las actividades (con 2 o más entre bolitas y cola)
     @Published public var swipeCyclesActivities: Bool = UserDefaults.standard.object(forKey: "swipeCyclesActivities") != nil
         ? UserDefaults.standard.bool(forKey: "swipeCyclesActivities") : true {

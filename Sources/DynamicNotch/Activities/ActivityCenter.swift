@@ -509,7 +509,7 @@ public final class ActivityCenter: ObservableObject {
         let maxSatellites = max(1, AppState.shared.maxSatelliteBolitas)
         let satelliteSlots = AppState.shared.multiActivityMode == .modeA ? maxSatellites : 1
         let decision = PresentationEngine.decide(
-            candidates: activeActivities.map(presentationCandidate),
+            candidates: presentableActivities().map(presentationCandidate),
             currentPrimaryId: currentActivity?.id,
             lastRoleChangeTime: lastRoleChangeTime,
             hudHoldUntil: hudHoldUntil,
@@ -602,6 +602,31 @@ public final class ActivityCenter: ObservableObject {
                 self?.departingSatellites.removeAll { $0.id == token }
             }
         }
+    }
+    
+    /// Como en el iPhone: la actividad de una app no sale en la isla mientras el usuario está viendo esa app
+    /// (AppVisibilityMonitor). Las urgentes y la que el usuario tiene abierta sí se quedan.
+    private func presentableActivities() -> [LiveActivity] {
+        let watched = Set(activeActivities.compactMap { ActivitySourceApp.bundleId(for: $0) })
+        AppVisibilityMonitor.shared.watch(AppState.shared.hideActivityWhileAppVisible ? watched : [])
+        guard AppState.shared.hideActivityWhileAppVisible else { return activeActivities }
+        let visible = AppVisibilityMonitor.shared.visibleBundleIds
+        guard !visible.isEmpty else { return activeActivities }
+        return activeActivities.filter { activity in
+            guard let bundleId = ActivitySourceApp.bundleId(for: activity), visible.contains(bundleId) else { return true }
+            return activity.isUrgent || expandedActivity?.id == activity.id || fusingActivityId == activity.id
+        }
+    }
+    
+    private var appVisibilityObserver: AnyCancellable?
+    
+    /// Recalcular cuando el usuario empieza o deja de ver la app de alguna actividad
+    public func startObservingAppVisibility() {
+        guard appVisibilityObserver == nil else { return }
+        appVisibilityObserver = AppVisibilityMonitor.shared.$visibleBundleIds
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.recalculateRoles() }
     }
     
     /// Traduce una actividad a lo que necesita el motor de presentación

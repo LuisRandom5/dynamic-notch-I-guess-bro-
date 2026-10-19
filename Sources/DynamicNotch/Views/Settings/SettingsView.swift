@@ -1655,6 +1655,11 @@ extension SettingsView {
                 display: { "\(Int($0)) pt" }
             )
             ToggleRow(
+                title: "Ocultar mientras ves la app",
+                subtitle: "Como el iPhone: si tienes a la vista la ventana de la app de una actividad (p. ej. Claude en el otro monitor), su bolita no aparece.",
+                isOn: $appState.hideActivityWhileAppVisible
+            )
+            ToggleRow(
                 title: "Segunda bolita a la izquierda",
                 subtitle: "Como la Isla Dinámica: hasta 3 actividades a la vista, una en el notch y una bolita a cada lado. Apagado: las dos bolitas a la derecha.",
                 isOn: $appState.bubblesOnBothSides
