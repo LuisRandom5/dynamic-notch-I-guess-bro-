@@ -88,15 +88,68 @@ public struct SurfaceGeometry: Equatable {
     /// pantalla preferida. Devuelve también el índice de la pantalla elegida.
     public static func resolve(screens: [(frame: CGRect, auxiliaryTopLeft: CGRect?, auxiliaryTopRight: CGRect?)],
                                preferredIndex: Int?) -> (geometry: SurfaceGeometry, screenIndex: Int?) {
-        for (index, screen) in screens.enumerated() {
-            if let notch = physicalNotch(screenFrame: screen.frame, auxiliaryTopLeft: screen.auxiliaryTopLeft,
-                                         auxiliaryTopRight: screen.auxiliaryTopRight) {
-                return (notch, index)
+        resolve(screens: screens, placement: .automatic, mainIndex: preferredIndex, cursorIndex: nil, islandStyle: .hanging)
+    }
+
+    /// En qué pantalla vive la isla
+    public enum ScreenPlacement: String, CaseIterable, Equatable, Identifiable {
+        public var id: String { rawValue }
+        /// La pantalla con notch; si no hay, la principal
+        case automatic
+        /// La primera pantalla sin notch (p. ej. el monitor externo); si no hay, como automática
+        case withoutNotch
+        /// La pantalla donde está el cursor (la isla la sigue)
+        case followCursor
+    }
+
+    /// Cómo se ve la isla en una pantalla sin notch
+    public enum IslandStyle: String, CaseIterable, Equatable, Identifiable {
+        public var id: String { rawValue }
+        /// Cápsula separada del borde, como la Isla Dinámica del iPhone
+        case floating
+        /// Pegada al borde superior, con la forma del notch
+        case hanging
+    }
+
+    /// Tamaño en reposo de la isla flotante: proporción del iPhone (126 × 37 pt) al alto del notch del Mac
+    public static let floatingIslandSize = CGSize(width: 126, height: 32)
+    /// Separación de la isla flotante y el borde superior
+    public static let floatingIslandTopInset: CGFloat = 6
+
+    /// Superficie según la preferencia del usuario:
+    /// - automatic: notch físico si existe (en cualquier pantalla); si no, la pantalla principal
+    /// - withoutNotch: la primera pantalla sin notch; si todas tienen, como automatic
+    /// - followCursor: la pantalla del cursor (con notch → notch; sin notch → isla)
+    /// En una pantalla sin notch se dibuja una isla flotante o un notch virtual según `islandStyle`.
+    public static func resolve(screens: [(frame: CGRect, auxiliaryTopLeft: CGRect?, auxiliaryTopRight: CGRect?)],
+                               placement: ScreenPlacement, mainIndex: Int?, cursorIndex: Int?,
+                               islandStyle: IslandStyle) -> (geometry: SurfaceGeometry, screenIndex: Int?) {
+        guard !screens.isEmpty else { return (fallback, nil) }
+        func notch(at i: Int) -> SurfaceGeometry? {
+            physicalNotch(screenFrame: screens[i].frame, auxiliaryTopLeft: screens[i].auxiliaryTopLeft,
+                          auxiliaryTopRight: screens[i].auxiliaryTopRight)
+        }
+        func island(at i: Int) -> SurfaceGeometry {
+            switch islandStyle {
+            case .floating:
+                return floatingIsland(screenFrame: screens[i].frame, size: floatingIslandSize, topInset: floatingIslandTopInset)
+            case .hanging:
+                return virtualNotch(screenFrame: screens[i].frame)
             }
         }
-        let index = preferredIndex.flatMap { screens.indices.contains($0) ? $0 : nil } ?? (screens.isEmpty ? nil : 0)
-        guard let index else { return (fallback, nil) }
-        return (virtualNotch(screenFrame: screens[index].frame), index)
+        func surface(at i: Int) -> (SurfaceGeometry, Int?) { (notch(at: i) ?? island(at: i), i) }
+        let main = mainIndex.flatMap { screens.indices.contains($0) ? $0 : nil } ?? 0
+
+        switch placement {
+        case .followCursor:
+            if let cursor = cursorIndex, screens.indices.contains(cursor) { return surface(at: cursor) }
+        case .withoutNotch:
+            if let plain = screens.indices.first(where: { notch(at: $0) == nil }) { return surface(at: plain) }
+        case .automatic:
+            break
+        }
+        if let withNotch = screens.indices.first(where: { notch(at: $0) != nil }) { return surface(at: withNotch) }
+        return surface(at: main)
     }
 }
 

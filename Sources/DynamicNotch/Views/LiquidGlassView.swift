@@ -113,6 +113,8 @@ public struct DynamicNotchBackgroundView: View {
     public var cameraCenterOffset: CGFloat = 0
     /// El notch se está cerrando: el vidrio se disuelve durante el encogimiento
     public var isDissolving: Bool = false
+    /// Isla flotante (sin cámara detrás): vidrio en toda la forma y también en reposo
+    public var isFloatingSurface: Bool = false
 
     public init(
         topRadius: CGFloat,
@@ -125,8 +127,10 @@ public struct DynamicNotchBackgroundView: View {
         topBleed: CGFloat = 0,
         trailingImpulse: CGFloat = 0,
         cameraCenterOffset: CGFloat = 0,
+        isFloatingSurface: Bool = false,
         isDissolving: Bool = false
     ) {
+        self.isFloatingSurface = isFloatingSurface
         self.trailingImpulse = trailingImpulse
         self.cameraCenterOffset = cameraCenterOffset
         self.isDissolving = isDissolving
@@ -168,7 +172,7 @@ public struct DynamicNotchBackgroundView: View {
             // Notch cerrado con actividad (música, temporizador…): la píldora es más ancha que la cámara y sus
             // lados ("alas") son de cristal; el centro sigue negro detrás de la cámara física
             let hasGlassWings = appState.glassWingsEnabled && !isExpanded && geo.size.width > notchWidth + 12
-            let showsGlass = isExpanded || hasGlassWings
+            let showsGlass = isExpanded || hasGlassWings || isFloatingSurface
             
             ZStack {
                 if mode == .pureOLED {
@@ -208,31 +212,34 @@ public struct DynamicNotchBackgroundView: View {
                                 // altura de la cámara (el resto del borde superior refracta como vidrio); cerrado con
                                 // alas, todo el alto, para que la cámara quede dentro de una isla negra que se funde
                                 // con el cristal de los lados
-                                let bandWidth = notchWidth + (hasGlassWings ? 28 : 36)
-                                let fade = (hasGlassWings ? 14 : 18) / bandWidth
-                                LinearGradient(
-                                    stops: hasGlassWings
-                                        ? [.init(color: .black, location: 0.0), .init(color: .black, location: 1.0)]
-                                        : [.init(color: .black.opacity(0.85), location: 0.0), .init(color: .black.opacity(0.0), location: 1.0)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                                .frame(width: bandWidth, height: hasGlassWings ? geo.size.height : notchHeight + 12)
-                                .mask(
+                                // Sin cámara (isla flotante) no hay franja negra: toda la isla es vidrio
+                                if !isFloatingSurface {
+                                    let bandWidth = notchWidth + (hasGlassWings ? 28 : 36)
+                                    let fade = (hasGlassWings ? 14 : 18) / bandWidth
                                     LinearGradient(
-                                        stops: [
-                                            .init(color: .clear, location: 0.0),
-                                            .init(color: .black, location: fade),
-                                            .init(color: .black, location: 1 - fade),
-                                            .init(color: .clear, location: 1.0),
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
+                                        stops: hasGlassWings
+                                            ? [.init(color: .black, location: 0.0), .init(color: .black, location: 1.0)]
+                                            : [.init(color: .black.opacity(0.85), location: 0.0), .init(color: .black.opacity(0.0), location: 1.0)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
                                     )
-                                )
-                                .offset(x: cameraCenterOffset)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                                .clipShape(pillShape)
+                                    .frame(width: bandWidth, height: hasGlassWings ? geo.size.height : notchHeight + 12)
+                                    .mask(
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: .clear, location: 0.0),
+                                                .init(color: .black, location: fade),
+                                                .init(color: .black, location: 1 - fade),
+                                                .init(color: .clear, location: 1.0),
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .offset(x: cameraCenterOffset)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                                    .clipShape(pillShape)
+                                }
                             }
                             .allowsHitTesting(false)
                             .opacity(isDissolving ? 0 : 1)

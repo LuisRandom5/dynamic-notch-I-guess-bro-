@@ -21,15 +21,54 @@ public final class ScreenService: ObservableObject {
             .store(in: &cancellables)
     }
     
+    /// Seguir al cursor: se revisa en qué pantalla está cada medio segundo (sólo con esa preferencia)
+    private var cursorTimer: Timer?
+    private var lastCursorScreenIndex: Int?
+
     public func updateScreenGeometry() {
-        // La primera pantalla con notch físico; si no hay, un notch virtual en la pantalla principal
+        // Preferencias leídas de UserDefaults (no de AppState: ambos singletons se crean al arrancar)
+        let defaults = UserDefaults.standard
+        let placement = SurfaceGeometry.ScreenPlacement(rawValue: defaults.string(forKey: "islandScreenPlacement") ?? "") ?? .automatic
+        let style = SurfaceGeometry.IslandStyle(rawValue: defaults.string(forKey: "islandStyle") ?? "") ?? .floating
         let screens = NSScreen.screens
         let main = NSScreen.main ?? screens.first
+        let cursorIndex = Self.screenIndex(containing: NSEvent.mouseLocation, in: screens)
+        lastCursorScreenIndex = cursorIndex
+        // Diagnóstico (/debug/island): tratar todas las pantallas como si no tuvieran notch
+        let ignoreNotch = defaults.bool(forKey: "debugIslandIgnoreNotch")
         let resolved = SurfaceGeometry.resolve(
-            screens: screens.map { ($0.frame, $0.auxiliaryTopLeftArea, $0.auxiliaryTopRightArea) },
-            preferredIndex: main.flatMap { m in screens.firstIndex(where: { $0 == m }) }
+            screens: screens.map { ($0.frame, ignoreNotch ? nil : $0.auxiliaryTopLeftArea, ignoreNotch ? nil : $0.auxiliaryTopRightArea) },
+            placement: placement,
+            mainIndex: main.flatMap { m in screens.firstIndex(where: { $0 == m }) },
+            cursorIndex: cursorIndex,
+            islandStyle: style
         )
-        self.targetScreen = resolved.screenIndex.map { screens[$0] } ?? main
-        self.currentGeometry = resolved.geometry
+        let screen = resolved.screenIndex.map { screens[$0] } ?? main
+        if screen != targetScreen { self.targetScreen = screen }
+        if resolved.geometry != currentGeometry { self.currentGeometry = resolved.geometry }
+        updateCursorFollowing(enabled: placement == .followCursor && screens.count > 1)
+    }
+
+    private static func screenIndex(containing point: NSPoint, in screens: [NSScreen]) -> Int? {
+        screens.firstIndex { $0.frame.contains(point) }
+    }
+
+    private func updateCursorFollowing(enabled: Bool) {
+        guard enabled != (cursorTimer != nil) else { return }
+        if enabled {
+            let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                let index = Self.screenIndex(containing: NSEvent.mouseLocation, in: NSScreen.screens)
+                if let index, index != self.lastCursorScreenIndex {
+                    self.updateScreenGeometry()
+                }
+            }
+            timer.tolerance = 0.2
+            RunLoop.main.add(timer, forMode: .common)
+            cursorTimer = timer
+        } else {
+            cursorTimer?.invalidate()
+            cursorTimer = nil
+        }
     }
 }

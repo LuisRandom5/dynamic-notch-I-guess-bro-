@@ -261,7 +261,17 @@ public struct NotchContainerView: View {
     }
     
     // Curvatura de esquinas: se redondea dinámicamente al arrastrar para convertirse en PÍLDORA completa
+    /// Isla flotante (pantalla sin notch): cápsula completa separada del borde, como la del iPhone
+    private var isFloatingIsland: Bool {
+        geometry.kind == .floatingIsland
+    }
+    
+    /// Esquinas de arriba: colgando del borde (notch) casi rectas; flotando, iguales a las de abajo
     private var topRadius: CGFloat {
+        isFloatingIsland ? bottomRadius : hangingTopRadius
+    }
+    
+    private var hangingTopRadius: CGFloat {
         if appState.mode == .expanded || appState.mode == .shelf {
             return NotchTuning.expandedTopRadius
         } else if agentProvider.isProgressHUDExpanded {
@@ -351,7 +361,15 @@ public struct NotchContainerView: View {
     /// Sangrado superior de la silueta mientras está pegada al bisel (ver ElasticPillShape.topBleed).
     /// Si la isla se despega hacia abajo, se anula para no asomar por encima.
     private var shapeTopBleed: CGFloat {
-        containerOffsetY <= 0.5 ? 2.0 : 0.0
+        // Flotando no hay borde contra el que sangrar
+        !isFloatingIsland && containerOffsetY <= 0.5 ? 2.0 : 0.0
+    }
+    
+    /// Isla flotante sin nada que mostrar y el usuario la quiere oculta en reposo
+    private var isHiddenAtRest: Bool {
+        isFloatingIsland && !appState.islandVisibleAtRest && appState.mode == .idle
+            && activityCenter.currentActivity == nil && activityCenter.secondaryActivities.isEmpty
+            && activityCenter.expandedActivity == nil && !appState.isHovered && !appState.isDropInvitationActive
     }
     
     private var containerOffsetY: CGFloat {
@@ -719,6 +737,8 @@ public struct NotchContainerView: View {
                         topBleed: shapeTopBleed,
                         trailingImpulse: activityCenter.pillImpulse,
                         cameraCenterOffset: -attachedOffsetX,
+                        // Sin cámara detrás: toda la isla es del material (sin franja negra) y se ve en reposo
+                        isFloatingSurface: isFloatingIsland,
                         // Al cerrar, el vidrio se disuelve mientras la forma se encoge (antes se quedaba gris
                         // alrededor del centro negro y desaparecía de golpe al final)
                         // Si al cerrar quedan alas de cristal (música), el vidrio se queda: la forma se encoge hasta ellas
@@ -760,6 +780,8 @@ public struct NotchContainerView: View {
                 alignment: .top
             )
             .offset(x: cardOffsetX + activityCenter.islandRecoil)
+            .opacity(isHiddenAtRest ? 0 : 1)
+            .animation(.easeInOut(duration: 0.3), value: isHiddenAtRest)
             // Sombra Multicapa (Ambient + Key): activa únicamente en Negro Puro OLED.
             // En Liquid Glass tanto la opacidad como el radio son 0.0 SIEMPRE para evitar pases offscreen en Metal.
             .shadow(

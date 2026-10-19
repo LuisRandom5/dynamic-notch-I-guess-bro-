@@ -1759,6 +1759,31 @@ extension SettingsView {
     
     var appearanceExtras: some View {
         VStack(alignment: .leading, spacing: 12) {
+            SettingsGroupTitle("Isla en pantallas sin notch", systemImage: "display")
+            PickerRow(
+                title: "Pantalla de la isla",
+                subtitle: "Automática: el notch de la MacBook (o la principal si no hay notch). Sin notch: tu monitor externo. Sigue al cursor: la isla se pasa a la pantalla donde estás.",
+                selection: $appState.islandScreenPlacement,
+                label: { placement in
+                    switch placement {
+                    case .automatic: return "Automática"
+                    case .withoutNotch: return "Sin notch"
+                    case .followCursor: return "Sigue al cursor"
+                    }
+                }
+            )
+            PickerRow(
+                title: "Estilo sin notch",
+                subtitle: "Flotante: una cápsula separada del borde, como la Isla Dinámica del iPhone. Pegada: con la forma del notch.",
+                selection: $appState.islandStyle,
+                label: { $0 == .floating ? "Flotante (iPhone)" : "Pegada al borde" }
+            )
+            ToggleRow(
+                title: "Visible en reposo",
+                subtitle: "En una pantalla sin notch, la isla se ve aunque no haya nada (como el iPhone). Apagado: aparece sólo con música o actividades.",
+                isOn: $appState.islandVisibleAtRest
+            )
+            
             SettingsGroupTitle("Detalles de la Isla", systemImage: "circle.dashed")
             ToggleRow(
                 title: "Keyline en modo oscuro",

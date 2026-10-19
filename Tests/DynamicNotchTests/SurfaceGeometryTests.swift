@@ -71,4 +71,48 @@ import Testing
         #expect(r.geometry == .fallback)
         #expect(r.screenIndex == nil)
     }
+
+    // MARK: Preferencia de pantalla (Fase B)
+
+    var twoScreens: [(frame: CGRect, auxiliaryTopLeft: CGRect?, auxiliaryTopRight: CGRect?)] {
+        [(airFrame, airLeft, airRight), (monitorFrame, nil, nil)]
+    }
+
+    @Test func automaticKeepsTheNotch() {
+        let r = SurfaceGeometry.resolve(screens: twoScreens, placement: .automatic, mainIndex: 0, cursorIndex: 1, islandStyle: .floating)
+        #expect(r.geometry.kind == .physicalNotch)
+        #expect(r.screenIndex == 0)
+    }
+
+    @Test func withoutNotchPicksTheMonitorAsAFloatingIsland() {
+        let r = SurfaceGeometry.resolve(screens: twoScreens, placement: .withoutNotch, mainIndex: 0, cursorIndex: nil, islandStyle: .floating)
+        #expect(r.geometry.kind == .floatingIsland)
+        #expect(r.screenIndex == 1)
+        #expect(r.geometry.notchBoundsInScreen.size == SurfaceGeometry.floatingIslandSize)
+        #expect(r.geometry.topInset == SurfaceGeometry.floatingIslandTopInset)
+        #expect(r.geometry.centerX == monitorFrame.midX)
+    }
+
+    @Test func hangingStyleDrawsAVirtualNotch() {
+        let r = SurfaceGeometry.resolve(screens: twoScreens, placement: .withoutNotch, mainIndex: 0, cursorIndex: nil, islandStyle: .hanging)
+        #expect(r.geometry.kind == .virtualNotch)
+        #expect(r.geometry.hangsFromTopEdge)
+    }
+
+    @Test func followCursorUsesTheCursorScreen() {
+        let onMonitor = SurfaceGeometry.resolve(screens: twoScreens, placement: .followCursor, mainIndex: 0, cursorIndex: 1, islandStyle: .floating)
+        #expect(onMonitor.geometry.kind == .floatingIsland)
+        let onAir = SurfaceGeometry.resolve(screens: twoScreens, placement: .followCursor, mainIndex: 0, cursorIndex: 0, islandStyle: .floating)
+        #expect(onAir.geometry.kind == .physicalNotch)
+    }
+
+    @Test func withoutNotchFallsBackWhenEveryScreenHasOne() {
+        let r = SurfaceGeometry.resolve(screens: [(airFrame, airLeft, airRight)], placement: .withoutNotch, mainIndex: 0, cursorIndex: nil, islandStyle: .floating)
+        #expect(r.geometry.kind == .physicalNotch)
+    }
+
+    @Test func singlePlainScreenGetsTheIsland() {
+        let r = SurfaceGeometry.resolve(screens: [(monitorFrame, nil, nil)], placement: .automatic, mainIndex: 0, cursorIndex: nil, islandStyle: .floating)
+        #expect(r.geometry.kind == .floatingIsland)
+    }
 }

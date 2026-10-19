@@ -20,11 +20,10 @@ public final class NotchWindowManager: ObservableObject {
     }
     
     public func setupWindow() {
-        let screen = ScreenService.shared.targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
-        let screenFrame = screen.frame
-        
-        let windowX = screenFrame.origin.x + (screenFrame.width - maxWindowWidth) / 2
-        let windowY = screenFrame.origin.y + screenFrame.height - maxWindowHeight
+        // Centrada en la superficie (notch o isla); la isla flotante se separa del borde superior
+        let geometry = ScreenService.shared.currentGeometry
+        let windowX = geometry.centerX - maxWindowWidth / 2
+        let windowY = geometry.screenBounds.maxY - geometry.topInset - maxWindowHeight
         let windowRect = NSRect(x: windowX, y: windowY, width: maxWindowWidth, height: maxWindowHeight)
         
         let newPanel = NotchPanel(contentRect: windowRect)
@@ -408,13 +407,31 @@ public final class NotchWindowManager: ObservableObject {
     
     public func repositionWindow() {
         guard let panel = panel else { return }
-        let screen = ScreenService.shared.targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
-        let screenFrame = screen.frame
+        let geometry = ScreenService.shared.currentGeometry
+        let screenFrame = geometry.screenBounds
         
-        let windowX = screenFrame.origin.x + (screenFrame.width - maxWindowWidth) / 2
-        let windowY = screenFrame.origin.y + screenFrame.height - maxWindowHeight
+        // Centrada en la superficie; la isla flotante se separa del borde superior (`topInset`)
+        let windowX = geometry.centerX - maxWindowWidth / 2
+        let windowY = screenFrame.maxY - geometry.topInset - maxWindowHeight
         let windowRect = NSRect(x: windowX, y: windowY, width: maxWindowWidth, height: maxWindowHeight)
+        guard panel.frame != windowRect else { return }
         
+        // Cambio de pantalla (p. ej. la isla sigue al cursor): se desvanece aquí y aparece allá
+        let changesScreen = !screenFrame.intersects(panel.frame) && panel.isVisible && !isHiddenForFullScreen
+        if changesScreen {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.18
+                panel.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                panel.setFrame(windowRect, display: true, animate: false)
+                self?.updateHitAreaForCurrentState()
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.28
+                    panel.animator().alphaValue = 1
+                }
+            })
+            return
+        }
         panel.setFrame(windowRect, display: true, animate: false)
         updateHitAreaForCurrentState()
     }

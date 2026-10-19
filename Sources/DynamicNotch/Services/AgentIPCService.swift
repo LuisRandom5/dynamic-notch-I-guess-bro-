@@ -386,6 +386,30 @@ public final class AgentIPCService {
             DispatchQueue.main.sync { info = FullScreenMediaMonitor.shared.debugSnapshot() }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
             
+        case ("POST", "/debug/island"):
+            // Diagnóstico de la Fase B: {"ignoreNotch": true} trata todas las pantallas como si no tuvieran notch
+            // (para ver la isla en la MacBook); {"style": "floating"|"hanging"}, {"placement": "..."}
+            let json = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any]) ?? [:]
+            DispatchQueue.main.async {
+                if let ignore = json["ignoreNotch"] as? Bool {
+                    UserDefaults.standard.set(ignore, forKey: "debugIslandIgnoreNotch")
+                }
+                if let style = (json["style"] as? String).flatMap(SurfaceGeometry.IslandStyle.init(rawValue:)) {
+                    AppState.shared.islandStyle = style
+                }
+                if let placement = (json["placement"] as? String).flatMap(SurfaceGeometry.ScreenPlacement.init(rawValue:)) {
+                    AppState.shared.islandScreenPlacement = placement
+                }
+                if let rest = json["visibleAtRest"] as? Bool {
+                    AppState.shared.islandVisibleAtRest = rest
+                }
+                ScreenService.shared.updateScreenGeometry()
+            }
+            let g = DispatchQueue.main.sync { ScreenService.shared.currentGeometry }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: [
+                "kind": g.kind.rawValue, "bounds": "\(g.notchBoundsInScreen)", "topInset": g.topInset
+            ])
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]

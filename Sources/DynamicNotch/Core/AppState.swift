@@ -185,6 +185,29 @@ public final class AppState: ObservableObject {
         ? UserDefaults.standard.double(forKey: "liveActivityEndSummaryDuration") : 15 {
         didSet { UserDefaults.standard.set(liveActivityEndSummaryDuration, forKey: "liveActivityEndSummaryDuration") }
     }
+    // MARK: Isla en pantallas sin notch (Fase B)
+    /// En qué pantalla vive la isla (ver SurfaceGeometry.ScreenPlacement)
+    @Published public var islandScreenPlacement: SurfaceGeometry.ScreenPlacement =
+        SurfaceGeometry.ScreenPlacement(rawValue: UserDefaults.standard.string(forKey: "islandScreenPlacement") ?? "") ?? .automatic {
+        didSet {
+            UserDefaults.standard.set(islandScreenPlacement.rawValue, forKey: "islandScreenPlacement")
+            ScreenService.shared.updateScreenGeometry()
+        }
+    }
+    /// En una pantalla sin notch: cápsula flotante (iPhone) o notch virtual pegado al borde
+    @Published public var islandStyle: SurfaceGeometry.IslandStyle =
+        SurfaceGeometry.IslandStyle(rawValue: UserDefaults.standard.string(forKey: "islandStyle") ?? "") ?? .floating {
+        didSet {
+            UserDefaults.standard.set(islandStyle.rawValue, forKey: "islandStyle")
+            ScreenService.shared.updateScreenGeometry()
+        }
+    }
+    /// La isla flotante se ve en reposo (como el iPhone) o sólo cuando hay algo
+    @Published public var islandVisibleAtRest: Bool = UserDefaults.standard.object(forKey: "islandVisibleAtRest") != nil
+        ? UserDefaults.standard.bool(forKey: "islandVisibleAtRest") : true {
+        didSet { UserDefaults.standard.set(islandVisibleAtRest, forKey: "islandVisibleAtRest") }
+    }
+    
     // MARK: Integraciones del sistema (A-6)
     /// Aviso breve al activar o desactivar Bloq Mayús (como el interruptor de silencio del iPhone)
     @Published public var capsLockIndicatorEnabled: Bool = UserDefaults.standard.object(forKey: "capsLockIndicatorEnabled") != nil
