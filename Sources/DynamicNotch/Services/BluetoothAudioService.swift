@@ -61,6 +61,10 @@ public final class BluetoothAudioService: ObservableObject {
     private var lastAlertTime: Date = Date.distantPast
     private var lastAlertedDeviceName: String = ""
     private let alertCooldown: TimeInterval = 60.0
+    /// Al arrancar, macOS reporta como "recién conectados" los AirPods que ya lo estaban (y con otro nombre:
+    /// "AirPods 4" por Bluetooth, "AirPods de …" por Core Audio). En esta ventana sólo se registran, sin animación
+    private var monitoringStartedAt: Date = .distantFuture
+    private let launchGracePeriod: TimeInterval = 6.0
     
     private init() {
         checkConnectedHardware()
@@ -102,7 +106,7 @@ public final class BluetoothAudioService: ObservableObject {
         guard AppState.shared.enableAirPodsAnimation else { return }
         
         // Si es el escaneo de arranque o ya está conectado como salida actual, solo registrar sin alertar
-        if isInitialCheck {
+        if isInitialCheck || Date().timeIntervalSince(monitoringStartedAt) < launchGracePeriod {
             self.lastConnectedDevice = name
             self.lastAlertedDeviceName = name
             return
@@ -140,6 +144,7 @@ public final class BluetoothAudioService: ObservableObject {
     }
     
     public func startMonitoringAudioDevices() {
+        monitoringStartedAt = Date()
         var defaultDevAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
