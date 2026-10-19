@@ -17,7 +17,8 @@ public final class NotchPanel: NSPanel, NSDraggingDestination {
         self.hasShadow = false
         self.level = .statusBar
         self.appearance = NSAppearance(named: .darkAqua) // siempre oscura: el vidrio clear en apariencia clara se ve esmerilado
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        // .stationary: Mission Control no la encoge ni la mueve con las ventanas (se queda fija arriba, como la barra)
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary]
         self.isMovable = false
         self.isMovableByWindowBackground = false
         self.acceptsMouseMovedEvents = true

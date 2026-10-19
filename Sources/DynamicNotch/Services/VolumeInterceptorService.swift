@@ -64,6 +64,8 @@ public final class VolumeInterceptorService: ObservableObject {
         let sysDefinedMask = CGEventMask(1 << NX_SYSDEFINED)
         let fullMask = sysDefinedMask | CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.keyUp.rawValue)
         
+        // El evento que se deja pasar se devuelve SIN retener: con passRetained cada tecla pulsada quedaba en
+        // memoria para siempre (miles de CGEvent por hora)
         let callback: CGEventTapCallBack = { proxy, type, event, refcon in
             // Re-activar si macOS deshabilitó el tap temporalmente por timeout
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
@@ -71,11 +73,11 @@ public final class VolumeInterceptorService: ObservableObject {
                     let instance = Unmanaged<VolumeInterceptorService>.fromOpaque(refcon).takeUnretainedValue()
                     instance.reenableTap()
                 }
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             
             guard let refcon = refcon else {
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             let service = Unmanaged<VolumeInterceptorService>.fromOpaque(refcon).takeUnretainedValue()
             
@@ -83,7 +85,7 @@ public final class VolumeInterceptorService: ObservableObject {
             if type == .keyDown || type == .keyUp {
                 let vk = Int(event.getIntegerValueField(.keyboardEventKeycode))
                 guard vk == 144 || vk == 145 else {
-                    return Unmanaged.passRetained(event)
+                    return Unmanaged.passUnretained(event)
                 }
                 if type == .keyDown {
                     let now = CFAbsoluteTimeGetCurrent()
@@ -97,11 +99,11 @@ public final class VolumeInterceptorService: ObservableObject {
                         }
                     }
                 }
-                return service.suppressNativeHUD ? nil : Unmanaged.passRetained(event)
+                return service.suppressNativeHUD ? nil : Unmanaged.passUnretained(event)
             }
             
             guard type.rawValue == UInt32(NX_SYSDEFINED) else {
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             
             // Inspeccionar evento multimedia NX_SYSDEFINED (subtype 8 = NX_SUBTYPE_AUX_CONTROL_BUTTONS).
@@ -111,7 +113,7 @@ public final class VolumeInterceptorService: ObservableObject {
             // y `keyRepeat == 0` o `1`, descartando cualquier evento de cambio de ventana/pantalla.
             guard let nsEvent = NSEvent(cgEvent: event),
                   nsEvent.subtype.rawValue == 8 else {
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             
             let data1 = UInt32(truncatingIfNeeded: nsEvent.data1)
@@ -121,7 +123,7 @@ public final class VolumeInterceptorService: ObservableObject {
             let keyRepeat = keyFlags & 0x00FF
             
             guard (keyState == 0x0A || keyState == 0x0B), (keyRepeat == 0 || keyRepeat == 1) else {
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             
             let isKeyDown = (keyState == 0x0A)
@@ -130,7 +132,7 @@ public final class VolumeInterceptorService: ObservableObject {
                     service.activeKeysDown.insert(keyCode)
                 } else if !service.activeKeysDown.contains(keyCode) {
                     // Ignorar auto-repeat huérfano si nunca hubo un keyDown físico inicial
-                    return Unmanaged.passRetained(event)
+                    return Unmanaged.passUnretained(event)
                 }
             } else {
                 service.activeKeysDown.remove(keyCode)
@@ -153,7 +155,7 @@ public final class VolumeInterceptorService: ObservableObject {
                 if service.suppressNativeHUD {
                     return nil
                 } else {
-                    return Unmanaged.passRetained(event)
+                    return Unmanaged.passUnretained(event)
                 }
             }
             
@@ -174,11 +176,11 @@ public final class VolumeInterceptorService: ObservableObject {
                 if service.suppressNativeHUD {
                     return nil
                 } else {
-                    return Unmanaged.passRetained(event)
+                    return Unmanaged.passUnretained(event)
                 }
             }
             
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
         
         let observerSelf = Unmanaged.passUnretained(self).toOpaque()

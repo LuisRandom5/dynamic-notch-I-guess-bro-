@@ -133,6 +133,11 @@ public final class LyricsService: ObservableObject {
             self.isInstrumental = instrumental
             self.isLoading = false
             self.currentLineIndex = -1
+            // Sólo las canciones recientes (la caché no crece sin fin en sesiones largas)
+            if self.lyricsCache.count > 40 {
+                self.lyricsCache.removeAll(keepingCapacity: true)
+                self.cachedSyncedFlags.removeAll(keepingCapacity: true)
+            }
             self.lyricsCache[key] = lines
             self.cachedSyncedFlags[key] = synced
         }

@@ -329,7 +329,7 @@ Proveedores ──▶ ActivityStore (modelo: identidad, datos, relevancia, ciclo
 | B-3 ✅ (un panel que viaja) | **Ventanas.** Un panel por pantalla, o un panel que viaja con animación. Ajuste: "mostrar en: pantalla del notch / pantalla activa (donde está el cursor o la ventana con foco) / todas". |
 | B-4 ✅ | **Reposo.** Ajuste "en reposo: cápsula visible (como iPhone) / ocultar hasta que haya actividad". Sin cámara, el centro **podría** usarse para contenido, pero por defecto se respeta el hueco central para que se vea idéntica al iPhone; se puede desactivar. |
 | B-5 ✅ | **Material.** Negro opaco por defecto, con keyline en modo oscuro. En cristal, como no hay cámara, **toda** la cápsula puede ser vidrio (regular sobre fondos claros o clear + 35 % según el fondo). |
-| B-6 ◐ (barra de menús ✅: isla del alto de la barra por defecto; pantalla completa por pantalla ✅; falta Mission Control y barra que se oculta) | **Convivencia con macOS:** barra de menús que se oculta sola, pantalla completa, Mission Control, otra app en la parte superior, pantalla bloqueada en el monitor externo y clics que pasan a la barra de menús. |
+| B-6 ◐ (barra de menús ✅: isla del alto de la barra por defecto; pantalla completa por pantalla ✅; Mission Control ✅ (`.stationary`); barra que se oculta: usa 24 pt de respaldo, falta probarla en el monitor) | **Convivencia con macOS:** barra de menús que se oculta sola, pantalla completa, Mission Control, otra app en la parte superior, pantalla bloqueada en el monitor externo y clics que pasan a la barra de menús. |
 | B-7 ✅ (Apariencia › Isla en pantallas sin notch) | **Ajustes:** pestaña o sección "Pantallas e Isla": activar en pantallas sin notch, estilo, tamaño, desplazamiento vertical, pantallas donde aparece y comportamiento en reposo. |
 | B-8 | **Pruebas en tu monitor secundario.** Primero el reposo y la compacta con música, luego varias actividades, gestos, cristal y pantalla completa. |
 | B-9 | **Release 2.1** "Isla Dinámica para cualquier Mac". |
@@ -388,6 +388,12 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 | 8 | "Dynamic Notch Tap" en las salidas | Filtrado del selector (el dispositivo ya era privado para macOS). |
 | 9 | Animaciones de Liquid Glass | Al cerrar sin música el vidrio se disuelve durante el encogimiento; con música, la forma se encoge hasta las alas de vidrio sin cortes. |
 | 10 | Bloq Mayús | Texto "Minúsculas" (cabe en el ala); se comporta como el HUD de volumen: notch limpio y la música regresa tras la pausa (`isSystemNotice`). |
+
+### Pendientes antes del release 2.1
+
+| # | Pendiente | Estado |
+|---|---|---|
+| 1 | WhatsApp con la pestaña de fondo: el lector de la lista de chats con JavaScript (mensaje real, fotos, stickers…) está listo y probado con una lista simulada, pero Safari sigue respondiendo "You must enable 'Allow JavaScript from Apple Events'". Luis no encontró la opción. Revisar juntos: Safari → Ajustes → Avanzado → "Mostrar funciones para desarrolladores web"; luego Ajustes → Desarrollador → "Permitir JavaScript desde Apple Events" (pide contraseña) y reiniciar Safari. Probar con `do JavaScript "1+1"`. Mientras tanto se usa el aviso genérico. | Pendiente de probar |
 
 ---
 

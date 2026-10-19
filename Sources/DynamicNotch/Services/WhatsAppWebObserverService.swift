@@ -673,6 +673,27 @@ public final class WhatsAppWebObserverService: ObservableObject {
         return out
     }
 
+    /// Navegadores a los que ya se les pidió exponer el contenido web por accesibilidad
+    private var exposedWebContentPids: Set<pid_t> = []
+    private let exposedWebContentLock = NSLock()
+
+    /// Chrome y compañía sólo exponen la página por accesibilidad si se les pide; se pide UNA vez por proceso y
+    /// con `AXManualAccessibility` (`AXEnhancedUserInterface` vuelve lentas las animaciones de sus ventanas).
+    /// Safari y la app de WhatsApp lo exponen solos.
+    private func exposeWebContent(of app: NSRunningApplication) {
+        let pid = app.processIdentifier
+        guard app.bundleIdentifier != "com.apple.Safari", app.bundleIdentifier != "net.whatsapp.WhatsApp" else { return }
+        // Se llama desde el sondeo (en segundo plano) y desde responder o abrir WhatsApp
+        exposedWebContentLock.lock()
+        let isNew = exposedWebContentPids.insert(pid).inserted
+        exposedWebContentLock.unlock()
+        guard isNew else { return }
+        let appRef = AXUIElementCreateApplication(pid)
+        if AXUIElementSetAttributeValue(appRef, "AXManualAccessibility" as CFString, kCFBooleanTrue) != .success {
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        }
+    }
+
     // MARK: - Inspección Profunda y Tiempo Real vía Accessibility API (AXUIElement)
     private struct ParsedChatRow {
         let contact: String
@@ -695,7 +716,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         for bundleId in targetBundleIds {
             guard let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) else { continue }
             let appRef = AXUIElementCreateApplication(app.processIdentifier)
-            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            exposeWebContent(of: app)
             
             var candidateWindows: [AXUIElement] = []
             for attr in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
@@ -781,7 +802,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
                 
                 if !isFrontmostBrowser && !isOutgoing && !isTyping && !isMuted && !msg.isEmpty {
                     if prev.message != msg && Date().timeIntervalSince(prev.lastAlertedAt) >= 2.5 {
-                        DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE EN CHAT ACTIVO de '\(contact)': '\(msg)' (hora: \(time))")
+                        DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE EN CHAT ACTIVO de '\(contact)': \(DNDLogger.redact(msg)) (hora: \(time))")
                         knownChatRecords[contact] = ChatRecord(
                             message: msg,
                             time: time,
@@ -852,7 +873,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         )
         
         if shouldAlert {
-            DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE DETECTADO de '\(contact)': '\(msg)' (no leídos: \(unread), hora: \(time))")
+            DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE DETECTADO de '\(contact)': \(DNDLogger.redact(msg)) (no leídos: \(unread), hora: \(time))")
             dispatchNotification(sender: contact, message: msg, unread: unread, time: time)
         }
     }
@@ -876,7 +897,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
     
     private func extractChatFromBrowserAX(pid: pid_t) -> (sender: String, message: String)? {
         let appRef = AXUIElementCreateApplication(pid)
-        AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        if let app = NSRunningApplication(processIdentifier: pid) { exposeWebContent(of: app) }
         
         var candidateWindows: [AXUIElement] = []
         for attr in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
@@ -1112,7 +1133,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
     private func dispatchNotification(sender: String, message: String, unread: Int = 0, time: String = "") {
         // Un mismo mensaje (contacto + texto + no leídos + hora) nunca se notifica dos veces, ni tras reiniciar
         guard rememberNotified(contact: sender, message: message, unread: unread, time: time) else {
-            DNDLogger.log("WhatsAppWebObserverService: ⏭️ Ya notificado, se omite: '\(sender)': '\(message)'")
+            DNDLogger.log("WhatsAppWebObserverService: ⏭️ Ya notificado, se omite: '\(sender)': \(DNDLogger.redact(message))")
             return
         }
         DispatchQueue.main.async {
@@ -1213,7 +1234,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         for bundleId in targetBundleIds {
             guard let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) else { continue }
             let appRef = AXUIElementCreateApplication(app.processIdentifier)
-            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            exposeWebContent(of: app)
             
             var winRef: CFTypeRef?
             guard AXUIElementCopyAttributeValue(appRef, kAXMainWindowAttribute as CFString, &winRef) == .success,
@@ -1406,7 +1427,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
                                      app.bundleIdentifier == "com.google.Chrome" ||
                                      app.bundleIdentifier == "net.whatsapp.WhatsApp" {
             let appRef = AXUIElementCreateApplication(app.processIdentifier)
-            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            exposeWebContent(of: app)
             var winRef: CFTypeRef?
             if AXUIElementCopyAttributeValue(appRef, kAXMainWindowAttribute as CFString, &winRef) == .success,
                let win = winRef as! AXUIElement?,

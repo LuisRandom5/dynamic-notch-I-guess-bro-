@@ -248,7 +248,7 @@ public final class NotificationActivityProvider: ObservableObject {
             return
         }
         
-        DNDLogger.log("NotificationActivityProvider.showNotification CALLED: title='\(title)', message='\(message)', handle='\(handle)'")
+        DNDLogger.log("NotificationActivityProvider.showNotification CALLED: title='\(title)', message=\(DNDLogger.redact(message)), handle='\(handle)'")
         let activityId = "notification_\(UUID().uuidString)"
         let effectiveQuickReply = enableQuickReply && Self.canQuickReply(title: title, message: message)
         let resolvedHandle = handle.isEmpty ? title : handle

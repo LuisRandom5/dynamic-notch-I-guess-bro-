@@ -186,6 +186,7 @@ public final class NowPlayingService {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 if let data = try? Data(contentsOf: url), let img = NSImage.decodedImage(from: data) {
                     DispatchQueue.main.async {
+                        if (self?.artworkCache.count ?? 0) > 25 { self?.artworkCache.removeAll(keepingCapacity: true) }
                         self?.artworkCache[trackKey] = img
                         self?.artworkCache[title] = img
                         self?.lastArtworkImage = img

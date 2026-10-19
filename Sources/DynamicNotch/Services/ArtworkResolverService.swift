@@ -43,6 +43,8 @@ public final class ArtworkResolverService {
             let fileURL = dir.appendingPathComponent("\(key).jpg")
             if let data = try? Data(contentsOf: fileURL), let img = NSImage.decodedImage(from: data) {
                 cacheLock.lock()
+                // Mismo límite que al guardar (sin él, cada carátula leída del disco se quedaba en memoria)
+                if memoryCache.count > 12 { memoryCache.removeAll(keepingCapacity: true) }
                 memoryCache[key] = img
                 cacheLock.unlock()
                 return img
@@ -55,6 +57,12 @@ public final class ArtworkResolverService {
     public func storeArtwork(_ image: NSImage, title: String, artist: String) {
         guard !title.isEmpty else { return }
         let key = cacheKey(title: title, artist: artist)
+        // "Ahora suena" la vuelve a mandar en cada actualización: si es la misma, no se rasteriza ni se
+        // escribe de nuevo en disco
+        cacheLock.lock()
+        let alreadyStored = memoryCache[key] === image
+        cacheLock.unlock()
+        if alreadyStored { return }
         let rasterizedImage = image.rasterized()
         
         cacheLock.lock()
@@ -66,6 +74,7 @@ public final class ArtworkResolverService {
         DispatchQueue.global(qos: .background).async { [weak self] in
             guard let dir = self?.diskCacheDirectory else { return }
             let fileURL = dir.appendingPathComponent("\(key).jpg")
+            if FileManager.default.fileExists(atPath: fileURL.path) { return }
             let rep = (rasterizedImage.representations.compactMap { $0 as? NSBitmapImageRep }.first)
                 ?? rasterizedImage.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0) }
             if let jpeg = rep?.representation(using: .jpeg, properties: [.compressionFactor: 0.88]) {

@@ -27,6 +27,10 @@ public final class AppVisibilityMonitor: ObservableObject {
         if bundleIds.isEmpty {
             timer?.invalidate()
             timer = nil
+            // Al volver a vigilar se registran de nuevo: sin quitarlos se acumulaban y cada cambio de app
+            // disparaba varias revisiones
+            observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+            observers.removeAll()
             if !visibleBundleIds.isEmpty { visibleBundleIds = [] }
             return
         }

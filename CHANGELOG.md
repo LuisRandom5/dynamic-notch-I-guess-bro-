@@ -17,6 +17,16 @@
 
 ### Rendimiento
 - Con música, el uso de CPU baja de ~22 % a ~13 %.
+- Fuga de memoria: el interceptor de volumen y brillo retenía cada tecla pulsada (miles de eventos por hora que nunca se liberaban).
+- El monitor de "app a la vista" acumulaba observadores cada vez que se reactivaba.
+- Cachés de letras y carátulas con límite.
+- WhatsApp: el contenido de Chrome se pide por accesibilidad una sola vez y sin `AXEnhancedUserInterface` (volvía lentas las animaciones de las ventanas del navegador); a Safari ya no se le pide.
+
+### Privacidad
+- El log de diagnóstico (/tmp/notch_dnd.log) ya no guarda el texto de los mensajes, sólo es legible por tu usuario y rota a los 5 MB.
+
+### Convivencia con macOS
+- La isla se queda fija durante Mission Control.
 
 ## 2.0 — 19 de octubre de 2026
 

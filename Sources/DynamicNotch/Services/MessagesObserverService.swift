@@ -209,7 +209,7 @@ public final class MessagesObserverService: ObservableObject {
             self.lastBannerAlertedAt = Date()
             
             if isAgent {
-                DNDLogger.log("MessagesObserverService: 🤖 Notificación nativa de Antigravity interceptada y reemplazada en Dynamic Notch: '\(sender)' - '\(message)'")
+                DNDLogger.log("MessagesObserverService: 🤖 Notificación nativa de Antigravity interceptada y reemplazada en Dynamic Notch: '\(sender)' - \(DNDLogger.redact(message))")
                 DispatchQueue.main.async {
                     AgentActivityProvider.shared.showInteraction(
                         type: .notification,
@@ -220,7 +220,7 @@ public final class MessagesObserverService: ObservableObject {
                     )
                 }
             } else if isWhatsApp {
-                DNDLogger.log("MessagesObserverService: 🔔 Notificación de WhatsApp interceptada para Dynamic Notch: '\(sender)': '\(message)'")
+                DNDLogger.log("MessagesObserverService: 🔔 Notificación de WhatsApp interceptada para Dynamic Notch: '\(sender)': \(DNDLogger.redact(message))")
                 DispatchQueue.main.async {
                     NotificationActivityProvider.shared.showNotification(
                         title: sender,
@@ -404,7 +404,7 @@ public final class MessagesObserverService: ObservableObject {
             )
             
             if shouldAlert {
-                DNDLogger.log("MessagesObserverService: 🔔 NUEVO MENSAJE DETECTADO en app Mensajes de '\(contact)': '\(message)' (hora: \(time))")
+                DNDLogger.log("MessagesObserverService: 🔔 NUEVO MENSAJE DETECTADO en app Mensajes de '\(contact)': \(DNDLogger.redact(message)) (hora: \(time))")
                 dispatchNotification(sender: contact, message: message.isEmpty ? "Nuevo mensaje" : message)
                 break
             }
