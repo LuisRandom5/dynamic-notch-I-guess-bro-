@@ -963,9 +963,11 @@ public struct NotchContainerView: View {
                         ? restLeft - gap - (bolitaDiam / 2.0)
                         : restRight + gap + (bolitaDiam / 2.0) + (CGFloat(slotIndex) * (bolitaDiam + 8)),
                     // El cuello nace del borde real, que del lado derecho se recoge o abulta con la física
+                    // Con el retroceso de la isla incluido: si no, el extremo de la gota quedaba corrido 1.4 pt
+                    // del de la isla y asomaba un arco fino al soltarse
                     notchEndX: isLeft
-                        ? leftEdge + notchRadius
-                        : rightEdge + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
+                        ? leftEdge + activityCenter.islandRecoil + notchRadius
+                        : rightEdge + activityCenter.islandRecoil + (slotIndex == 0 ? activityCenter.pillImpulse : 0) - notchRadius,
                     notchRadius: notchRadius,
                     bubbleDiameter: bolitaDiam,
                     offsetY: bubbleOffsetY,

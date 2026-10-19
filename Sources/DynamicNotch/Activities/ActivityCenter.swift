@@ -142,8 +142,8 @@ public final class ActivityCenter: ObservableObject {
     /// escondido un momento antes de volver, como en la Isla Dinámica: el notch queda limpio y luego regresa.
     public static var hudReturnDelay: TimeInterval { AppState.shared.hudReturnDelay }
     private var hudHoldUntil: Date = .distantPast
-    private static let reabsorbDuration: TimeInterval = 0.63
-    private static let notchSettleDuration: TimeInterval = 0.50
+    private static let reabsorbDuration: TimeInterval = 0.57
+    private static let notchSettleDuration: TimeInterval = 0.45
     
     private init() {}
     

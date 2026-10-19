@@ -154,19 +154,29 @@ public struct LiquidContourShape: Shape {
         let bounds = pillRect.union(drop).insetBy(dx: -LiquidContour.blend - 2, dy: -LiquidContour.blend - 2)
             .intersection(rect.insetBy(dx: -1, dy: -1))
         let contour = LiquidContour.path(pillRect: pillRect, drop: drop, in: bounds)
+        // El cuerpo del notch (todo lo que no es su extremo redondeado) ya lo dibuja el propio notch: se quita
+        // completo, también lo que el trazo en rejilla dejaba un poco por fuera de su borde. Sobre el notch
+        // negro no se notaba, pero en la isla flotante (sobre el fondo de pantalla) aparecía como una línea
+        // bajo la isla con un escalón donde termina el lienzo de la gota.
+        let R = pillRect.height / 2
+        let endX = notchIsLeading ? pillRect.maxX : pillRect.minX
+        let far: CGFloat = 4000
+        let body = CGRect(x: notchIsLeading ? endX - R - far : endX + R, y: pillRect.minY - far / 2,
+                          width: far, height: far)
         if subtractPill {
-            // Cristal: se quita el notch, alargado hacia su cuerpo. Con la cápsula exacta quedaba una franja finita
-            // en su otro extremo (dentro del notch) que el vidrio dibujaba como un contorno sobre el centro negro
-            let far: CGFloat = 4000
-            let endX = notchIsLeading ? pillRect.maxX : pillRect.minX
-            let body = CGRect(x: notchIsLeading ? endX - far : endX, y: pillRect.minY - 0.5,
-                              width: far, height: pillRect.height + 1)
-            return contour.subtracting(Path(roundedRect: body, cornerRadius: body.height / 2))
+            // Cristal: se quita el notch, alargado hacia su cuerpo (con la cápsula exacta quedaba una franja
+            // finita en su otro extremo que el vidrio dibujaba como un contorno sobre el centro negro)
+            let bodyPill = CGRect(x: notchIsLeading ? endX - far : endX, y: pillRect.minY - 0.5,
+                                  width: far, height: pillRect.height + 1)
+            return contour
+                .subtracting(Path(roundedRect: bodyPill, cornerRadius: bodyPill.height / 2))
+                .subtracting(Path(body))
         }
-        // Negro: se quita el notch (ya lo dibuja el propio notch) salvo un borde de 1 pt que se encima negro
-        // sobre negro, para que no quede costura. Antes se quitaba sólo el cuerpo y el extremo redondeado se
-        // dibujaba encima del contenido del notch (la carátula quedaba tapada mientras la gota brotaba)
+        // Negro: en el extremo se quita el notch salvo un borde de 1 pt que se encima negro sobre negro (sin
+        // costura donde nace el cuello)
         let inner = pillRect.insetBy(dx: 1, dy: 1)
-        return contour.subtracting(Path(roundedRect: inner, cornerRadius: inner.height / 2))
+        return contour
+            .subtracting(Path(roundedRect: inner, cornerRadius: inner.height / 2))
+            .subtracting(Path(body))
     }
 }
