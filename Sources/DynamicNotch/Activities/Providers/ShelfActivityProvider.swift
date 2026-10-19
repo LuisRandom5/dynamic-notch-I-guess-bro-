@@ -46,7 +46,7 @@ public final class ShelfActivityProvider {
                 // se abre justo cuando llega, para que la bolita nunca quede encima de la repisa abierta
                 self?.lastCount = 0
                 ActivityCenter.shared.remove(id: Self.activityId)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.58) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.67) {
                     withAnimation(.spring(response: 0.40, dampingFraction: 0.84)) {
                         AppState.shared.activeTab = .shelf
                         AppState.shared.mode = .shelf
