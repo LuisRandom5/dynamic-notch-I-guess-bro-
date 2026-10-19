@@ -257,7 +257,9 @@ public final class AgentIPCService {
                     "secondary": center.secondaryActivities.map(\.id),
                     "active": center.activeActivities.map(\.id),
                     "expanded": center.expandedActivity?.id ?? "nil",
-                    "fusing": center.fusingActivityId ?? "nil"
+                    "fusing": center.fusingActivityId ?? "nil",
+                    "stale": Array(center.staleActivityIds).sorted(),
+                    "departing": center.departingSatellites.map(\.activity.id)
                 ]
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)

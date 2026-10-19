@@ -139,6 +139,10 @@ public struct LiveActivity: Identifiable {
     public var isUrgent: Bool = false
     public var customExpandedWidth: CGFloat? = nil
     public var customExpandedHeight: CGFloat? = nil
+    /// Alerta de esta actualización (ActivityCenter la presenta una vez y no la guarda)
+    public var alert: ActivityAlertConfiguration? = nil
+    /// A partir de cuándo el contenido ya no está al día si no llega otra actualización (se atenúa)
+    public var staleDate: Date? = nil
     
     public init(
         id: String,

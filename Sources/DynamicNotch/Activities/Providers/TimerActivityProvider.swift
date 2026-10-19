@@ -389,6 +389,8 @@ public final class TimerActivityProvider: ObservableObject {
                 trailing: trailing,
                 tint: .green,
                 duration: 6.0,
+                // Es la alerta de la actividad: entra al notch de inmediato, sin esperar la histéresis
+                isUrgent: true,
                 onTap: { [weak self] in
                     self?.cancelTimer()
                 }

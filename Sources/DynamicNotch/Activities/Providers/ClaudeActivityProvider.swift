@@ -74,6 +74,10 @@ public final class ClaudeActivityProvider: ObservableObject {
     }
 
     private var removalTimers: [String: Timer] = [:]
+    /// Última publicación por sesión (se renueva cada minuto aunque no cambie nada, para la fecha de obsoleto)
+    private var lastPublishedAt: [String: Date] = [:]
+    /// Trabajando sin reportar este tiempo: contenido obsoleto
+    private static let staleAfter: TimeInterval = 10 * 60
 
     private init() {}
 
@@ -127,27 +131,38 @@ public final class ClaudeActivityProvider: ObservableObject {
 
         removalTimers[session]?.invalidate()
         removalTimers[session] = nil
-        if phase == .done {
-            // Al terminar, la bolita muestra el anillo completo un momento y luego se retira
-            scheduleRemoval(of: session, after: 20)
-        } else {
+        if phase != .done {
             // Watchdog: si la sesión deja de reportar (Claude cerrado a la fuerza), retirar la bolita
             scheduleRemoval(of: session, after: 30 * 60)
         }
 
         // La tarjeta lee `sessions` directamente; republicar sólo cuando cambia algo que muestra la bolita
+        // (o para renovar la fecha de "obsoleto" mientras trabaja)
         let exists = ActivityCenter.shared.activeActivities.contains { $0.id == activityId }
-        guard !exists || previous?.phase != phase || previous?.progress != state.progress else {
+        let isStaleSoon = ActivityCenter.shared.staleActivityIds.contains(activityId)
+        guard !exists || previous?.phase != phase || previous?.progress != state.progress || isStaleSoon
+                || Date().timeIntervalSince(lastPublishedAt[session] ?? .distantPast) > 60 else {
             return
         }
-        ActivityCenter.shared.publish(makeActivity(for: state))
-        
-        // Alerta como en la Isla Dinámica: al terminar, la tarjeta se asoma un momento y regresa sola
+        var activity = makeActivity(for: state)
+        // Alerta como en la Isla Dinámica: al terminar, la tarjeta se asoma un momento y regresa sola.
         // Sólo tareas largas (> 20 s): Apple pide alertar únicamente en actualizaciones esenciales
-        if phase == .done && previous?.phase != .done && Date().timeIntervalSince(state.startedAt) > 20 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                ActivityCenter.shared.presentAlert(id: activityId)
+        let justFinished = phase == .done && previous?.phase != .done
+        if justFinished && Date().timeIntervalSince(state.startedAt) > 20 {
+            activity.alert = ActivityAlertConfiguration(sound: true)
+        }
+        // Esperando permiso también merece verse (una vez; ActivityCenter no repite antes de 30 s)
+        if phase == .waiting && previous?.phase != .waiting {
+            activity.alert = ActivityAlertConfiguration(sound: true)
+        }
+        lastPublishedAt[session] = Date()
+        if justFinished {
+            // Al terminar, la bolita muestra el anillo completo (resumen) un momento y luego se retira
+            ActivityCenter.shared.end(id: activityId, final: activity) { [weak self] in
+                self?.removeSession(session)
             }
+        } else {
+            ActivityCenter.shared.publish(activity)
         }
     }
 
@@ -158,7 +173,7 @@ public final class ClaudeActivityProvider: ObservableObject {
         case .waiting: lifecycle = .attention
         case .done, .ended: lifecycle = .finished
         }
-        return LiveActivity(
+        var activity = LiveActivity(
             id: Self.activityId(for: state.session),
             kind: .claude,
             style: .card,
@@ -171,6 +186,11 @@ public final class ClaudeActivityProvider: ObservableObject {
             customExpandedWidth: Self.cardWidth,
             customExpandedHeight: Self.cardHeight
         )
+        // Trabajando sin reportar en 10 min: el contenido ya no está al día (la bolita se atenúa)
+        if state.phase == .working {
+            activity.staleDate = Date().addingTimeInterval(Self.staleAfter)
+        }
+        return activity
     }
 
     private func scheduleRemoval(of session: String, after interval: TimeInterval) {
@@ -190,6 +210,7 @@ public final class ClaudeActivityProvider: ObservableObject {
     private func removeSession(_ session: String) {
         removalTimers[session]?.invalidate()
         removalTimers[session] = nil
+        lastPublishedAt[session] = nil
         sessions[session] = nil
         ActivityCenter.shared.dismissBolita(id: Self.activityId(for: session))
     }

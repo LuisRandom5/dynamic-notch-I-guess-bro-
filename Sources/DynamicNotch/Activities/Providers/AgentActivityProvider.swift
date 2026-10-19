@@ -153,7 +153,7 @@ public final class AgentActivityProvider: ObservableObject {
             self.currentProgressStep = activeStep
             self.satelliteProgress = progressValue
             
-            let liveActivity = LiveActivity(
+            var liveActivity = LiveActivity(
                 id: activityId,
                 kind: .agentAI,
                 priority: ActivityRelevance.backgroundTask,
@@ -197,6 +197,10 @@ public final class AgentActivityProvider: ObservableObject {
                     self?.toggleProgressHUD()
                 }
             )
+            // Sin pulso del agente en 30 s: el progreso ya no está al día (se atenúa; el watchdog la quita a los 45 s)
+            if !payload.isCompleted {
+                liveActivity.staleDate = Date().addingTimeInterval(30)
+            }
             ActivityCenter.shared.publish(liveActivity)
             
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -211,11 +215,10 @@ public final class AgentActivityProvider: ObservableObject {
             NotchWindowManager.shared.updateHitAreaForCurrentState()
             
             if payload.isCompleted {
-                // Al terminar la tarea, mostrar aro completo al 100% y quitar automáticamente tras 1.5s
+                // Al terminar la tarea, el aro completo se queda como resumen (ajuste "Resumen al terminar") y se va
                 self.isActive = false
-                self.progressDismissTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-                    guard let self = self else { return }
-                    self.dismissProgress()
+                ActivityCenter.shared.end(id: activityId) { [weak self] in
+                    self?.dismissProgress()
                 }
             } else {
                 // Watchdog de seguridad (45 s): si el agente no envía pulso en 45 s, retirar la bolita

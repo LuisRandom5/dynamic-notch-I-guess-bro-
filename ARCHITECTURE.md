@@ -72,7 +72,9 @@ Ubicación: `Sources/DynamicNotch/Activities/`
 
 3. **Política de presentación (`PresentationEngine`)**: quién va en el notch, en las bolitas y en la cola se decide en una función pura (`PresentationEngine.decide`), sin SwiftUI ni singletons. `ActivityCenter` traduce cada `LiveActivity` a un `PresentationCandidate` (prioridad, urgencia, inicio, si es HUD del sistema y si puede ocupar el notch) y aplica la decisión con sus animaciones. Reglas: urgentes primero, luego prioridad; con la misma gana la que se inició primero; histéresis de 3 s; el HUD de volumen/brillo tiene preferencia y tras él el notch queda limpio unos segundos.
 
-4. **Geometría de la superficie (`SurfaceGeometry`, `Core/SurfaceGeometry.swift`)**: describe dónde vive la isla: notch físico, notch virtual (pantallas sin notch, comportamiento actual) o isla flotante (Fase B). `NotchGeometry` es un alias. `ScreenService` la calcula con `SurfaceGeometry.resolve(screens:preferredIndex:)`, que es pura.
+4. **Ciclo de vida (`ActivityLifecycle`, `ActivityRelevance`)**: escala única de relevancia (0–1000); alertas por actualización (`LiveActivity.alert`), límite de 8 h, contenido obsoleto (`LiveActivity.staleDate`) y `ActivityCenter.end(id:final:dismissAfter:onRemove:)` para terminar con resumen. Las bolitas brotan y se reabsorben con `LiquidSatelliteHost` + `ActivityCenter.departingSatellites` (no con transiciones de SwiftUI: en macOS 27 no les llegaba su valor).
+
+5. **Geometría de la superficie (`SurfaceGeometry`, `Core/SurfaceGeometry.swift`)**: describe dónde vive la isla: notch físico, notch virtual (pantallas sin notch, comportamiento actual) o isla flotante (Fase B). `NotchGeometry` es un alias. `ScreenService` la calcula con `SurfaceGeometry.resolve(screens:preferredIndex:)`, que es pura.
 
 ---
 

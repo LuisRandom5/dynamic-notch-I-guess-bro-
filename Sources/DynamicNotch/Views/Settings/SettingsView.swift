@@ -1702,7 +1702,19 @@ extension SettingsView {
                     range: 2...8, step: 0.5,
                     display: { String(format: "%.1f s", $0) }
                 )
+                ToggleRow(
+                    title: "Las alertas suenan",
+                    subtitle: "Un sonido breve cuando la alerta lo pide (p. ej. Claude terminó o necesita permiso). Nunca más de una alerta cada 30 s por actividad.",
+                    isOn: $appState.liveActivityAlertSound
+                )
             }
+            SliderRow(
+                title: "Resumen al terminar",
+                subtitle: "Cuánto se queda una actividad terminada (anillo completo) antes de reabsorberse. Las actividades se terminan solas a las 8 h, y las que dejan de actualizarse se ven atenuadas.",
+                value: $appState.liveActivityEndSummaryDuration,
+                range: 0...60, step: 5,
+                display: { $0 < 1 ? "Al instante" : "\(Int($0)) s" }
+            )
             SliderRow(
                 title: "Pausa tras volumen o brillo",
                 subtitle: "Tiempo con el notch limpio antes de que regrese el reproductor u otra actividad.",

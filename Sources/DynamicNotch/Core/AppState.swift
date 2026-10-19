@@ -175,6 +175,16 @@ public final class AppState: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(bubbleTapAction.rawValue, forKey: "bubbleTapAction") }
     }
+    /// Las alertas de actividades también suenan (si la actualización lo pide)
+    @Published public var liveActivityAlertSound: Bool = UserDefaults.standard.object(forKey: "liveActivityAlertSound") != nil
+        ? UserDefaults.standard.bool(forKey: "liveActivityAlertSound") : true {
+        didSet { UserDefaults.standard.set(liveActivityAlertSound, forKey: "liveActivityAlertSound") }
+    }
+    /// Cuánto se queda una actividad terminada mostrando su resumen antes de irse (Claude, agentes)
+    @Published public var liveActivityEndSummaryDuration: Double = UserDefaults.standard.object(forKey: "liveActivityEndSummaryDuration") != nil
+        ? UserDefaults.standard.double(forKey: "liveActivityEndSummaryDuration") : 15 {
+        didSet { UserDefaults.standard.set(liveActivityEndSummaryDuration, forKey: "liveActivityEndSummaryDuration") }
+    }
     /// Swipe a lo ancho sobre el notch cerrado recorre las actividades (con 2 o más entre bolitas y cola)
     @Published public var swipeCyclesActivities: Bool = UserDefaults.standard.object(forKey: "swipeCyclesActivities") != nil
         ? UserDefaults.standard.bool(forKey: "swipeCyclesActivities") : true {

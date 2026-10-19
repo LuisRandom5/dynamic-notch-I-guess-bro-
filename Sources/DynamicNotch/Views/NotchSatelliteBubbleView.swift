@@ -279,6 +279,11 @@ public struct NotchBolitaView: View {
     public var body: some View {
         minimalDynamicIslandView
             .frame(width: size, height: size)
+            // Contenido obsoleto (sin actualizaciones desde su staleDate): atenuado, como el "sin actualizar"
+            // de las Live Activities
+            .saturation(isStale ? 0.25 : 1)
+            .opacity(isStale ? 0.6 : 1)
+            .animation(.easeInOut(duration: 0.4), value: isStale)
             .contentShape(Circle())
             .scaleEffect(scaleAmount)
             .brightness(isHovered ? 0.04 : 0.0)
@@ -306,7 +311,12 @@ public struct NotchBolitaView: View {
             .help(accessibilityText)
     }
     
+    private var isStale: Bool {
+        center.staleActivityIds.contains(activity.id)
+    }
+    
     private var accessibilityText: String {
+        if isStale { return (activity.title ?? activity.kind.rawValue.capitalized) + " (sin actualizar)" }
         let title = activity.title ?? activity.kind.rawValue.capitalized
         if activity.kind == .agentAI {
             return "\(title): \(Int(progress * 100))% completado"
