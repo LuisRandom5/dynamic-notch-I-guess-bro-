@@ -178,4 +178,36 @@ public enum PresentationEngine {
             ? Array(ring.dropFirst()) + [ring[0]]
             : [ring[ring.count - 1]] + Array(ring.dropLast())
     }
+
+    /// Lado de cada bolita. Estable: la que ya estaba conserva su lado aunque se vaya la otra (antes la de la
+    /// izquierda brincaba a la derecha y regresaba, p. ej. al abrir y cerrar la repisa). Las nuevas toman el lado
+    /// libre, primero el derecho. Si el usuario las quiere de un solo lado, todas van a la derecha en orden.
+    public static func assignSides(ids: [String], previous: [String: SatellitePlacement], bothSides: Bool) -> [String: SatellitePlacement] {
+        guard bothSides else {
+            return Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($0.element, SatellitePlacement(isLeft: false, slotIndex: $0.offset)) })
+        }
+        var result: [String: SatellitePlacement] = [:]
+        for id in ids {
+            if let kept = previous[id], kept.slotIndex == 0 { result[id] = kept }
+        }
+        for id in ids where result[id] == nil {
+            let rightTaken = result.values.contains { !$0.isLeft }
+            let leftTaken = result.values.contains { $0.isLeft }
+            result[id] = SatellitePlacement(isLeft: rightTaken && !leftTaken, slotIndex: 0)
+        }
+        return result
+    }
+}
+
+/// Dónde va una bolita: su lado y su lugar en él (0 = pegada al notch)
+public struct SatellitePlacement: Equatable {
+    public let isLeft: Bool
+    public let slotIndex: Int
+
+    public init(isLeft: Bool, slotIndex: Int) {
+        self.isLeft = isLeft
+        self.slotIndex = slotIndex
+    }
+
+    public var sideKey: String { isLeft ? "L" : "R\(slotIndex)" }
 }

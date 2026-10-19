@@ -23,10 +23,31 @@ public final class ShelfActivityProvider {
             }
     }
 
+    private var wasShelfOpen = false
+    private var pendingPublish: DispatchWorkItem?
+
     private func update(count: Int, isShelfOpen: Bool) {
+        let justClosed = wasShelfOpen && !isShelfOpen
+        wasShelfOpen = isShelfOpen
         let visibleCount = isShelfOpen ? 0 : count
         guard visibleCount != lastCount else { return }
         lastCount = visibleCount
+        pendingPublish?.cancel()
+        pendingPublish = nil
+
+        // Al cerrar la repisa, la bolita espera a que el notch termine de recogerse: si brota de un notch que
+        // todavía se está encogiendo, el cuello y la gota se ven cortados
+        if justClosed && visibleCount > 0 {
+            let work = DispatchWorkItem { [weak self] in self?.publish(count: visibleCount) }
+            pendingPublish = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+            return
+        }
+        publish(count: visibleCount)
+    }
+
+    private func publish(count visibleCount: Int) {
+        pendingPublish = nil
 
         guard visibleCount > 0 else {
             ActivityCenter.shared.remove(id: Self.activityId)

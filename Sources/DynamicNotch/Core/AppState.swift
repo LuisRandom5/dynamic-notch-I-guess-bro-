@@ -153,9 +153,9 @@ public final class AppState: ObservableObject {
     }
     /// Con varias actividades la del notch pasa a "mínima pegada" (sólo su lado izquierdo, junto a la cámara),
     /// como la Isla Dinámica del iPhone
-    @Published public var minimalAttachedEnabled: Bool = UserDefaults.standard.object(forKey: "minimalAttachedEnabled") != nil
-        ? UserDefaults.standard.bool(forKey: "minimalAttachedEnabled") : true {
-        didSet { UserDefaults.standard.set(minimalAttachedEnabled, forKey: "minimalAttachedEnabled") }
+    /// Apagado por defecto: el usuario prefiere conservar las barras de la música junto a las bolitas
+    @Published public var minimalAttachedEnabled: Bool = UserDefaults.standard.bool(forKey: "minimalAttachedEnabledV2") {
+        didSet { UserDefaults.standard.set(minimalAttachedEnabled, forKey: "minimalAttachedEnabledV2") }
     }
     /// La segunda bolita va a la izquierda (como el iPhone); apagado, las dos a la derecha
     public var bubblesOnBothSides: Bool {

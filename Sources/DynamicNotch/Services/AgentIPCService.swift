@@ -381,6 +381,11 @@ public final class AgentIPCService {
             sendHTTPResponse(connection: connection, statusCode: mode == nil ? 400 : 200, statusText: mode == nil ? "Bad Request" : "OK",
                              jsonObject: ["status": mode == nil ? "modo inválido" : "ok"])
             
+        case ("GET", "/debug/fullscreen"):
+            var info: [String: Any] = [:]
+            DispatchQueue.main.sync { info = FullScreenMediaMonitor.shared.debugSnapshot() }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
+            
         case ("GET", "/debug/audio"):
             // Diagnóstico de las barras: captura real, relevo procedural y niveles
             var info: [String: Any] = [:]

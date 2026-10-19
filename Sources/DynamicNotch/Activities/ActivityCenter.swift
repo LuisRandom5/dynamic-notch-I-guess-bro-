@@ -6,7 +6,10 @@ import AppKit
 public struct DepartingSatellite: Identifiable {
     public let id: String
     public let activity: LiveActivity
-    public let index: Int
+    /// Lado y lugar donde estaba (se reabsorbe ahí)
+    public let placement: SatellitePlacement
+    /// Con el notch desplegándose no hay extremo donde reabsorberse: se desvanece
+    public var fades: Bool = false
 }
 
 public final class ActivityCenter: ObservableObject {
@@ -25,6 +28,10 @@ public final class ActivityCenter: ObservableObject {
     /// Bolitas que se están reabsorbiendo en el notch (dejaron de estar a la vista): se siguen dibujando
     /// mientras dura la absorción (ver LiquidSatelliteHost)
     @Published public private(set) var departingSatellites: [DepartingSatellite] = []
+    /// Lado de cada bolita visible (estable mientras siga a la vista, ver PresentationEngine.assignSides)
+    @Published public private(set) var satelliteLayout: [String: SatellitePlacement] = [:]
+    /// El swipe a lo ancho recorre el carrusel: esa vez los lados siguen el orden nuevo (no la memoria)
+    private var sidesFollowOrderOnce = false
     /// 3 actividades a la vista: bolitas y mínima pegada en ancho limitado (ver PresentationDecision)
     @Published public private(set) var isLimitedWidth: Bool = false
     
@@ -55,6 +62,10 @@ public final class ActivityCenter: ObservableObject {
     /// Física de las bolitas sobre el borde derecho de la cápsula (pt): se recoge al desprenderse una gota
     /// y se abulta al absorberla, con rebote elástico (ver ElasticPillShape.trailingImpulse)
     @Published public private(set) var pillImpulse: CGFloat = 0
+    /// Reacción de toda la isla a la gota (como en el iPhone): un retroceso de un par de puntos y un estirón
+    /// mínimo que rebota (ver NotchContainerView.scaleX/scaleY)
+    @Published public private(set) var islandRecoil: CGFloat = 0
+    @Published public private(set) var islandJiggle: CGFloat = 1
     private var impulseToken = 0
     
     /// Alerta en curso (ver presentAlert): si el usuario interactúa, la tarjeta ya no se cierra sola
@@ -161,7 +172,7 @@ public final class ActivityCenter: ObservableObject {
     public func publish(_ activity: LiveActivity) {
         // Durante la pausa posterior al HUD, las actualizaciones de otras actividades (temporizador, Claude…)
         // no deben hacer reaparecer el reproductor antes de tiempo
-        if Date() >= hudHoldUntil || activity.style == .sliderPill || activity.style == .airpodsPill {
+        if Date() >= hudHoldUntil || activity.behavesAsSystemHUD {
             AppState.shared.isHoldingBareNotch = false
         }
         
@@ -223,7 +234,12 @@ public final class ActivityCenter: ObservableObject {
     /// notch se asienten y se aplica la política (no si el usuario está usando el notch, no más de una cada 30 s)
     private func scheduleAlert(id: String, configuration: ActivityAlertConfiguration, isUrgent: Bool) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            guard let self = self, self.activeActivities.contains(where: { $0.id == id }) else { return }
+            guard let self = self, let activity = self.activeActivities.first(where: { $0.id == id }) else { return }
+            // Si su app ya está a la vista (p. ej. la ventana de Claude en el otro monitor), la alerta sobra
+            if !isUrgent && ActivitySourceApp.isVisible(for: activity) {
+                DNDLogger.log("ActivityCenter: alerta de '\(id)' omitida, su app está a la vista")
+                return
+            }
             let app = AppState.shared
             let userIsBusy = self.expandedActivity != nil || self.isFusing || app.isHovered
                 || app.mode == .expanded || app.mode == .shelf
@@ -393,10 +409,11 @@ public final class ActivityCenter: ObservableObject {
         // HUD del sistema (volumen/brillo) y animación de AirPods: al cerrarse, el notch se recoge por completo
         // y queda limpio unos segundos; después lo que había (p. ej. el reproductor) vuelve a abrirse con su
         // animación, como en el sistema (antes la de AirPods saltaba directo al reproductor)
-        let isSystemHUD = current.style == .sliderPill || current.style == .airpodsPill
+        let isSystemHUD = current.behavesAsSystemHUD
         if isSystemHUD {
             hudHoldUntil = Date().addingTimeInterval(duration + Self.hudReturnDelay)
-            if MusicService.shared.hasActiveMusic {
+            // También con la música en pausa mientras sus alas siguen a la vista (modo compacto)
+            if MusicService.shared.hasActiveMusic || AppState.shared.mode == .compact {
                 AppState.shared.isHoldingBareNotch = true
             }
         }
@@ -448,7 +465,8 @@ public final class ActivityCenter: ObservableObject {
     
     public func recalculateRoles() {
         guard !activeActivities.isEmpty else {
-            registerDepartures(from: secondaryActivities, to: [])
+            registerDepartures(from: satelliteLayout, old: secondaryActivities, to: [:])
+            satelliteLayout = [:]
             withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
                 self.currentActivity = nil
                 self.secondaryActivities = []
@@ -513,8 +531,11 @@ public final class ActivityCenter: ObservableObject {
         
         // Física: una gota nueva a la derecha se desprende (la cápsula retrocede); una que se va se absorbe
         // (la cápsula se abulta al recibirla). Sólo con el notch cerrado y sin la bolita que se está fundiendo.
-        let oldRightId = secondaryActivities.first?.id
-        let newRightId = newSecondaries.first?.id
+        // El extremo derecho reacciona a la bolita pegada a la derecha
+        let newRightLayout = PresentationEngine.assignSides(ids: newSecondaries.map(\.id), previous: sidesFollowOrderOnce ? [:] : satelliteLayout,
+                                                            bothSides: AppState.shared.bubblesOnBothSides)
+        let oldRightId = satelliteLayout.first { $0.value == SatellitePlacement(isLeft: false, slotIndex: 0) }?.key
+        let newRightId = newRightLayout.first { $0.value == SatellitePlacement(isLeft: false, slotIndex: 0) }?.key
         if oldRightId != newRightId {
             if newRightId != nil && oldRightId == nil {
                 firePillImpulse(.detach)
@@ -523,7 +544,11 @@ public final class ActivityCenter: ObservableObject {
             }
         }
         
-        registerDepartures(from: secondaryActivities, to: newSecondaries)
+        let newLayout = PresentationEngine.assignSides(ids: newSecondaries.map(\.id), previous: sidesFollowOrderOnce ? [:] : satelliteLayout,
+                                                       bothSides: AppState.shared.bubblesOnBothSides)
+        registerDepartures(from: satelliteLayout, old: secondaryActivities, to: newLayout)
+        if newLayout != satelliteLayout { satelliteLayout = newLayout }
+        sidesFollowOrderOnce = false
         withAnimation(AnimationSpeedManager.shared.spring(response: 0.35, dampingFraction: 0.82)) {
             self.currentActivity = displayedPrimary
             self.secondaryActivities = newSecondaries
@@ -535,22 +560,21 @@ public final class ActivityCenter: ObservableObject {
         NotchWindowManager.shared.updateHitAreaForCurrentState()
     }
     
-    /// Lado de la bolita en el lugar `index`: la segunda va a la izquierda si el usuario quiere ambos lados
-    public static func satelliteSideKey(index: Int) -> String {
-        AppState.shared.bubblesOnBothSides && index == 1 ? "L" : "R"
-    }
-    
     /// Las bolitas que dejan de verse en su lado se siguen dibujando mientras se reabsorben en el notch. Cuenta
     /// el lado: una que pasa de izquierda a derecha (swipe) se reabsorbe de un lado y brota del otro.
-    private func registerDepartures(from old: [LiveActivity], to new: [LiveActivity]) {
-        let newKeys = Set(new.enumerated().map { "\($0.element.id)|\(Self.satelliteSideKey(index: $0.offset))" })
+    private func registerDepartures(from oldLayout: [String: SatellitePlacement], old: [LiveActivity],
+                                    to newLayout: [String: SatellitePlacement]) {
+        let newKeys = Set(newLayout.map { "\($0.key)|\($0.value.sideKey)" })
         // Si vuelve a su lado antes de terminar de irse, deja de irse
-        departingSatellites.removeAll { newKeys.contains("\($0.activity.id)|\(Self.satelliteSideKey(index: $0.index))") }
+        departingSatellites.removeAll { newKeys.contains("\($0.activity.id)|\($0.placement.sideKey)") }
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, expandedActivity == nil, !isFusing else { return }
-        for (index, activity) in old.enumerated() where !newKeys.contains("\(activity.id)|\(Self.satelliteSideKey(index: index))") {
+        let notchIsOpen = AppState.shared.mode == .expanded || AppState.shared.mode == .shelf
+        for activity in old {
+            guard let placement = oldLayout[activity.id], !newKeys.contains("\(activity.id)|\(placement.sideKey)") else { continue }
             let token = "\(activity.id)#\(UUID().uuidString.prefix(8))"
-            departingSatellites.append(DepartingSatellite(id: token, activity: activity, index: index))
-            DispatchQueue.main.asyncAfter(deadline: .now() + LiquidSatelliteHost<EmptyView>.departureDuration) { [weak self] in
+            departingSatellites.append(DepartingSatellite(id: token, activity: activity, placement: placement, fades: notchIsOpen))
+            let duration = notchIsOpen ? LiquidSatelliteHost<EmptyView>.fadeDuration + 0.05 : LiquidSatelliteHost<EmptyView>.departureDuration
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
                 self?.departingSatellites.removeAll { $0.id == token }
             }
         }
@@ -559,7 +583,7 @@ public final class ActivityCenter: ObservableObject {
     /// Traduce una actividad a lo que necesita el motor de presentación
     private func presentationCandidate(_ activity: LiveActivity) -> PresentationCandidate {
         let canBePrimary: Bool
-        if activity.style == .sliderPill {
+        if activity.behavesAsSystemHUD {
             canBePrimary = false
         } else if activity.prefersBubble || activity.kind == .claude || activity.id == ShelfActivityProvider.activityId {
             // Claude y la repisa viven siempre como bolita satélite
@@ -582,9 +606,28 @@ public final class ActivityCenter: ObservableObject {
             createdAt: activity.createdAt,
             // HUD de volumen/brillo: se muestra siempre al instante y esconde lo que hubiera en el notch;
             // lo escondido no pasa a bolita (eso provocaría animaciones cruzadas)
-            isSystemHUD: activity.style == .sliderPill,
+            // Lo mismo para la animación de AirPods y los avisos del sistema (Bloq Mayús, red)
+            isSystemHUD: activity.behavesAsSystemHUD,
             canBePrimary: canBePrimary
         )
+    }
+    
+    private func islandReact(recoil: CGFloat, jiggle: CGFloat, after delay: TimeInterval, k: Double) {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { return }
+            withAnimation(.easeOut(duration: 0.10)) {
+                self.islandRecoil = recoil
+                self.islandJiggle = jiggle
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+                // Resorte flojo: dos o tres rebotes casi imperceptibles
+                withAnimation(.spring(response: 0.42 * k, dampingFraction: 0.36)) {
+                    self.islandRecoil = 0
+                    self.islandJiggle = 1
+                }
+            }
+        }
     }
     
     private enum PillImpulse { case detach, absorb }
@@ -606,6 +649,8 @@ public final class ActivityCenter: ObservableObject {
             // Escalan con la duración de la gota (1.32 s fue la referencia) para seguir sincronizados con ella
             let k = LiquidMotionTuning.v.emergeResponse / 1.32
             withAnimation(.easeOut(duration: 0.36 * k)) { pillImpulse = CGFloat(LiquidMotionTuning.v.widenImpulse) }
+            // La gota sale con fuerza: la isla retrocede un poco hacia el otro lado y rebota
+            islandReact(recoil: -1.4, jiggle: 1.010, after: 0.30 * k, k: k)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.44 * k) { [weak self] in
                 guard let self = self, self.impulseToken == token else { return }
                 withAnimation(.spring(response: 0.92 * k, dampingFraction: 0.62)) { self.pillImpulse = 0 }
@@ -618,6 +663,8 @@ public final class ActivityCenter: ObservableObject {
                 let mode = AppState.shared.mode
                 guard mode != .expanded && mode != .shelf, self.expandedActivity == nil else { return }
                 withAnimation(.easeOut(duration: 0.20 * k)) { self.pillImpulse = CGFloat(LiquidMotionTuning.v.absorbBulge) }
+                // Al llegar la gota, la isla recibe el golpe: se empuja un poco hacia ella y rebota
+                self.islandReact(recoil: 1.2, jiggle: 1.012, after: 0, k: k)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.20 * k) {
                     guard self.impulseToken == token else { return }
                     withAnimation(.spring(response: 0.80 * k, dampingFraction: 0.52)) { self.pillImpulse = 0 }
@@ -866,6 +913,7 @@ public final class ActivityCenter: ObservableObject {
         let ring = secondaryActivities.map(\.id) + overflowActivities.map(\.id)
         guard ring.count >= 2, expandedActivity == nil, !isFusing else { return }
         userOrder = PresentationEngine.rotated(ring, forward: forward)
+        sidesFollowOrderOnce = true
         recalculateRoles()
         if AppState.shared.enableHaptics {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)

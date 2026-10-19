@@ -1661,7 +1661,7 @@ extension SettingsView {
             )
             ToggleRow(
                 title: "Mínima pegada con varias actividades",
-                subtitle: "Si hay bolitas, la música se reduce a su carátula junto a la cámara, como el iPhone. Apagado: conserva sus dos alas.",
+                subtitle: "Si hay bolitas, la música se reduce a su carátula junto a la cámara, como el iPhone. Apagado (recomendado): conserva sus dos alas con las barras.",
                 isOn: $appState.minimalAttachedEnabled
             )
             PickerRow(

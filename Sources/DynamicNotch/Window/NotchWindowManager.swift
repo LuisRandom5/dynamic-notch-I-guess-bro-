@@ -164,7 +164,10 @@ public final class NotchWindowManager: ObservableObject {
             "dynamic": hit.dynamicHitPaths.map { r($0.boundingBox) },
             "lastRegionsRaw": lastRegionsRaw.map { "\($0.key): \(r($0.value.frame))" },
             "secondary": ActivityCenter.shared.secondaryActivities.map { $0.id },
-            "mode": "\(AppState.shared.mode)"
+            "mode": "\(AppState.shared.mode)",
+            "dragTargeted": AppState.shared.isShelfDragTargeted,
+            "dropInvitation": AppState.shared.isDropInvitationActive,
+            "panelFrame": r(panel?.frame ?? .zero)
         ]
     }
     private var lastRegionsRaw: [String: NotchHitRegion] = [:]

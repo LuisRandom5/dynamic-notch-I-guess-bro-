@@ -67,7 +67,8 @@ public final class SystemStatusActivityProvider {
         publishBrief(
             id: Self.capsLockId,
             icon: on ? "capslock.fill" : "capslock",
-            label: on ? "Bloq Mayús" : "Mayús desact.",
+            // Textos cortos: el ala derecha es angosta ("Mayús desact." se metía bajo la cámara)
+            label: on ? "Bloq Mayús" : "Minúsculas",
             tint: on ? DesignTokens.green : Color.white.opacity(0.7),
             duration: 1.6
         )
@@ -236,7 +237,7 @@ public final class SystemStatusActivityProvider {
     /// Aviso de pocos segundos en el notch, como el del interruptor de silencio del iPhone: entra de inmediato
     /// (urgente) y regresa a lo que había
     private func publishBrief(id: String, icon: String, label: String, tint: Color, duration: TimeInterval) {
-        ActivityCenter.shared.publish(LiveActivity(
+        var notice = LiveActivity(
             id: id,
             priority: ActivityRelevance.systemStatus,
             style: .pill,
@@ -258,6 +259,9 @@ public final class SystemStatusActivityProvider {
             tint: tint,
             duration: duration,
             isUrgent: true
-        ))
+        )
+        // Como el volumen: el notch se recoge por completo y la música regresa tras la pausa
+        notice.isSystemNotice = true
+        ActivityCenter.shared.publish(notice)
     }
 }

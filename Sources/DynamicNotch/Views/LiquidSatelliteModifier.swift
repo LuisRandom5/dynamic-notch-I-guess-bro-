@@ -387,7 +387,7 @@ extension EnvironmentValues {
 /// - Absorción: curva que ACELERA (como atraída por un imán) hasta tocar el notch; ahí la cápsula se abulta
 ///   y rebota (ActivityCenter.pillImpulse).
 public struct LiquidSatelliteHost<Content: View>: View {
-    public enum Phase { case appearing, departing }
+    public enum Phase { case appearing, departing, fading }
 
     let placement: LiquidSatelliteModifier
     let phase: Phase
@@ -406,11 +406,16 @@ public struct LiquidSatelliteHost<Content: View>: View {
         _emerge = State(initialValue: animated && phase == .appearing ? 1 : 0)
     }
 
+    @State private var fade: CGFloat = 1
+
     public var body: some View {
         var placed = placement
         placed.emerge = emerge
         return content
             .modifier(placed)
+            // Se va mientras el notch se despliega: no hay extremo fijo donde reabsorberse, se desvanece
+            .scaleEffect(phase == .fading ? 0.55 + 0.45 * fade : 1)
+            .opacity(phase == .fading ? Double(fade) : 1)
             .onAppear {
                 guard animated else { return }
                 let tuning = LiquidMotionTuning.v
@@ -423,9 +428,16 @@ public struct LiquidSatelliteHost<Content: View>: View {
                     withAnimation(.spring(response: tuning.absorbResponse, dampingFraction: tuning.absorbDamping)) {
                         emerge = 1
                     }
+                case .fading:
+                    withAnimation(.easeIn(duration: Self.fadeDuration)) {
+                        fade = 0
+                    }
                 }
             }
     }
+
+    /// Desvanecerse cuando el notch se despliega
+    public static var fadeDuration: TimeInterval { 0.22 }
 
     /// Cuánto espera la que entra cuando otra se reabsorbe en el mismo extremo: la que se va ya casi está dentro
     public static var handoverDelay: TimeInterval { LiquidMotionTuning.v.absorbResponse * 0.45 }

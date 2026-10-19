@@ -329,15 +329,7 @@ public struct NotchBolitaView: View {
     }
     
     /// App que abre un clic en la bolita (como en el iPhone: tocar una actividad abre su app)
-    private var sourceAppBundleId: String? {
-        switch activity.kind {
-        case .claude: return "com.anthropic.claudefordesktop"
-        case .timer: return "com.apple.clock"
-        case .agentAI: return "com.google.antigravity"
-        case .call: return "com.apple.FaceTime"
-        default: return nil
-        }
-    }
+    private var sourceAppBundleId: String? { ActivitySourceApp.bundleId(for: activity) }
     
     /// Clic, como en el iPhone: abre la app de la actividad. Si la bolita no tiene app propia, hace lo de
     /// mantener presionado (expandir), para que ningún clic quede muerto.
@@ -371,10 +363,16 @@ public struct NotchBolitaView: View {
         }
         // Si su app ya está al frente, abrirla no haría nada visible: se expande la tarjeta (p. ej. Claude
         // trabajando mientras lo ves en su ventana → la tarjeta muestra qué está haciendo)
+        // Y si sus ventanas están en OTRO escritorio (Space), abrirla te llevaría hasta allá: se expande la
+        // tarjeta aquí mismo (la bolita sirve para vigilar sin dejar lo que estás viendo)
         let frontmostId = Self.frontmostBundleId()
-        DNDLogger.log("Bolita: clic en \(activity.kind.rawValue) (app al frente: \(frontmostId ?? "-"))")
-        if let bundleId = sourceAppBundleId,
+        let bundleId = sourceAppBundleId
+        let isRunning = bundleId.map { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty } ?? false
+        let isOnThisSpace = bundleId.map { ActivitySourceApp.hasVisibleWindow(bundleId: $0) } ?? false
+        DNDLogger.log("Bolita: clic en \(activity.kind.rawValue) (al frente: \(frontmostId ?? "-"), corriendo: \(isRunning), en este escritorio: \(isOnThisSpace))")
+        if let bundleId,
            bundleId != frontmostId,
+           !isRunning || isOnThisSpace,
            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
             isPressed = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { self.isPressed = false }

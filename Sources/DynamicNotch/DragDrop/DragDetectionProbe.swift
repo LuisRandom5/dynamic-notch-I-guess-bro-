@@ -248,7 +248,14 @@ public final class DragDetectionProbe: ObservableObject {
             let triggerDist = AppState.shared.dropInvitationDistance
             let exitDist = triggerDist + 35.0
             
-            if euclidean <= triggerDist && !AppState.shared.isDropInvitationActive && AppState.shared.mode != .shelf {
+            // También se abre al entrar al rectángulo donde aparecerá la tarjeta (460 × 140 pt colgando del notch):
+            // con sólo la distancia al centro, llegando de lado no se abría hasta pasar por una franja del ancho
+            // del notch (y fuera de ella no se podía soltar)
+            let notchScreenFrame = (ScreenService.shared.targetScreen ?? targetScreen).frame
+            let cardZone = CGRect(x: notchScreenFrame.midX - 230, y: notchScreenFrame.maxY - 140, width: 460, height: 140)
+                .insetBy(dx: -30, dy: -30)
+            let isOverCard = cardZone.contains(location)
+            if (euclidean <= triggerDist || isOverCard) && !AppState.shared.isDropInvitationActive && AppState.shared.mode != .shelf {
                 withAnimation(.spring(response: ExitAnimationMetrics.cardOpenResponse, dampingFraction: ExitAnimationMetrics.cardOpenDamping)) {
                     AppState.shared.isDropInvitationActive = true
                 }

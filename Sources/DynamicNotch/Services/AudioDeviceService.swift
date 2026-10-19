@@ -63,8 +63,10 @@ public final class AudioDeviceService: NSObject, ObservableObject {
             var streamSize: UInt32 = 0
             AudioObjectGetPropertyDataSize(id, &streamAddress, 0, nil, &streamSize)
             
-            if streamSize > 0 {
-                let name = getDeviceName(id: id)
+            let name = getDeviceName(id: id)
+            // El dispositivo agregado privado con el que se capta el audio para las barras es interno: macOS no lo
+            // muestra, pero el proceso que lo creó sí lo ve; no es una salida para el usuario
+            if streamSize > 0 && !name.contains("Dynamic Notch Tap") {
                 let isAirPods = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats")
                 result.append(AudioOutputDevice(
                     id: id,

@@ -146,6 +146,14 @@ public struct LiveActivity: Identifiable {
     /// Vive sólo como bolita, nunca ocupa el notch (indicadores como cámara en uso o una descarga: no le
     /// quitan el lugar a la música)
     public var prefersBubble: Bool = false
+    /// Aviso breve del sistema (Bloq Mayús, red…): al irse se comporta como el HUD de volumen — el notch se
+    /// recoge por completo y lo que había (la música) regresa tras la pausa
+    public var isSystemNotice: Bool = false
+
+    /// HUD de volumen/brillo, AirPods o aviso del sistema
+    public var behavesAsSystemHUD: Bool {
+        style == .sliderPill || style == .airpodsPill || isSystemNotice
+    }
     
     public init(
         id: String,

@@ -223,4 +223,30 @@ import Testing
         #expect(d.primaryId == nil)
         #expect(!d.appliedPreferredPrimary)
     }
+
+    // MARK: Lados de las bolitas
+
+    @Test func remainingBubbleKeepsItsSide() {
+        // Claude a la izquierda, la repisa a la derecha; se va la repisa: Claude NO brinca a la derecha
+        let before = PresentationEngine.assignSides(ids: ["shelf", "claude"], previous: [:], bothSides: true)
+        #expect(before["shelf"]?.isLeft == false)
+        #expect(before["claude"]?.isLeft == true)
+        let after = PresentationEngine.assignSides(ids: ["claude"], previous: before, bothSides: true)
+        #expect(after["claude"]?.isLeft == true)
+        // Regresa la repisa: toma el lado libre
+        let back = PresentationEngine.assignSides(ids: ["claude", "shelf"], previous: after, bothSides: true)
+        #expect(back["shelf"]?.isLeft == false)
+        #expect(back["claude"]?.isLeft == true)
+    }
+
+    @Test func newBubblesPreferTheRight() {
+        let sides = PresentationEngine.assignSides(ids: ["a"], previous: [:], bothSides: true)
+        #expect(sides["a"]?.isLeft == false)
+    }
+
+    @Test func oneSideStacksInOrder() {
+        let sides = PresentationEngine.assignSides(ids: ["a", "b"], previous: [:], bothSides: false)
+        #expect(sides["a"] == SatellitePlacement(isLeft: false, slotIndex: 0))
+        #expect(sides["b"] == SatellitePlacement(isLeft: false, slotIndex: 1))
+    }
 }

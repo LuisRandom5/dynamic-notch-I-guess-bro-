@@ -111,6 +111,8 @@ public struct DynamicNotchBackgroundView: View {
     public var trailingImpulse: CGFloat = 0
     /// Distancia del centro de la cámara al centro de la forma (la mínima pegada sólo crece hacia la izquierda)
     public var cameraCenterOffset: CGFloat = 0
+    /// El notch se está cerrando: el vidrio se disuelve durante el encogimiento
+    public var isDissolving: Bool = false
 
     public init(
         topRadius: CGFloat,
@@ -122,10 +124,12 @@ public struct DynamicNotchBackgroundView: View {
         isExpanded: Bool = true,
         topBleed: CGFloat = 0,
         trailingImpulse: CGFloat = 0,
-        cameraCenterOffset: CGFloat = 0
+        cameraCenterOffset: CGFloat = 0,
+        isDissolving: Bool = false
     ) {
         self.trailingImpulse = trailingImpulse
         self.cameraCenterOffset = cameraCenterOffset
+        self.isDissolving = isDissolving
         self.topBleed = topBleed
         self.topRadius = topRadius
         self.bottomRadius = bottomRadius
@@ -231,6 +235,8 @@ public struct DynamicNotchBackgroundView: View {
                                 .clipShape(pillShape)
                             }
                             .allowsHitTesting(false)
+                            .opacity(isDissolving ? 0 : 1)
+                            .animation(isDissolving ? .easeOut(duration: 0.34) : .easeIn(duration: 0.12), value: isDissolving)
                             // El vidrio se dibuja siempre con apariencia oscura: es la variante "Clear puro" elegida en
                             // el laboratorio; en apariencia clara macOS lo vuelve blanquecino y esmerilado
                             .environment(\.colorScheme, .dark)

@@ -208,7 +208,10 @@ public struct NotchContainerView: View {
     
     private func satelliteSlots(bothSides: Bool) -> [SatelliteSlot] {
         activityCenter.secondaryActivities.enumerated().map { index, activity in
-            SatelliteSlot(activity: activity, index: index, isLeft: bothSides && index == 1)
+            // El lado lo guarda ActivityCenter (estable); por si aún no está, el orden
+            let placement = activityCenter.satelliteLayout[activity.id]
+                ?? SatellitePlacement(isLeft: bothSides && index == 1, slotIndex: bothSides ? 0 : index)
+            return SatelliteSlot(activity: activity, index: placement.slotIndex, isLeft: placement.isLeft)
         }
     }
     
@@ -361,6 +364,10 @@ public struct NotchContainerView: View {
     
     // Escala reactiva: si presiona (squash & stretch), si mantiene cursor encima (expansión continua tipo Dynamic Island), si no 1.0
     private var scaleX: CGFloat {
+        baseScaleX * activityCenter.islandJiggle
+    }
+    
+    private var baseScaleX: CGFloat {
         if interactionState == .pressed && appState.mode != .expanded && appState.mode != .shelf {
             return NotchTuning.pressScaleX
         } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil && !isCollapsing {
@@ -371,7 +378,13 @@ public struct NotchContainerView: View {
         return 1.0
     }
     
+    /// La isla reacciona a la gota que se suelta o llega: se estira a lo ancho y se aplana un poco (volumen
+    /// constante), y rebota casi imperceptible
     private var scaleY: CGFloat {
+        baseScaleY * (1 - (activityCenter.islandJiggle - 1) * 0.6)
+    }
+    
+    private var baseScaleY: CGFloat {
         if interactionState == .pressed && appState.mode != .expanded && appState.mode != .shelf {
             return NotchTuning.pressScaleY
         } else if appState.mode != .expanded && appState.mode != .shelf && activityCenter.currentActivity == nil && !isCollapsing {
@@ -705,7 +718,12 @@ public struct NotchContainerView: View {
                         isExpanded: isSurfaceExpanded,
                         topBleed: shapeTopBleed,
                         trailingImpulse: activityCenter.pillImpulse,
-                        cameraCenterOffset: -attachedOffsetX
+                        cameraCenterOffset: -attachedOffsetX,
+                        // Al cerrar, el vidrio se disuelve mientras la forma se encoge (antes se quedaba gris
+                        // alrededor del centro negro y desaparecía de golpe al final)
+                        // Si al cerrar quedan alas de cristal (música), el vidrio se queda: la forma se encoge hasta ellas
+                        isDissolving: isCollapsing && activityCenter.expandedActivity == nil
+                            && !(appState.glassWingsEnabled && appState.shouldShowCompact)
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                     // Keyline de la Isla Dinámica: en modo oscuro, un borde fino del color de lo que se muestra
@@ -741,7 +759,7 @@ public struct NotchContainerView: View {
                 height: cardExpandedHeight,
                 alignment: .top
             )
-            .offset(x: cardOffsetX)
+            .offset(x: cardOffsetX + activityCenter.islandRecoil)
             // Sombra Multicapa (Ambient + Key): activa únicamente en Negro Puro OLED.
             // En Liquid Glass tanto la opacidad como el radio son 0.0 SIEMPRE para evitar pases offscreen en Metal.
             .shadow(
@@ -915,10 +933,8 @@ public struct NotchContainerView: View {
             let showsBridge = appState.mode != .expanded && appState.mode != .shelf
             // La identidad incluye el lado (ver SatelliteSlot)
             // Colocación de una bolita según su lugar (también para las que se están reabsorbiendo)
-            let placementFor: (Int, Bool) -> LiquidSatelliteModifier = { index, isFusingThis in
-                let isLeft = bothSides && index == 1
-                // Lugar en su lado: 0 = pegado al notch (con cuello líquido), 1 = segunda a la derecha
-                let slotIndex = bothSides ? 0 : index
+            // Lugar en su lado: 0 = pegado al notch (con cuello líquido), 1 = segunda a la derecha
+            let placementFor: (Bool, Int, Bool) -> LiquidSatelliteModifier = { isLeft, slotIndex, isFusingThis in
                 return LiquidSatelliteModifier(
                     merge: isFusingThis ? activityCenter.fusionProgress : 0,
                     restingX: isLeft
@@ -938,8 +954,9 @@ public struct NotchContainerView: View {
             
             // Las que se van: se reabsorben en el notch del lado donde estaban (sin zona de clic)
             ForEach(activityCenter.departingSatellites) { departing in
-                LiquidSatelliteHost(placement: placementFor(departing.index, false), phase: .departing, animated: !reduceMotion) {
-                    NotchBolitaView(activity: departing.activity, side: (bothSides && departing.index == 1) ? .left : .right)
+                LiquidSatelliteHost(placement: placementFor(departing.placement.isLeft, departing.placement.slotIndex, false),
+                                    phase: departing.fades ? .fading : .departing, animated: !reduceMotion) {
+                    NotchBolitaView(activity: departing.activity, side: departing.placement.isLeft ? .left : .right)
                         .allowsHitTesting(false)
                 }
                 .zIndex(99)
@@ -948,14 +965,14 @@ public struct NotchContainerView: View {
             ForEach(satelliteSlots(bothSides: bothSides), id: \.key) { slot in
                 let activity = slot.activity
                 let isFusingThis = activityCenter.fusingActivityId == activity.id
-                let slotIndex = bothSides ? 0 : slot.index
+                let slotIndex = slot.index
                 
                 // Brota del notch al aparecer (LiquidSatelliteHost); al irse la dibuja departingSatellites
                 // Si otra se está reabsorbiendo en este mismo extremo, espera escondida a que termine de entrar
                 let sideIsBusy = activityCenter.departingSatellites.contains { departing in
-                    (bothSides && departing.index == 1) == slot.isLeft && departing.activity.id != activity.id
+                    departing.placement.isLeft == slot.isLeft && departing.activity.id != activity.id
                 }
-                LiquidSatelliteHost(placement: placementFor(slot.index, isFusingThis), phase: .appearing, animated: !reduceMotion,
+                LiquidSatelliteHost(placement: placementFor(slot.isLeft, slot.index, isFusingThis), phase: .appearing, animated: !reduceMotion,
                                     delay: sideIsBusy ? LiquidSatelliteHost<EmptyView>.handoverDelay : 0) {
                     NotchBolitaView(activity: activity, side: slot.isLeft ? .left : .right)
                         .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
