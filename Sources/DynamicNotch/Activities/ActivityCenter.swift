@@ -142,8 +142,8 @@ public final class ActivityCenter: ObservableObject {
     /// escondido un momento antes de volver, como en la Isla Dinámica: el notch queda limpio y luego regresa.
     public static var hudReturnDelay: TimeInterval { AppState.shared.hudReturnDelay }
     private var hudHoldUntil: Date = .distantPast
-    private static let reabsorbDuration: TimeInterval = 0.70
-    private static let notchSettleDuration: TimeInterval = 0.56
+    private static let reabsorbDuration: TimeInterval = 0.63
+    private static let notchSettleDuration: TimeInterval = 0.50
     
     private init() {}
     
@@ -226,6 +226,30 @@ public final class ActivityCenter: ObservableObject {
             customCardHeight = target
         }
         NotchWindowManager.shared.updateHitAreaForCurrentState()
+    }
+    
+    /// Como tras el HUD de volumen: el notch se queda limpio (sin alas) y lo que había regresa con su animación
+    /// después de la pausa. Se usa al salir de pantalla completa.
+    public func holdBareNotchThenRestore() {
+        hudHoldUntil = Date().addingTimeInterval(Self.hudReturnDelay)
+        let holdUntil = hudHoldUntil
+        // Sin animación: el notch aparece ya limpio (la ventana vuelve a mostrarse con un fundido)
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            AppState.shared.isHoldingBareNotch = true
+            recalculateRoles()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.hudReturnDelay) { [weak self] in
+            guard let self = self, self.hudHoldUntil == holdUntil else { return }
+            withAnimation(AnimationSpeedManager.shared.spring(response: 0.44, dampingFraction: 0.82)) {
+                AppState.shared.isHoldingBareNotch = false
+                self.recalculateRoles()
+                if self.currentActivity == nil {
+                    AppState.shared.reconcileCompactMode()
+                }
+            }
+        }
     }
     
     // MARK: - Ciclo de vida: alertas, 8 h, obsoleto y cierre con resumen

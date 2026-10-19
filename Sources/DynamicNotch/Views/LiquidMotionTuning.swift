@@ -20,10 +20,10 @@ public final class LiquidMotionTuning: ObservableObject {
         /// Temblor de gelatina al soltarse
         public var wobble: Double = 0.07
         /// Resorte al salir (response en s, amortiguamiento 0…1)
-        public var emergeResponse: Double = 1.84
+        public var emergeResponse: Double = 1.66
         public var emergeDamping: Double = 0.70
         /// Resorte al regresar
-        public var absorbResponse: Double = 1.55
+        public var absorbResponse: Double = 1.40
         public var absorbDamping: Double = 0.94
         /// La isla se ensancha al dejar salir la gota y se abulta al recibirla (pt)
         public var widenImpulse: Double = 6

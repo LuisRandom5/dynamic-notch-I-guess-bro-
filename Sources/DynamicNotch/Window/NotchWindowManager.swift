@@ -123,8 +123,14 @@ public final class NotchWindowManager: ObservableObject {
             }, completionHandler: { [weak self] in
                 guard self?.isHiddenForFullScreen == true else { return }
                 panel.orderOut(nil)
+                // Ya oculto, se deja el notch limpio (sin alas): al volver aparece así y las abre después
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { AppState.shared.isHoldingBareNotch = true }
             })
         } else {
+            // Como tras el HUD de volumen: aparece el notch limpio y, tras la pausa, la música abre sus alas
+            ActivityCenter.shared.holdBareNotchThenRestore()
             panel.alphaValue = 0
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { context in

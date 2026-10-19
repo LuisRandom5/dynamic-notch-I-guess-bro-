@@ -21,8 +21,10 @@ public struct NotchDropInvitationView: View {
     
     public init() {}
     
+    /// El archivo está sobre la tarjeta (en cualquier parte): verde = "suéltalo aquí". Antes dependía de la
+    /// distancia al centro del notch y sólo se ponía verde en una franja del ancho del notch
     private var isVeryClose: Bool {
-        probe.distanceToNotch <= 85.0
+        appState.isShelfDragTargeted || probe.distanceToNotch <= 85.0
     }
     
     private var tintColor: Color {
