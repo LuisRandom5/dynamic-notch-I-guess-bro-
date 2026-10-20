@@ -157,7 +157,8 @@ public struct ActivityAirPodsPillView: View {
             // Ala Izquierda (Leading): Animación de los AirPods girando en bucle ampliada a tamaño óptimo (30x26)
             ZStack {
                 if let wing = officialWingVideo {
-                    wing.frame(width: 36, height: 34)
+                    // Un poco más chicos que el alto de la isla, como el ícono del iPhone
+                    wing.frame(width: 31, height: 29)
                 } else if let url = animationURL {
                     AnimatedGIFView(gifURL: url, size: CGSize(width: 30, height: 26))
                         .frame(width: 30, height: 26)
