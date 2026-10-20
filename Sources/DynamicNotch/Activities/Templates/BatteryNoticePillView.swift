@@ -71,10 +71,10 @@ public struct BatteryNoticePillView: View {
                     .font(.system(size: Metrics.labelSize, weight: .semibold))
                     .monospacedDigit()
                     .foregroundColor(tint)
-                IPhoneBatteryGlyph(level: fill, tint: tint, showsBolt: boltShown, size: Metrics.glyphSize)
-                    .phaseAnimator(kind == .low ? [1.0, 0.18, 1.0, 0.18, 1.0, 0.18, 1.0] : [1.0], trigger: pulseTrigger) { content, opacity in
-                        content.opacity(opacity)
-                    } animation: { _ in .easeInOut(duration: 0.34) }
+                // Batería baja: sólo el relleno rojo parpadea (el contorno se queda), como el iPhone
+                PhaseAnimator(kind == .low ? [1.0, 0.15, 1.0, 0.15, 1.0, 0.15, 1.0] : [1.0], trigger: pulseTrigger) { fillOpacity in
+                    IPhoneBatteryGlyph(level: fill, tint: tint, showsBolt: boltShown, size: Metrics.glyphSize, fillOpacity: fillOpacity)
+                } animation: { _ in .easeInOut(duration: 0.34) }
             }
             .fixedSize()
             .modifier(EmergeFromCamera(shown: shown, towardLeading: false))
@@ -127,12 +127,15 @@ public struct IPhoneBatteryGlyph: View {
     let tint: Color
     let showsBolt: Bool
     let size: CGSize
+    let fillOpacity: Double
 
-    public init(level: CGFloat, tint: Color, showsBolt: Bool = false, size: CGSize = CGSize(width: 25, height: 12)) {
+    public init(level: CGFloat, tint: Color, showsBolt: Bool = false, size: CGSize = CGSize(width: 25, height: 12),
+                fillOpacity: Double = 1) {
         self.level = level
         self.tint = tint
         self.showsBolt = showsBolt
         self.size = size
+        self.fillOpacity = fillOpacity
     }
 
     public var body: some View {
@@ -144,6 +147,7 @@ public struct IPhoneBatteryGlyph: View {
                     .stroke(Color.white.opacity(0.38), lineWidth: 1)
                 RoundedRectangle(cornerRadius: corner - 1, style: .continuous)
                     .fill(tint)
+                    .opacity(fillOpacity)
                     .frame(width: max(2.5, (size.width - inset * 2) * min(1, level)), height: size.height - inset * 2)
                     .padding(.leading, inset)
                 Image(systemName: "bolt.fill")
