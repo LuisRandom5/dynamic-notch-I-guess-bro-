@@ -250,3 +250,39 @@ import Testing
         #expect(sides["b"] == SatellitePlacement(isLeft: false, slotIndex: 1))
     }
 }
+
+@Suite struct CarouselWithMusicTests {
+    private let music = "music.nowplaying"
+
+    @Test func forwardBringsTheNextBubbleToTheNotch() {
+        let step = PresentationEngine.carouselStep(ring: [music, "timer", "api.build"], forward: true) { _ in true }
+        #expect(step?.primary == "timer")
+        #expect(step?.bubbles == ["api.build", music])
+    }
+
+    @Test func bubbleOnlyActivitiesAreSkipped() {
+        // Claude no tiene vista para el notch: pasa el siguiente y Claude queda como bolita al frente
+        let step = PresentationEngine.carouselStep(ring: [music, "claude_1", "api.build"], forward: true) { $0 != "claude_1" }
+        #expect(step?.primary == "api.build")
+        #expect(step?.bubbles == ["claude_1", music])
+    }
+
+    @Test func goingAroundReturnsTheMusic() {
+        let first = PresentationEngine.carouselStep(ring: [music, "timer"], forward: true) { _ in true }
+        #expect(first?.primary == "timer")
+        let back = PresentationEngine.carouselStep(ring: ["timer"] + (first?.bubbles ?? []), forward: true) { _ in true }
+        #expect(back?.primary == music)
+        #expect(back?.bubbles == ["timer"])
+    }
+
+    @Test func backwardTakesTheLastOne() {
+        let step = PresentationEngine.carouselStep(ring: [music, "a", "b"], forward: false) { _ in true }
+        #expect(step?.primary == "b")
+        #expect(step?.bubbles == [music, "a"])
+    }
+
+    @Test func nothingWhenNoOneCanOccupyTheNotch() {
+        #expect(PresentationEngine.carouselStep(ring: ["claude_1", "shelf"], forward: true) { _ in false } == nil)
+        #expect(PresentationEngine.carouselStep(ring: [music], forward: true) { _ in true } == nil)
+    }
+}

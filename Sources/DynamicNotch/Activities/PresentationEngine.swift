@@ -179,6 +179,17 @@ public enum PresentationEngine {
             : [ring[ring.count - 1]] + Array(ring.dropLast())
     }
 
+    /// Un paso del carrusel cuando el notch también participa (p. ej. la música): gira el anillo
+    /// [lo del notch] + bolitas + cola y pasa al notch la primera que puede mostrarse ahí (Claude o la repisa
+    /// no tienen vista para el notch y se saltan). El resto queda como bolitas en ese orden.
+    public static func carouselStep(ring: [String], forward: Bool,
+                                    canOccupyNotch: (String) -> Bool) -> (primary: String, bubbles: [String])? {
+        guard ring.count >= 2 else { return nil }
+        let turned = rotated(ring, forward: forward)
+        guard let primary = turned.first(where: canOccupyNotch) else { return nil }
+        return (primary, turned.filter { $0 != primary })
+    }
+
     /// Lado de cada bolita. Estable: la que ya estaba conserva su lado aunque se vaya la otra (antes la de la
     /// izquierda brincaba a la derecha y regresaba, p. ej. al abrir y cerrar la repisa). Las nuevas toman el lado
     /// libre, primero el derecho. Si el usuario las quiere de un solo lado, todas van a la derecha en orden.

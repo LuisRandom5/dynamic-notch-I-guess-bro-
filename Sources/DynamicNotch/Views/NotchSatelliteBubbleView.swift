@@ -345,6 +345,11 @@ public struct NotchBolitaView: View {
             center.collapseExpandedActivity()
             return
         }
+        // La bolita de la música (carrusel): tocarla la regresa al notch
+        if activity.id == ActivityCenter.musicCarouselId {
+            center.restoreMusicToNotch()
+            return
+        }
         switch appState.bubbleTapAction {
         case .expand:
             handleLongPress()
@@ -352,7 +357,7 @@ public struct NotchBolitaView: View {
         case .bringToNotch:
             // Como el iPhone con varias actividades: tocar una la trae al lugar principal. Las que sólo viven
             // como bolita (Claude, la repisa) no tienen presentación en el notch: se expanden
-            if center.canTakeNotch(activity) {
+            if center.canTakeNotch(activity) || center.canTakeNotchFromMusic(activity) {
                 center.makePrimary(id: activity.id)
             } else {
                 handleLongPress()

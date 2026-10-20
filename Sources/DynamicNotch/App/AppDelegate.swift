@@ -165,6 +165,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             CalendarActivityProvider.shared.showSample()
         }
 
+        // Canción de demostración sin audio (para probar el notch y el carrusel con música)
+        notifCenter.observe("com.luisrandom.DynamicNotch.testMusicDemo") { _ in
+            MusicService.shared.setDemoTrack(MusicTrack(
+                title: "Starboy", artist: "The Weeknd ft. Daft Punk", album: "Starboy", artwork: nil,
+                isPlaying: true, playbackPosition: 14, duration: 230, appSource: "Simulado"
+            ))
+        }
+
         notifCenter.observe("com.luisrandom.DynamicNotch.testLowBattery") { _ in
             ChargingActivityProvider.shared.publishLowBatteryActivity(percentage: 10)
         }

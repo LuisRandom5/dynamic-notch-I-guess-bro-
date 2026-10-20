@@ -271,7 +271,7 @@ Factibilidad: ✅ API pública sin permisos raros · ⚠️ requiere permiso o h
 | S2 | 1 cuadro lento (40–60 ms) al abrir el reproductor por primera vez: precalentar la vista. |
 | S3 | Verificación **visual** de la gota en modo cristal (hoy sólo geométrica). |
 | S4 | Pruebas automáticas de la lógica pura: arbitraje de `ActivityCenter`, `LiquidDropProfile` y gestos. Hoy no hay carpeta `Tests`. |
-| S5 | **Separar responsabilidades** (como recomienda Apple y como necesita la Fase B). `NotchContainerView` tiene 1 558 líneas, `AppState` 1 022 y `ActivityCenter` 739, y mezclan datos, política, geometría y dibujo. Ver sección 4. |
+| S5 ✅ (oct 2026: `NotchContainerView` +Geometry/+Gestures/+Transitions y `NotchTuning`; `AppState` +Subscriptions/+Mode/+Shelf y `AppSettingsTypes`; `ActivityCenter` +Carousel/+Lifecycle/+Fusion) | **Separar responsabilidades** (como recomienda Apple y como necesita la Fase B). `NotchContainerView` tiene 1 558 líneas, `AppState` 1 022 y `ActivityCenter` 739, y mezclan datos, política, geometría y dibujo. Ver sección 4. |
 | S6 ✅ | Limpieza de documentos viejos en la raíz: movidos a `docs/archivo/`; `ARCHITECTURE.md` actualizado en 2.0. |
 | S7 | Ya corregido hoy: animación de AirPods al relanzar la app (gracia de 6 s), clic muerto en bolitas y `frontmostApplication` desactualizado. |
 
@@ -396,7 +396,7 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 | 1 | WhatsApp con la pestaña de fondo: el lector de la lista de chats con JavaScript (mensaje real, fotos, stickers…) está listo y probado con una lista simulada, pero Safari sigue respondiendo "You must enable 'Allow JavaScript from Apple Events'". Luis no encontró la opción. Revisar juntos: Safari → Ajustes → Avanzado → "Mostrar funciones para desarrolladores web"; luego Ajustes → Desarrollador → "Permitir JavaScript desde Apple Events" (pide contraseña) y reiniciar Safari. Probar con `do JavaScript "1+1"`. Mientras tanto se usa el aviso genérico. | Pendiente de probar |
 | 2 | Concentración: se escuchan `_NSDoNotDisturbEnabledNotification` / `…Disabled…`; probar activando No molestar (si no sale el aviso, macOS 27 ya no los publica). | Pendiente de probar |
 | 3 | Próxima reunión: probar con un evento real (pide permiso de Calendario al encender el ajuste). | Pendiente de probar |
-| 4 | Carrusel con la música (A-3): la música no es una actividad del `PresentationEngine` sino la capa de fondo del notch; para recorrerla con el swipe hay que volverla actividad de primera clase. Va junto con el refactor S5 (dividir `NotchContainerView` y `AppState`). | Pendiente (con S5) |
+| 4 | Carrusel con la música (A-3): la música no es una actividad del `PresentationEngine` sino la capa de fondo del notch; para recorrerla con el swipe hay que volverla actividad de primera clase. Va junto con el refactor S5 (dividir `NotchContainerView` y `AppState`). | ✅ Hecho: la música entra al carrusel como bolita (`ActivityCenter.musicCarouselId`), regresa al notch al volver a ella, al tocar su bolita, al terminar la actividad que la desplazó o al dejar de sonar |
 
 ---
 

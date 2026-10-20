@@ -15,6 +15,10 @@
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
 - Carga y batería baja como en el iPhone: la isla se abre a lo ancho con "Cargando" o "Batería baja" y la batería con su porcentaje.
 
+### Carrusel con la música
+- Deslizar a lo ancho sobre la isla ahora también recorre la música: la siguiente bolita pasa al notch y la música se vuelve una bolita rosa; al seguir deslizando (o tocar su bolita) regresa. Claude y la repisa, que no tienen vista para el notch, se saltan.
+- "Traerla al notch" funciona también con la música sonando (antes las bolitas que viven junto a la música no podían pasar al notch).
+
 ### API para tus scripts y apps (nuevo)
 - Cualquier script, Atajo o app pone su propia actividad en la isla: iniciar, actualizar lo que cambia y terminar con resumen, como las Live Activities del iPhone. Contrato v1 (JSON ≤ 4 KB) con título, icono, color, progreso, valor corto, relevancia, alerta, enlace y "sin actualizar".
 - Comando `dynamicnotch` (`start`, `update`, `end`, `list` y `run … -- comando`, que muestra ✓ o ✗ y devuelve el código de salida).

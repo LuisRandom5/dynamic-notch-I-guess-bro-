@@ -179,3 +179,10 @@ killall -9 DynamicNotch 2>/dev/null || true
 4. **Respeta los resortes de Apple**: Las animaciones usan `AnimationSpeedManager.shared.spring(response:dampingFraction:)`. No uses animaciones lineales o temporizadas fijas (`.linear`, `.easeInOut`) para las formas principales del notch; deben sentirse elásticas y físicas.
 5. **El micrófono nunca se usa**: la captura de audio del sistema (process tap) sólo corre mientras algo suena; la cámara y el micrófono sólo se consultan con `…IsRunningSomewhere`.
 6. **Transiciones de las bolitas**: en macOS 27 una transición `.modifier` no le pasa su valor a la vista; para animar entrada y salida usa estado propio (`LiquidSatelliteHost`) y conserva la vista que se va (`departingSatellites`).
+
+## Organización de los archivos grandes (octubre 2026)
+
+- `Views/NotchContainerView.swift`: estado, `body` y vistas de contenido. Extensiones: `+Geometry` (tamaños, radios, escala, sombras, resortes), `+Gestures` (presionar y deslizar), `+Transitions` (abrir y cerrar). Constantes de física en `Views/NotchTuning.swift`.
+- `Core/AppState.swift`: ajustes persistidos y estado. Extensiones: `+Subscriptions` (reacciones a servicios), `+Mode` (compacto, hover, abrir/cerrar, alertas), `+Shelf` (repisa). Opciones de los ajustes en `Core/AppSettingsTypes.swift`.
+- `Activities/ActivityCenter.swift`: publicar, quitar y repartir roles con `PresentationEngine`. Extensiones: `+Carousel` (swipe, traer al notch, la música como bolita), `+Lifecycle` (alertas, 8 h, obsoleto, resumen), `+Fusion` (bolita → notch → tarjeta).
+- API pública de actividades: `Activities/PublicActivityAPI.swift` y `docs/API.md`.
