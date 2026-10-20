@@ -11,6 +11,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
     case airPods4ANC = "AirPods 4 con ANC"
     case airPodsPro1 = "AirPods Pro (1.ª generación)"
     case airPodsPro2 = "AirPods Pro (2.ª generación)"
+    case airPodsPro3 = "AirPods Pro 3"
     case airPodsMax = "AirPods Max"
     case beatsStudio = "Beats Studio"
     case beatsSolo = "Beats Solo"
@@ -23,7 +24,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
     }
     
     public var isPro: Bool {
-        self == .airPodsPro1 || self == .airPodsPro2
+        self == .airPodsPro1 || self == .airPodsPro2 || self == .airPodsPro3
     }
     
     public var isMax: Bool {
@@ -35,7 +36,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
         switch self {
         case .airPods4, .airPods4ANC:
             return "airpods.gen4"
-        case .airPodsPro1, .airPodsPro2:
+        case .airPodsPro1, .airPodsPro2, .airPodsPro3:
             return "airpodspro"
         case .airPodsMax:
             return "airpodsmax"
@@ -57,7 +58,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
         switch self {
         case .airPods4, .airPods4ANC:
             return "airpods.gen4.left"
-        case .airPodsPro1, .airPodsPro2:
+        case .airPodsPro1, .airPodsPro2, .airPodsPro3:
             return "airpodpro.left"
         case .airPodsMax:
             return "airpodsmax"
@@ -73,7 +74,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
         switch self {
         case .airPods4, .airPods4ANC:
             return "airpods.gen4.right"
-        case .airPodsPro1, .airPodsPro2:
+        case .airPodsPro1, .airPodsPro2, .airPodsPro3:
             return "airpodpro.right"
         case .airPodsMax:
             return "airpodsmax"
@@ -89,7 +90,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
         switch self {
         case .airPods4, .airPods4ANC:
             return "airpods.gen4.chargingcase.wireless"
-        case .airPodsPro1, .airPodsPro2:
+        case .airPodsPro1, .airPodsPro2, .airPodsPro3:
             return "airpodspro.chargingcase.wireless"
         case .airPods3:
             return "airpods.gen3.chargingcase.wireless"
@@ -105,23 +106,26 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
     /// Detección precisa basada en Product ID de Bluetooth (0x2019 = AirPods 4) y nombres de hardware
     public static func detect(from name: String, productId: String = "") -> AirPodsModel {
         let cleanPID = productId.trimmingCharacters(in: .whitespaces).lowercased()
+        // Códigos de producto Bluetooth de Apple (los mismos del aviso de la tarjeta del iPhone)
         switch cleanPID {
+        case "0x2002":
+            return .airPods1
+        case "0x200f":
+            return .airPods2
+        case "0x2013":
+            return .airPods3
         case "0x2019":
             return .airPods4
-        case "0x201a", "0x201e":
+        case "0x201a", "0x201b", "0x201e":
             return .airPods4ANC
         case "0x200e":
             return .airPodsPro1
-        case "0x2024", "0x2027":
+        case "0x2014", "0x2024":
             return .airPodsPro2
-        case "0x200f", "0x2013":
-            return .airPods3
-        case "0x200a", "0x201f", "0x2026":
+        case "0x2027":
+            return .airPodsPro3
+        case "0x200a", "0x201f":
             return .airPodsMax
-        case "0x2002":
-            return .airPods2
-        case "0x2001":
-            return .airPods1
         default:
             break
         }
@@ -129,6 +133,8 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
         let lower = name.lowercased()
         if lower.contains("airpods 4") || lower.contains("4.ª gen") || lower.contains("4th gen") {
             return .airPods4
+        } else if lower.contains("pro 3") || lower.contains("pro (3") {
+            return .airPodsPro3
         } else if lower.contains("pro 2") || lower.contains("pro (2") {
             return .airPodsPro2
         } else if lower.contains("pro") {

@@ -20,7 +20,12 @@
 - Carga, carga completa y batería baja como en el iPhone: la isla se abre a los lados con un rebote (igual que al conectar los AirPods) y el contenido sale de la cámara; la batería (dibujada como la del iPhone) se llena con un resorte, el rayo aparece con un rebote al cargar y, con batería baja, sólo el relleno rojo parpadea (el contorno se queda), como la alerta del iPhone. La tarjeta grande de antes ya no sale.
 
 ### AirPods con la animación oficial de Apple
-- Al conectar los AirPods, la isla muestra la animación oficial (el estuche que se abre y los auriculares, con fondo transparente), la misma de la tarjeta del iPhone. Como iOS, se baja una vez de los servidores de Apple (catálogo SharingDeviceAssets, ~8 MB por modelo, verificado con su huella SHA-1) y se guarda en la caché de la app; no viene dentro de la app ni del repositorio. Mientras no se baje, sale la animación de antes.
+- **Animación oficial en la isla:** al conectar los AirPods, la isla muestra la animación oficial de **tu modelo** (el estuche que se abre y los auriculares, con fondo transparente), la misma de la tarjeta del iPhone.
+- **Modelos:** AirPods 1, 2, 3, 4, 4 con cancelación de ruido, Pro, Pro 2 (Lightning y USB-C), Pro 3 y Max (Lightning y USB-C) **en todos sus colores**. El color de los Max se elige en Ajustes, porque macOS no lo dice.
+- **Tarjeta al tocar la isla, como el iPhone:** auricular izquierdo, estuche y auricular derecho con sus imágenes oficiales y su batería. En los Max, girando en bucle.
+- **Bluetooth:** escucha unos segundos el aviso Bluetooth de los AirPods (el de la tarjeta del iPhone) para saber si algo está cargando; nunca se conecta ni manda nada.
+- **Tabla de modelos corregida:** antes 0x200F se tomaba como AirPods 3 (son AirPods 2), y faltaban los Pro 2 con Lightning y los Pro 3.
+- **Descarga:** como iOS, cada paquete se baja una vez de los servidores de Apple (catálogo SharingDeviceAssets, ~4–12 MB, verificado con su huella SHA-1) y se guarda en la caché de la app. No viene dentro de la app ni del repositorio. Sin internet, sale la animación de antes.
 
 ### Carrusel con la música
 - Deslizar a lo ancho sobre la isla ahora también recorre la música: la siguiente bolita pasa al notch y la música se vuelve una bolita rosa; al seguir deslizando (o tocar su bolita) regresa. Claude y la repisa, que no tienen vista para el notch, se saltan.

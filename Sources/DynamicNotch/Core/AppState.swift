@@ -77,6 +77,11 @@ public final class AppState: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(bubbleTapAction.rawValue, forKey: "bubbleTapAction") }
     }
+    @Published public var airPodsMaxColor: AirPodsMaxColor = AirPodsMaxColor(
+        rawValue: UserDefaults.standard.string(forKey: "airPodsMaxColor") ?? ""
+    ) ?? .silver {
+        didSet { UserDefaults.standard.set(airPodsMaxColor.rawValue, forKey: "airPodsMaxColor") }
+    }
     @Published public var messagePreviewPrivacy: MessagePreviewPrivacy = MessagePreviewPrivacy(
         rawValue: UserDefaults.standard.string(forKey: "messagePreviewPrivacy") ?? ""
     ) ?? .hideWhileRecording {

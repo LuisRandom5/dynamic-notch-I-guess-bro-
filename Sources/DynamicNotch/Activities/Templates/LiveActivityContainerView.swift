@@ -45,6 +45,12 @@ public struct LiveActivityContainerView: View {
                         ))
                 case .airpodsPill:
                     ActivityAirPodsPillView(activity: activity)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if center.dismissingActivityId == nil {
+                                center.handleTap()
+                            }
+                        }
                         .transition(.asymmetric(
                             insertion: .opacity.animation(.easeInOut(duration: 0.18)),
                             removal: .opacity.animation(.easeOut(duration: 0.10))

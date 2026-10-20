@@ -100,6 +100,38 @@ public enum MessagePreviewPrivacy: String, CaseIterable, Identifiable {
     }
 }
 
+/// Color de los AirPods Max (para la animación oficial; macOS no lo dice directamente)
+public enum AirPodsMaxColor: String, CaseIterable, Identifiable {
+    case silver, spaceGray, blue, pink, green, midnight, purple, orange
+
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .silver: return "Plata"
+        case .spaceGray: return "Gris espacial"
+        case .blue: return "Azul"
+        case .pink: return "Rosa"
+        case .green: return "Verde"
+        case .midnight: return "Medianoche"
+        case .purple: return "Morado"
+        case .orange: return "Naranja"
+        }
+    }
+    /// Nombre del color en el catálogo de Apple
+    public var catalogVariant: String {
+        switch self {
+        case .silver: return "Silver"
+        case .spaceGray: return "Dark Grey"
+        case .blue: return "Blue"
+        case .pink: return "Red"
+        case .green: return "Green"
+        case .midnight: return "Black"
+        case .purple: return "Purple"
+        case .orange: return "Orange"
+        }
+    }
+}
+
 public enum SatelliteLocationPreference: String, CaseIterable, Identifiable {
     case automatic = "automatic"
     case bothSides = "bothSides"

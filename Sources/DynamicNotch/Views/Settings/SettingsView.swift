@@ -776,9 +776,15 @@ public struct SettingsView: View {
             )
             
             ToggleRow(
-                title: "Animación 3D de AirPods",
-                subtitle: "Muestra la animación PBR de estudio y el estado de batería al conectar AirPods",
+                title: "Animación de AirPods",
+                subtitle: "Al conectarlos, la isla muestra la animación oficial de Apple de tu modelo (el estuche que se abre), la misma de la tarjeta del iPhone, y su batería. Se baja una vez de los servidores de Apple. Toca la isla para ver cada auricular y el estuche.",
                 isOn: $appState.enableAirPodsAnimation
+            )
+            PickerRow(
+                title: "Color de tus AirPods Max",
+                subtitle: "Para mostrar la animación de tu color (macOS no lo dice). Los demás AirPods son blancos.",
+                selection: $appState.airPodsMaxColor,
+                label: { $0.title }
             )
             
             ToggleRow(

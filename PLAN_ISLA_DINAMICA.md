@@ -407,6 +407,18 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 - ✅ **Keyline por actividad (D4)**: cada bolita con el color de su actividad.
 - ✅ **Inglés**: `Resources/en.lproj/Localizable.strings` (450 textos) + `L()` para los textos armados en código. Quedan en español los textos con valores intercalados (p. ej. \"5 min\" en frases) y las herramientas de diagnóstico.
 
+### Para pensar: cómo distribuir la app (anotado el 19 de octubre de 2026)
+
+- **Mac App Store: no entra tal como está.** Exige sandbox y sólo APIs públicas. Dynamic Notch usa:
+  - APIs privadas: MediaRemote ("Ahora suena"), DisplayServices (brillo), SkyLight (pantalla bloqueada), TelephonyUtilities (llamadas), CGS (desenfoque).
+  - Accesibilidad sobre otras apps: WhatsApp Web, Centro de notificaciones, Safari.
+  - Un event tap para las teclas de volumen y brillo, y AppleScript a Safari, Music y Spotify.
+
+  Para entrar habría que quitar o cambiar muchas de las razones por las que existe la app.
+- **Venderla por fuera (lo más conveniente):** firma Developer ID (cuenta de desarrollador, 99 USD/año) + notarización de Apple, y venta con licencias desde una página propia (Paddle, Lemon Squeezy, Gumroad…). Es lo que hacen la mayoría de las apps de notch y barra de menús.
+- **Animaciones oficiales de los AirPods:** son renders de Apple con derechos de autor. Se bajan en tiempo de ejecución de los servidores de Apple y no se incluyen en la app ni en el repo, pero en un producto de pago siguen siendo zona gris. Para la versión comercial pensar en animaciones propias (SceneKit o ilustraciones) y dejar las de Apple como opción apagada, o quitarlas. Consultarlo con alguien de derecho antes de vender.
+- Pendiente de decidir: precio, licencias (por equipo o por persona), actualizaciones (Sparkle) y página de venta.
+
 ---
 
 ## 7. Límites honestos

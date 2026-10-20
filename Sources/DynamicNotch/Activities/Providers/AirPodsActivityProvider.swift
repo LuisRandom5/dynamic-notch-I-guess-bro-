@@ -16,7 +16,7 @@ public final class AirPodsActivityProvider: ObservableObject {
     ) {
         guard AppState.shared.enableAirPodsAnimation else { return }
         // Para la próxima vez: las animaciones oficiales de este modelo (se bajan una vez de Apple)
-        AirPodsAssetService.shared.prefetch(model: BluetoothAudioService.shared.currentAirPodsModel)
+        AirPodsAssetService.shared.prefetch(AirPodsAssetService.currentIdentity)
         
         let state = AirPodsActivityState(
             name: name,
@@ -26,15 +26,20 @@ public final class AirPodsActivityProvider: ObservableObject {
             casePercent: casePercent
         )
         
-        let activity = LiveActivity(
+        var activity = LiveActivity(
             id: providerId,
             priority: ActivityRelevance.hardwareEvent, // supera llamadas y volumen
             style: .airpodsPill,
+            // Al tocar la isla: la tarjeta con cada auricular y el estuche, como el iPhone
+            expandedView: AnyView(AirPodsCardView(state: state)),
             tint: DesignTokens.green,
             duration: duration,
             airpodsState: state,
             isUrgent: true
         )
+        activity.title = name
+        // Escucha unos segundos el aviso Bluetooth: dice si algo está cargando (y, con suerte, el color)
+        AirPodsBLEMonitor.shared.scan(for: 6)
         
         DispatchQueue.main.async {
             ActivityCenter.shared.show(activity)

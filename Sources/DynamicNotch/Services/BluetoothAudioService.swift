@@ -52,6 +52,14 @@ public final class BluetoothAudioService: ObservableObject {
     @Published public private(set) var isAirPodsConnected: Bool = false
     
     public var currentAirPodsModel: AirPodsModel { currentModel }
+    /// Código de producto Bluetooth del modelo conectado (p. ej. "0x2019"); vacío si no se conoce
+    @Published public private(set) var currentProductId: String = ""
+
+    /// Diagnóstico (/debug/airpods-model): hacer como si estuvieran conectados otros AirPods
+    public func simulateModel(productId: String) {
+        currentProductId = productId
+        currentModel = AirPodsModel.detect(from: "", productId: productId)
+    }
     public var currentAirPodsSymbol: String { currentModel.symbolName }
     public var currentAirPodsCaseSymbol: String { currentModel.caseSymbolName }
     public var currentAirPodsLeftSymbol: String { currentModel.leftEarbudSymbol }
@@ -344,11 +352,12 @@ public final class BluetoothAudioService: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.currentModel = detectedModel
+            if !productId.isEmpty { self.currentProductId = productId }
             self.currentDeviceName = currentDevice
             self.isAirPodsConnected = true
             DNDLogger.log("BluetoothAudioService: Modelo confirmado por ProductID (\(productId)) -> \(detectedModel.rawValue) (\(detectedModel.symbolName))")
             // Animaciones oficiales del modelo, listas para la próxima vez que se conecten
-            AirPodsAssetService.shared.prefetch(model: detectedModel)
+            AirPodsAssetService.shared.prefetch(AirPodsAssetService.identity(productId: productId, model: detectedModel))
         }
         
         var primary = 100

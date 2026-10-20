@@ -441,6 +441,46 @@ public final class AgentIPCService {
                 "kind": g.kind.rawValue, "bounds": "\(g.notchBoundsInScreen)", "topInset": g.topInset
             ])
             
+        case ("POST", "/debug/airpods-model"):
+            // Diagnóstico: {"productId": "0x200a", "maxColor": "blue"} y muestra la animación de esos AirPods
+            let json = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any]) ?? [:]
+            DispatchQueue.main.async {
+                if let color = (json["maxColor"] as? String).flatMap(AirPodsMaxColor.init(rawValue:)) {
+                    AppState.shared.airPodsMaxColor = color
+                }
+                if let pid = json["productId"] as? String {
+                    BluetoothAudioService.shared.simulateModel(productId: pid)
+                }
+                if json["show"] as? Bool ?? true {
+                    AirPodsActivityProvider.shared.publishAirPodsActivity(name: "AirPods de prueba", batteryLevel: 80,
+                                                                          leftPercent: 80, rightPercent: 70, casePercent: 45)
+                }
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK",
+                             jsonObject: ["identity": AirPodsAssetService.currentIdentity.map { "\($0.product)-\($0.variant)" } ?? "-"])
+
+        case ("GET", "/debug/airpods-ble"):
+            // Diagnóstico: escucha 8 s el aviso Bluetooth de los AirPods y devuelve la última lectura
+            AirPodsBLEMonitor.shared.scan(for: 8)
+            let reading = DispatchQueue.main.sync { AirPodsBLEMonitor.shared.latest }
+            var info: [String: Any] = ["scanning": true]
+            DispatchQueue.main.sync {
+                info["bluetooth"] = AirPodsBLEMonitor.shared.stateDescription
+                info["appleTypes"] = AirPodsBLEMonitor.shared.appleTypesSeen.map { String(format: "0x%02x:%d", $0.key, $0.value) }.sorted()
+            }
+            if let r = reading {
+                info["productId"] = r.productIdHex
+                info["color"] = Int(r.color)
+                info["left"] = r.left ?? -1
+                info["right"] = r.right ?? -1
+                info["case"] = r.caseLevel ?? -1
+                info["charging"] = [r.leftCharging, r.rightCharging, r.caseCharging]
+                info["rssi"] = r.rssi
+                info["raw"] = r.raw
+                info["age"] = Date().timeIntervalSince(r.at)
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: info)
+
         case ("GET", "/debug/whatsapp"):
             let rows = WhatsAppWebObserverService.shared.debugRows()
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["rows": rows])

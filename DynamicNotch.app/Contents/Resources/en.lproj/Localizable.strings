@@ -450,3 +450,15 @@
 "📍 Ubicación" = "📍 Location";
 "📷 Foto" = "📷 Photo";
 "🔍 Sonda Drag & Drop (Paso 0)" = "🔍 Drag & Drop Probe (Step 0)";
+"Animación de AirPods" = "AirPods animation";
+"Al conectarlos, la isla muestra la animación oficial de Apple de tu modelo (el estuche que se abre), la misma de la tarjeta del iPhone, y su batería. Se baja una vez de los servidores de Apple. Toca la isla para ver cada auricular y el estuche." = "When they connect, the island shows Apple's official animation for your model (the case opening), the same as the iPhone card, plus its battery. It's downloaded once from Apple's servers. Tap the island to see each earbud and the case.";
+"Color de tus AirPods Max" = "Your AirPods Max color";
+"Para mostrar la animación de tu color (macOS no lo dice). Los demás AirPods son blancos." = "To show the animation in your color (macOS doesn't report it). Other AirPods are white.";
+"Plata" = "Silver";
+"Gris espacial" = "Space Gray";
+"Azul" = "Blue";
+"Rosa" = "Pink";
+"Verde" = "Green";
+"Medianoche" = "Midnight";
+"Morado" = "Purple";
+"Naranja" = "Orange";
