@@ -16,6 +16,7 @@ public final class SystemStatusActivityProvider {
     private static let capsLockId = "system_capslock"
     private static let networkId = "system_network"
     private static let privacyId = "system_privacy"
+    private static let focusId = "system_focus"
 
     private var flagsMonitors: [Any] = []
     private var capsLockOn = false
@@ -25,7 +26,9 @@ public final class SystemStatusActivityProvider {
     private var pendingNetwork: DispatchWorkItem?
     private var privacyTimer: Timer?
     private let privacyQueue = DispatchQueue(label: "com.luisrandom.DynamicNotch.Privacy", qos: .utility)
-    private var privacyState: (camera: Bool, microphone: Bool) = (false, false)
+    private var privacyState: (camera: Bool, microphone: Bool, voiceMemo: Bool) = (false, false, false)
+    /// Inicio de la grabación de Notas de Voz (para el tiempo que corre en la isla)
+    private var voiceMemoStartedAt = Date()
     /// Al arrancar el estado actual sólo se registra (no es un cambio)
     private var startedAt = Date.distantFuture
     private static let launchGrace: TimeInterval = 5
@@ -37,6 +40,7 @@ public final class SystemStatusActivityProvider {
         startCapsLock()
         startNetwork()
         startPrivacy()
+        startFocus()
     }
 
     private var isPastLaunchGrace: Bool { Date().timeIntervalSince(startedAt) > Self.launchGrace }
@@ -72,6 +76,42 @@ public final class SystemStatusActivityProvider {
             tint: on ? DesignTokens.green : Color.white.opacity(0.7),
             duration: 1.6
         )
+    }
+
+    // MARK: Concentración (No molestar)
+
+    /// macOS no tiene API pública para leer Concentración sin "Acceso total al disco" o un permiso especial;
+    /// el Centro de notificaciones publica estos avisos al cambiar "No molestar"
+    private static let focusOnNotification = Notification.Name("_NSDoNotDisturbEnabledNotification")
+    private static let focusOffNotification = Notification.Name("_NSDoNotDisturbDisabledNotification")
+    private var focusObservers: [NSObjectProtocol] = []
+
+    private func startFocus() {
+        let center = DistributedNotificationCenter.default()
+        for (name, on) in [(Self.focusOnNotification, true), (Self.focusOffNotification, false)] {
+            focusObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                DNDLogger.log("SystemStatus: Concentración \(on ? "activada" : "desactivada")")
+                self?.focusChanged(on: on)
+            })
+        }
+    }
+
+    private func focusChanged(on: Bool) {
+        guard isPastLaunchGrace, AppState.shared.focusIndicatorEnabled else { return }
+        let indigo = Color(red: 0.42, green: 0.40, blue: 0.95)
+        publishBrief(
+            id: Self.focusId,
+            icon: on ? "moon.fill" : "moon",
+            label: on ? "Concentración" : "Desactivada",
+            tint: on ? indigo : Color.white.opacity(0.7),
+            duration: 2.0,
+            wide: on
+        )
+    }
+
+    /// Prueba (dnpost testFocus): el aviso sin esperar a macOS
+    public func simulateFocusChange(on: Bool) {
+        focusChanged(on: on)
     }
 
     // MARK: Red y VPN
@@ -139,23 +179,34 @@ public final class SystemStatusActivityProvider {
     private func pollPrivacy() {
         guard AppState.shared.privacyIndicatorEnabled else {
             if privacyState.camera || privacyState.microphone {
-                privacyState = (false, false)
+                privacyState = (false, false, false)
                 ActivityCenter.shared.remove(id: Self.privacyId)
             }
             return
         }
+        let voiceMemosOpen = !NSRunningApplication.runningApplications(withBundleIdentifier: Self.voiceMemosBundleId).isEmpty
         privacyQueue.async { [weak self] in
             let camera = Self.isAnyCameraRunning()
             let microphone = Self.isDefaultInputRunning()
-            DispatchQueue.main.async { self?.updatePrivacy(camera: camera, microphone: microphone) }
+            DispatchQueue.main.async {
+                self?.updatePrivacy(camera: camera, microphone: microphone, voiceMemo: microphone && voiceMemosOpen)
+            }
         }
     }
 
-    private func updatePrivacy(camera: Bool, microphone: Bool) {
-        guard camera != privacyState.camera || microphone != privacyState.microphone else { return }
-        privacyState = (camera, microphone)
+    private static let voiceMemosBundleId = "com.apple.VoiceMemos"
+
+    private func updatePrivacy(camera: Bool, microphone: Bool, voiceMemo: Bool) {
+        guard camera != privacyState.camera || microphone != privacyState.microphone || voiceMemo != privacyState.voiceMemo else { return }
+        let wasVoiceMemo = privacyState.voiceMemo
+        privacyState = (camera, microphone, voiceMemo)
         guard camera || microphone else {
             ActivityCenter.shared.end(id: Self.privacyId, dismissAfter: 0)
+            return
+        }
+        if voiceMemo && !camera {
+            if !wasVoiceMemo { voiceMemoStartedAt = Date() }
+            publishVoiceMemo()
             return
         }
         // Como los puntos de privacidad del iPhone: verde la cámara, naranja el micrófono
@@ -175,6 +226,36 @@ public final class SystemStatusActivityProvider {
             tint: tint
         )
         activity.prefersBubble = true
+        ActivityCenter.shared.publish(activity)
+    }
+
+    /// Como en el iPhone: grabando en Notas de Voz, la isla muestra la onda roja y el tiempo que corre
+    private func publishVoiceMemo() {
+        let red = DesignTokens.red
+        var activity = LiveActivity(
+            id: Self.privacyId,
+            kind: .recording,
+            priority: ActivityRelevance.generic,
+            style: .pill,
+            title: "Grabando",
+            subtitle: "Notas de Voz",
+            leading: AnyView(
+                Image(systemName: "waveform")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(red)
+                    .symbolEffect(.variableColor.iterative, options: .repeating)
+            ),
+            trailing: AnyView(
+                Text(voiceMemoStartedAt, style: .timer)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundColor(red)
+                    .fixedSize()
+            ),
+            bolitaVariant: .color(bgColor: red.opacity(0.22), fgColor: red, iconName: "waveform"),
+            tint: red
+        )
+        activity.prefersBubble = MusicService.shared.currentTrack.isPlaying
         ActivityCenter.shared.publish(activity)
     }
 
@@ -236,7 +317,7 @@ public final class SystemStatusActivityProvider {
 
     /// Aviso de pocos segundos en el notch, como el del interruptor de silencio del iPhone: entra de inmediato
     /// (urgente) y regresa a lo que había
-    private func publishBrief(id: String, icon: String, label: String, tint: Color, duration: TimeInterval) {
+    private func publishBrief(id: String, icon: String, label: String, tint: Color, duration: TimeInterval, wide: Bool = false) {
         var notice = LiveActivity(
             id: id,
             priority: ActivityRelevance.systemStatus,
@@ -262,6 +343,8 @@ public final class SystemStatusActivityProvider {
         )
         // Como el volumen: el notch se recoge por completo y la música regresa tras la pausa
         notice.isSystemNotice = true
+        // Texto largo ("Concentración"): alas un poco más anchas
+        if wide { notice.customExpandedWidth = ScreenService.shared.currentGeometry.width + 200 }
         ActivityCenter.shared.publish(notice)
     }
 }

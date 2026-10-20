@@ -24,6 +24,10 @@ public struct QuickReplyNotificationView: View {
     }
     public var title: String { livePayload?.title ?? initialTitle }
     public var message: String { livePayload?.message ?? initialMessage }
+    /// Lo que se muestra: "Mensaje nuevo" si el ajuste de privacidad lo pide (p. ej. grabando la pantalla)
+    private var displayedMessage: String {
+        NotificationActivityProvider.hidesMessageText ? "Mensaje nuevo" : message
+    }
     public var handle: String { livePayload?.handle ?? initialHandle }
     public var avatar: NSImage? { livePayload?.avatar ?? initialAvatar }
     public var enableQuickReply: Bool { livePayload?.enableQuickReply ?? initialQuickReply }
@@ -173,7 +177,7 @@ public struct QuickReplyNotificationView: View {
                 }
                 .frame(height: 18)
 
-                Text(message)
+                Text(displayedMessage)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(Color.white.opacity(0.88))
                     .lineLimit(2)
@@ -324,7 +328,7 @@ public struct QuickReplyNotificationView: View {
                         .foregroundColor(tintColor)
                     }
                     
-                    Text(message)
+                    Text(displayedMessage)
                         .font(.system(size: 12.5, weight: .regular))
                         .foregroundColor(Color.white.opacity(0.92))
                         .lineLimit(3)

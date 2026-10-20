@@ -15,6 +15,13 @@
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
 - Carga y batería baja como en el iPhone: la isla se abre a lo ancho con "Cargando" o "Batería baja" y la batería con su porcentaje.
 
+### Integraciones nuevas (Ajustes › Actividades › Integraciones del sistema)
+- **Carga completa:** aviso al llegar al 100 % con el cargador conectado (una vez por conexión).
+- **Notas de Voz:** mientras grabas, la isla muestra la onda roja y el tiempo, como en el iPhone.
+- **Texto de los mensajes:** mostrar siempre, ocultar al grabar la pantalla (por defecto) u ocultar siempre; oculto dice "Mensaje nuevo".
+- **Concentración:** aviso con la luna al activar o desactivar No molestar (escucha el aviso interno del sistema; sin probar en macOS 27).
+- **Próxima reunión:** 5 min antes de un evento sale una bolita con la cuenta regresiva y se expande un momento; botón para unirse con Zoom, Meet, Teams, Webex o FaceTime. Apagada por defecto: pide permiso de Calendario al encenderla.
+
 ### Rendimiento
 - Con música, el uso de CPU baja de ~22 % a ~13 %.
 - Fuga de memoria: el interceptor de volumen y brillo retenía cada tecla pulsada (miles de eventos por hora que nunca se liberaban).

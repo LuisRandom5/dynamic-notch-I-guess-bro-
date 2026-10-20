@@ -113,6 +113,20 @@ public final class NotificationActivityProvider: ObservableObject {
     /// Actualiza en caliente el título, mensaje y avatar de la notificación activa sin parpadeo
     /// Sólo tiene sentido responder si sabemos a QUIÉN: un remitente genérico ("WhatsApp") o un resumen
     /// ("2 mensajes nuevos sin leer") no identifican un chat, así que se ofrece abrir la app en su lugar.
+    /// ¿Ocultar el texto de los mensajes ahora? (ajuste "Texto de los mensajes")
+    public static var hidesMessageText: Bool {
+        switch AppState.shared.messagePreviewPrivacy {
+        case .always: return false
+        case .never: return true
+        case .hideWhileRecording: return isScreenBeingRecorded
+        }
+    }
+
+    /// La herramienta de captura del sistema (Cmd+Shift+5, QuickTime) está abierta: puede estar grabando
+    public static var isScreenBeingRecorded: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.screencaptureui").isEmpty
+    }
+
     public static func canQuickReply(title: String, message: String) -> Bool {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if t.isEmpty || t == "whatsapp" || t == "whatsapp web" || t == "mensajes" || t == "messages" { return false }

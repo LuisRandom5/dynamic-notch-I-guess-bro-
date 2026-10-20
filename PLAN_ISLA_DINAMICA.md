@@ -394,6 +394,8 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 | # | Pendiente | Estado |
 |---|---|---|
 | 1 | WhatsApp con la pestaña de fondo: el lector de la lista de chats con JavaScript (mensaje real, fotos, stickers…) está listo y probado con una lista simulada, pero Safari sigue respondiendo "You must enable 'Allow JavaScript from Apple Events'". Luis no encontró la opción. Revisar juntos: Safari → Ajustes → Avanzado → "Mostrar funciones para desarrolladores web"; luego Ajustes → Desarrollador → "Permitir JavaScript desde Apple Events" (pide contraseña) y reiniciar Safari. Probar con `do JavaScript "1+1"`. Mientras tanto se usa el aviso genérico. | Pendiente de probar |
+| 2 | Concentración: se escuchan `_NSDoNotDisturbEnabledNotification` / `…Disabled…`; probar activando No molestar (si no sale el aviso, macOS 27 ya no los publica). | Pendiente de probar |
+| 3 | Próxima reunión: probar con un evento real (pide permiso de Calendario al encender el ajuste). | Pendiente de probar |
 
 ---
 

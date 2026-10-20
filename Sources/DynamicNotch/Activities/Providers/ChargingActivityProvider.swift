@@ -104,6 +104,19 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         AppState.shared.hapticService.triggerAlert()
     }
 
+    /// Como en el iPhone: al llegar al 100 % con el cargador conectado
+    public func publishFullyChargedActivity() {
+        publishBatteryNotice(
+            id: providerId,
+            label: "Carga completa",
+            labelColor: Color.white.opacity(0.92),
+            percentage: 100,
+            tint: DesignTokens.green,
+            showBolt: false,
+            duration: 3.0
+        )
+    }
+
     /// Aviso breve en las alas de la isla (como el volumen o Bloq Mayús): entra de inmediato, todo lo demás se
     /// recoge y regresa al terminar
     private func publishBatteryNotice(id: String, label: String, labelColor: Color, percentage: Int, tint: Color,

@@ -18,10 +18,14 @@ public final class BatteryService: ObservableObject {
     public var onPowerConnected: ((Int) -> Void)?
     public var onPowerDisconnected: (() -> Void)?
     public var onLowBattery: ((Int) -> Void)?
+    /// Llegó a carga completa con el cargador conectado (una vez por conexión, como el iPhone)
+    public var onFullyCharged: (() -> Void)?
     
     private var runLoopSource: CFRunLoopSource?
     private var previousPluggedIn: Bool?
     private var alertedThresholds: Set<Int> = []
+    /// En esta conexión del cargador se vio cargando por debajo del 100 % y aún no se avisó de carga completa
+    private var pendingFullChargeNotice = false
     
     private init() {
         refreshBatteryStatus(notifyOnChange: false)
@@ -46,6 +50,7 @@ public final class BatteryService: ObservableObject {
             let isCharging = description[kIOPSIsChargingKey] as? Bool ?? false
             let powerState = description[kIOPSPowerSourceStateKey] as? String ?? ""
             let isPluggedIn = powerState == kIOPSACPowerValue
+            let isCharged = description[kIOPSIsChargedKey] as? Bool ?? false
             
             let percentage = max > 0 ? Int((Double(current) / Double(max)) * 100.0) : current
             let newStatus = BatteryStatus(percentage: percentage, isCharging: isCharging, isPluggedIn: isPluggedIn)
@@ -70,6 +75,18 @@ public final class BatteryService: ObservableObject {
                 }
             }
             
+            // Carga completa: sólo si en esta conexión se estuvo cargando (no al conectar ya lleno)
+            if !isPluggedIn {
+                pendingFullChargeNotice = false
+            } else if isCharging && percentage < 100 {
+                pendingFullChargeNotice = true
+            } else if pendingFullChargeNotice && (isCharged || percentage >= 100) {
+                pendingFullChargeNotice = false
+                if notifyOnChange {
+                    DispatchQueue.main.async { [weak self] in self?.onFullyCharged?() }
+                }
+            }
+
             if notifyOnChange, let wasPluggedIn = wasPluggedIn {
                 if !wasPluggedIn && isPluggedIn {
                     // Charger just connected (MagSafe snap!)

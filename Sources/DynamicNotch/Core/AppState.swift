@@ -83,6 +83,22 @@ public enum BubbleTapAction: String, CaseIterable, Identifiable {
     }
 }
 
+/// Texto de los mensajes en los avisos (WhatsApp, Mensajes), como "Mostrar vistas previas" del iPhone
+public enum MessagePreviewPrivacy: String, CaseIterable, Identifiable {
+    case always
+    case hideWhileRecording
+    case never
+
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .always: return "Mostrar siempre"
+        case .hideWhileRecording: return "Ocultar al grabar la pantalla"
+        case .never: return "Ocultar siempre"
+        }
+    }
+}
+
 public enum SatelliteLocationPreference: String, CaseIterable, Identifiable {
     case automatic = "automatic"
     case bothSides = "bothSides"
@@ -175,6 +191,11 @@ public final class AppState: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(bubbleTapAction.rawValue, forKey: "bubbleTapAction") }
     }
+    @Published public var messagePreviewPrivacy: MessagePreviewPrivacy = MessagePreviewPrivacy(
+        rawValue: UserDefaults.standard.string(forKey: "messagePreviewPrivacy") ?? ""
+    ) ?? .hideWhileRecording {
+        didSet { UserDefaults.standard.set(messagePreviewPrivacy.rawValue, forKey: "messagePreviewPrivacy") }
+    }
     /// Las alertas de actividades también suenan (si la actualización lo pide)
     @Published public var liveActivityAlertSound: Bool = UserDefaults.standard.object(forKey: "liveActivityAlertSound") != nil
         ? UserDefaults.standard.bool(forKey: "liveActivityAlertSound") : true {
@@ -237,6 +258,18 @@ public final class AppState: ObservableObject {
     @Published public var privacyIndicatorEnabled: Bool = UserDefaults.standard.object(forKey: "privacyIndicatorEnabled") != nil
         ? UserDefaults.standard.bool(forKey: "privacyIndicatorEnabled") : true {
         didSet { UserDefaults.standard.set(privacyIndicatorEnabled, forKey: "privacyIndicatorEnabled") }
+    }
+    /// Próxima reunión del Calendario (apagado por defecto: pide permiso de Calendario al encenderlo)
+    @Published public var calendarActivityEnabled: Bool = UserDefaults.standard.bool(forKey: "calendarActivityEnabled") {
+        didSet {
+            UserDefaults.standard.set(calendarActivityEnabled, forKey: "calendarActivityEnabled")
+            if calendarActivityEnabled != oldValue { CalendarActivityProvider.shared.setEnabled(calendarActivityEnabled) }
+        }
+    }
+    /// Aviso al activar o desactivar Concentración (No molestar)
+    @Published public var focusIndicatorEnabled: Bool = UserDefaults.standard.object(forKey: "focusIndicatorEnabled") != nil
+        ? UserDefaults.standard.bool(forKey: "focusIndicatorEnabled") : true {
+        didSet { UserDefaults.standard.set(focusIndicatorEnabled, forKey: "focusIndicatorEnabled") }
     }
     /// Bolita con el progreso de las descargas (Safari y apps que publican su progreso en Descargas)
     @Published public var downloadsActivityEnabled: Bool = UserDefaults.standard.object(forKey: "downloadsActivityEnabled") != nil
@@ -756,6 +789,10 @@ public final class AppState: ObservableObject {
         // Alerta de Batería Baja automática estilo Apple Card / Dynamic Island
         batteryService.onLowBattery = { percentage in
             ChargingActivityProvider.shared.publishLowBatteryActivity(percentage: percentage)
+        }
+
+        batteryService.onFullyCharged = {
+            ChargingActivityProvider.shared.publishFullyChargedActivity()
         }
         
         // Volume change listener

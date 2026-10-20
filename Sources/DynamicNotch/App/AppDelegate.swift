@@ -148,6 +148,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             ChargingActivityProvider.shared.publishChargingActivity(percentage: 83, isLowPower: false, isPluggedIn: true)
         }
 
+        notifCenter.observe("com.luisrandom.DynamicNotch.testFullCharge") { _ in
+            ChargingActivityProvider.shared.publishFullyChargedActivity()
+        }
+
+        notifCenter.observe("com.luisrandom.DynamicNotch.testFocus") { _ in
+            SystemStatusActivityProvider.shared.simulateFocusChange(on: true)
+        }
+
+        notifCenter.observe("com.luisrandom.DynamicNotch.testMeeting") { _ in
+            CalendarActivityProvider.shared.showSample()
+        }
+
         notifCenter.observe("com.luisrandom.DynamicNotch.testLowBattery") { _ in
             ChargingActivityProvider.shared.publishLowBatteryActivity(percentage: 10)
         }
@@ -384,6 +396,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // Avisos del sistema (Bloq Mayús, red/VPN, cámara/micrófono en uso) y descargas en curso
         SystemStatusActivityProvider.shared.start()
         DownloadsActivityProvider.shared.start()
+        CalendarActivityProvider.shared.start()
         
         // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()

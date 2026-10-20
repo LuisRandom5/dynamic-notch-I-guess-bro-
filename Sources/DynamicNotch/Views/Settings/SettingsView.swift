@@ -1712,6 +1712,11 @@ extension SettingsView {
                 isOn: $appState.capsLockIndicatorEnabled
             )
             ToggleRow(
+                title: "Concentración",
+                subtitle: "Aviso con la luna al activar o desactivar Concentración (No molestar), como en el iPhone.",
+                isOn: $appState.focusIndicatorEnabled
+            )
+            ToggleRow(
                 title: "Conexión y VPN",
                 subtitle: "Aviso al perder o recuperar internet y al conectar o desconectar una VPN de túnel completo.",
                 isOn: $appState.networkIndicatorEnabled
@@ -1720,6 +1725,17 @@ extension SettingsView {
                 title: "Cámara y micrófono en uso",
                 subtitle: "Bolita verde (cámara) o naranja (micrófono) mientras alguna app los usa. Sólo se consulta si están en uso; Dynamic Notch nunca los abre.",
                 isOn: $appState.privacyIndicatorEnabled
+            )
+            PickerRow(
+                title: "Texto de los mensajes",
+                subtitle: "En los avisos de WhatsApp y Mensajes. Al grabar la pantalla (Cmd+Shift+5 o QuickTime) sólo dice \"Mensaje nuevo\". En videollamadas que comparten pantalla elige \"Ocultar siempre\": no hay forma de detectarlas.",
+                selection: $appState.messagePreviewPrivacy,
+                label: { $0.title }
+            )
+            ToggleRow(
+                title: "Próxima reunión",
+                subtitle: "5 min antes de un evento del Calendario sale una bolita con la cuenta regresiva; clic para unirte si trae enlace de Zoom, Meet, Teams, Webex o FaceTime. Al encenderlo macOS pide permiso de Calendario.",
+                isOn: $appState.calendarActivityEnabled
             )
             ToggleRow(
                 title: "Descargas",
