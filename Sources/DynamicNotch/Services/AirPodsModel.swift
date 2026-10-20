@@ -155,7 +155,7 @@ public enum AirPodsModel: String, CaseIterable, Equatable {
             return .beatsEarphones
         }
 
-        // Si el nombre no incluye la generación explícita (ej. "AirPods de Luis Angel"),
+        // Si el nombre no incluye la generación explícita (ej. "AirPods de Ana"),
         // consultar IOBluetoothDevice conectados actualmente para obtener el nombre de hardware de fábrica
         if let pairedDevices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
             for dev in pairedDevices where dev.isConnected() {

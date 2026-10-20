@@ -12,6 +12,8 @@ public final class DebugOverlayManager: ObservableObject {
     private var keyMonitor: Any?
     
     private init() {
+        // Superposición de una imagen de referencia (⌘⇧O): herramienta de desarrollo, no en la beta
+        guard BuildFlavor.hasDeveloperTools else { return }
         lookForDefaultReferenceImage()
         setupKeyboardShortcut()
     }
@@ -40,11 +42,12 @@ public final class DebugOverlayManager: ObservableObject {
     }
     
     private func lookForDefaultReferenceImage() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
         let defaultPaths = [
-            "/Users/luisangelceroncastro/Documents/Dynamic Notch/reference.png",
-            "/Users/luisangelceroncastro/Documents/Dynamic Notch/reference.jpg",
-            "/Users/luisangelceroncastro/Desktop/reference.png",
-            "/Users/luisangelceroncastro/Downloads/reference.png"
+            "\(home)/Documents/Dynamic Notch/reference.png",
+            "\(home)/Documents/Dynamic Notch/reference.jpg",
+            "\(home)/Desktop/reference.png",
+            "\(home)/Downloads/reference.png"
         ]
         
         for path in defaultPaths {

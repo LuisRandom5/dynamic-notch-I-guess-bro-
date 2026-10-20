@@ -81,7 +81,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = LockScreenManager.shared
         
         // Mostrar pantalla de onboarding si no se cuenta aún con permisos de accesibilidad
-        AccessibilityOnboardingWindowController.showIfNeeded()
+        WelcomeWindowController.showIfNeeded()
         
         // Observadores de notificaciones distribuidas para pruebas y bisección con entrega inmediata
         notifCenter.observe("com.luisrandom.DynamicNotch.expand") { _ in
@@ -193,7 +193,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         
         notifCenter.observe("com.luisrandom.DynamicNotch.testAirPods") { _ in
             AirPodsActivityProvider.shared.publishAirPodsActivity(
-                name: "AirPods Pro de Luis",
+                name: "AirPods Pro",
                 batteryLevel: 100,
                 leftPercent: 100,
                 rightPercent: 100,
@@ -307,7 +307,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         notifCenter.observe("com.luisrandom.DynamicNotch.testAirDrop") { _ in
-            AirDropActivityProvider.shared.startSimulatedTransfer(fileName: "Foto de Luis.heic", sender: "iPhone de Luis")
+            AirDropActivityProvider.shared.startSimulatedTransfer(fileName: "Foto.heic", sender: "iPhone de Ana")
         }
         
         notifCenter.observe("com.luisrandom.DynamicNotch.activateWhatsApp") { _ in
@@ -474,7 +474,15 @@ final class ImmediateNotificationCenter: NSObject {
     static let shared = ImmediateNotificationCenter()
     private var handlers: [String: [(Notification) -> Void]] = [:]
     
+    /// En la beta sólo se escuchan estos avisos; los disparadores de prueba (testCharging, openTestPanel…) no existen
+    private static let betaAllowed: Set<String> = [
+        "com.luisrandom.DynamicNotch.terminateOlderInstances",
+        "com.luisrandom.DynamicNotch.quitAll",
+        "com.luisrandom.DynamicNotch.openSettings"
+    ]
+
     func observe(_ name: String, handler: @escaping (Notification) -> Void) {
+        guard BuildFlavor.hasDeveloperTools || Self.betaAllowed.contains(name) else { return }
         let notifName = NSNotification.Name(name)
         if handlers[name] == nil {
             handlers[name] = []

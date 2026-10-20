@@ -75,6 +75,22 @@
   - Al cerrarse un mensaje ya no se asoma el texto viejo por fuera de la isla.
   - El borde fino de color aparece cuando la forma ya llegó, en vez de verse como una píldora fantasma más grande.
 
+### Beta para probadores (nuevo)
+- `./scripts/build_app.sh --beta` arma un `.zip` con la app y una guía de instalación, sin las herramientas de desarrollo:
+  - Fuera: demostraciones de prueba, paneles, Animation Studio, laboratorios, cámara lenta, disparadores de prueba y rutas `/debug`.
+  - La app de desarrollo no cambia.
+- Bienvenida con todos los permisos en una sola ventana:
+  - Accesibilidad (necesaria), Calendario, Contactos y Bluetooth (opcionales).
+  - Cada uno con su estado y su botón; también desde el menú → "Permisos…".
+- "Enviar comentarios…" en el menú: guarda en el escritorio un `.zip` con el registro de la app y datos del Mac.
+- La música de Safari, YouTube y otras apps funciona en cualquier Mac:
+  - Antes necesitaba las herramientas de desarrollo de Apple; en un Mac sin ellas aparecía una y otra vez la ventana para instalarlas.
+  - Ahora el puente lo carga `/usr/bin/perl`, que viene en todos los Mac. Usa menos memoria y no compila nada al arrancar.
+- El servidor local (`127.0.0.1:48123`) ya no atiende a páginas web:
+  - Antes cualquier sitio abierto en el navegador podía leer el estado de la isla o mostrar avisos falsos.
+  - Los scripts y los hooks de Claude siguen funcionando igual.
+- Sin rutas a carpetas personales ni nombres reales en las demostraciones; la versión mínima declarada ahora es macOS 14 (la que de verdad necesita).
+
 ### Estabilidad
 - Una tarjeta abierta ya no se queda abierta para siempre:
   - Se cierra sola a los 15 s si nadie tiene el puntero encima.

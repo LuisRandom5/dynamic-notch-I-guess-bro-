@@ -46,6 +46,12 @@
 ```
 Esto genera `DynamicNotch.app` firmada localmente para tu Mac.
 
+### Beta para probadores
+```bash
+./scripts/build_app.sh --beta
+```
+Genera `dist/DynamicNotch-2.1-beta.1.zip` (la app y `docs/BETA_LEEME.md` como guía de instalación) sin las herramientas de desarrollo: sin demostraciones de prueba, paneles, Animation Studio, cámara lenta ni rutas `/debug`. No toca tu `DynamicNotch.app`. Para la siguiente: `BETA_NUMBER=2 ./scripts/build_app.sh --beta`.
+
 ### 2. Abrir la app:
 ```bash
 open DynamicNotch.app

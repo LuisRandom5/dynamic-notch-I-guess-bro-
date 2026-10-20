@@ -97,7 +97,7 @@ public final class AirDropActivityProvider: ObservableObject {
     }
     
     /// Inicia una transferencia simulada (menú de pruebas)
-    public func startSimulatedTransfer(fileName: String = "Proyecto Final.zip", sender: String = "iPhone de Luis") {
+    public func startSimulatedTransfer(fileName: String = "Proyecto Final.zip", sender: String = "iPhone de Ana") {
         transferTimer?.invalidate()
         beginTransfer(.receiving)
         transferTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: false) { [weak self] _ in

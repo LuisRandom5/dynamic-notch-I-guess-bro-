@@ -10,3 +10,4 @@ coverage/
 *.xcodeproj
 *.xcworkspace
 
+.build-beta/

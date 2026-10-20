@@ -83,7 +83,7 @@ public final class StatusItemManager: NSObject {
         menu.addItem(hudSuppressItem)
         
         let accessItem = NSMenuItem(
-            title: hasPermission ? "✓ Permiso de Accesibilidad Concedido" : "⚠️ Configurar Permisos de Accesibilidad...",
+            title: hasPermission ? L("Permisos…") : L("⚠️ Falta un permiso: Accesibilidad…"),
             action: #selector(openAccessibilityOnboarding),
             keyEquivalent: ""
         )
@@ -92,120 +92,127 @@ public final class StatusItemManager: NSObject {
         
         menu.addItem(NSMenuItem.separator())
         
-        // Test demos submenu
-        let testMenu = NSMenu()
+        // Demostraciones, paneles de prueba y laboratorios: sólo en la compilación de desarrollo (no en la beta)
+        if BuildFlavor.hasDeveloperTools {
+            // Test demos submenu
+            let testMenu = NSMenu()
         
-        let brightnessTest = NSMenuItem(title: L("Slider Brillo (75%)"), action: #selector(testBrightnessSlider), keyEquivalent: "")
-        brightnessTest.target = self
-        testMenu.addItem(brightnessTest)
+            let brightnessTest = NSMenuItem(title: L("Slider Brillo (75%)"), action: #selector(testBrightnessSlider), keyEquivalent: "")
+            brightnessTest.target = self
+            testMenu.addItem(brightnessTest)
         
-        let volumeTest = NSMenuItem(title: L("Slider Volumen (60%)"), action: #selector(testVolumeSlider), keyEquivalent: "")
-        volumeTest.target = self
-        testMenu.addItem(volumeTest)
+            let volumeTest = NSMenuItem(title: L("Slider Volumen (60%)"), action: #selector(testVolumeSlider), keyEquivalent: "")
+            volumeTest.target = self
+            testMenu.addItem(volumeTest)
         
-        let muteTest = NSMenuItem(title: L("Slider Volumen Silenciado (Mute)"), action: #selector(testMuteSlider), keyEquivalent: "")
-        muteTest.target = self
-        testMenu.addItem(muteTest)
+            let muteTest = NSMenuItem(title: L("Slider Volumen Silenciado (Mute)"), action: #selector(testMuteSlider), keyEquivalent: "")
+            muteTest.target = self
+            testMenu.addItem(muteTest)
         
-        testMenu.addItem(NSMenuItem.separator())
+            testMenu.addItem(NSMenuItem.separator())
         
-        let magSafeTest = NSMenuItem(title: L("Animación MagSafe (88%)"), action: #selector(testMagSafe), keyEquivalent: "")
-        magSafeTest.target = self
-        testMenu.addItem(magSafeTest)
+            let magSafeTest = NSMenuItem(title: L("Animación MagSafe (88%)"), action: #selector(testMagSafe), keyEquivalent: "")
+            magSafeTest.target = self
+            testMenu.addItem(magSafeTest)
         
-        let airPods4Test = NSMenuItem(title: L("Animación AirPods 4 (88% / 90% / 100%)"), action: #selector(testAirPods4), keyEquivalent: "")
-        airPods4Test.target = self
-        testMenu.addItem(airPods4Test)
+            let airPods4Test = NSMenuItem(title: L("Animación AirPods 4 (88% / 90% / 100%)"), action: #selector(testAirPods4), keyEquivalent: "")
+            airPods4Test.target = self
+            testMenu.addItem(airPods4Test)
         
-        let airPodsTest = NSMenuItem(title: L("Animación AirPods Pro (95% / 90% / 100%)"), action: #selector(testAirPods), keyEquivalent: "")
-        airPodsTest.target = self
-        testMenu.addItem(airPodsTest)
+            let airPodsTest = NSMenuItem(title: L("Animación AirPods Pro (95% / 90% / 100%)"), action: #selector(testAirPods), keyEquivalent: "")
+            airPodsTest.target = self
+            testMenu.addItem(airPodsTest)
         
-        let lockScreenTest = NSMenuItem(title: L("Previsualizar Reproductor Lock Screen (10s)"), action: #selector(testLockScreenPreview), keyEquivalent: "")
-        lockScreenTest.target = self
-        testMenu.addItem(lockScreenTest)
+            let lockScreenTest = NSMenuItem(title: L("Previsualizar Reproductor Lock Screen (10s)"), action: #selector(testLockScreenPreview), keyEquivalent: "")
+            lockScreenTest.target = self
+            testMenu.addItem(lockScreenTest)
         
-        let batteryLowTest = NSMenuItem(title: L("Alerta Batería Baja (12%)"), action: #selector(testBatteryLow), keyEquivalent: "")
-        batteryLowTest.target = self
-        testMenu.addItem(batteryLowTest)
+            let batteryLowTest = NSMenuItem(title: L("Alerta Batería Baja (12%)"), action: #selector(testBatteryLow), keyEquivalent: "")
+            batteryLowTest.target = self
+            testMenu.addItem(batteryLowTest)
         
-        let musicDemoTest = NSMenuItem(title: L("Canción Demo (Starboy)"), action: #selector(testMusicDemo), keyEquivalent: "")
-        musicDemoTest.target = self
-        testMenu.addItem(musicDemoTest)
+            let musicDemoTest = NSMenuItem(title: L("Canción Demo (Starboy)"), action: #selector(testMusicDemo), keyEquivalent: "")
+            musicDemoTest.target = self
+            testMenu.addItem(musicDemoTest)
         
-        let airDropTest = NSMenuItem(title: L("Simular AirDrop (Progreso → Éxito)"), action: #selector(testAirDropTransfer), keyEquivalent: "")
-        airDropTest.target = self
-        testMenu.addItem(airDropTest)
+            let airDropTest = NSMenuItem(title: L("Simular AirDrop (Progreso → Éxito)"), action: #selector(testAirDropTransfer), keyEquivalent: "")
+            airDropTest.target = self
+            testMenu.addItem(airDropTest)
         
-        let shelfTest = NSMenuItem(title: L("Abrir Bandeja de Archivos"), action: #selector(testShelf), keyEquivalent: "")
-        shelfTest.target = self
-        testMenu.addItem(shelfTest)
+            let shelfTest = NSMenuItem(title: L("Abrir Bandeja de Archivos"), action: #selector(testShelf), keyEquivalent: "")
+            shelfTest.target = self
+            testMenu.addItem(shelfTest)
         
-        testMenu.addItem(NSMenuItem.separator())
+            testMenu.addItem(NSMenuItem.separator())
         
-        let timerCompactTest = NSMenuItem(title: L("Temporizador Compacto (Minutka - 30s)"), action: #selector(testTimerActivity), keyEquivalent: "")
-        timerCompactTest.target = self
-        testMenu.addItem(timerCompactTest)
+            let timerCompactTest = NSMenuItem(title: L("Temporizador Compacto (Minutka - 30s)"), action: #selector(testTimerActivity), keyEquivalent: "")
+            timerCompactTest.target = self
+            testMenu.addItem(timerCompactTest)
         
-        let timerCardTest = NSMenuItem(title: L("Temporizador Expandido (Minutka Card - 30s)"), action: #selector(testTimerCardActivity), keyEquivalent: "")
-        timerCardTest.target = self
-        testMenu.addItem(timerCardTest)
+            let timerCardTest = NSMenuItem(title: L("Temporizador Expandido (Minutka Card - 30s)"), action: #selector(testTimerCardActivity), keyEquivalent: "")
+            timerCardTest.target = self
+            testMenu.addItem(timerCardTest)
         
-        let notifTest = NSMenuItem(title: L("Notificación Dinámica (WhatsApp)"), action: #selector(testNotificationActivity), keyEquivalent: "")
-        notifTest.target = self
-        testMenu.addItem(notifTest)
+            let notifTest = NSMenuItem(title: L("Notificación Dinámica (WhatsApp)"), action: #selector(testNotificationActivity), keyEquivalent: "")
+            notifTest.target = self
+            testMenu.addItem(notifTest)
         
-        testMenu.addItem(NSMenuItem.separator())
+            testMenu.addItem(NSMenuItem.separator())
         
-        // Novedades 2.1 (cada una corre su demo sin tocar nada del sistema)
-        let newIn21: [(String, Selector)] = [
-            (L("Carga completa (100 %)"), #selector(testFullCharge)),
-            (L("Concentración activada"), #selector(testFocus)),
-            (L("Próxima reunión (ejemplo con Meet)"), #selector(testMeeting)),
-            (L("WhatsApp: foto"), #selector(testWhatsAppPhoto)),
-            (L("WhatsApp: dos mensajes seguidos (fila)"), #selector(testNotificationQueue)),
-            (L("Actividad de la API (compilando, 10 s)"), #selector(testAPIActivity))
-        ]
-        for (title, action) in newIn21 {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            testMenu.addItem(item)
+            // Novedades 2.1 (cada una corre su demo sin tocar nada del sistema)
+            let newIn21: [(String, Selector)] = [
+                (L("Carga completa (100 %)"), #selector(testFullCharge)),
+                (L("Concentración activada"), #selector(testFocus)),
+                (L("Próxima reunión (ejemplo con Meet)"), #selector(testMeeting)),
+                (L("WhatsApp: foto"), #selector(testWhatsAppPhoto)),
+                (L("WhatsApp: dos mensajes seguidos (fila)"), #selector(testNotificationQueue)),
+                (L("Actividad de la API (compilando, 10 s)"), #selector(testAPIActivity))
+            ]
+            for (title, action) in newIn21 {
+                let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                item.target = self
+                testMenu.addItem(item)
+            }
+
+            testMenu.addItem(NSMenuItem.separator())
+
+            let fileDropTest = NSMenuItem(title: L("Simular Soltar Archivo (Card Pop-Up)"), action: #selector(testSimulatedFileDrop), keyEquivalent: "")
+            fileDropTest.target = self
+            testMenu.addItem(fileDropTest)
+        
+            let dragProbeTest = NSMenuItem(title: L("🔍 Sonda Drag & Drop (Paso 0)"), action: #selector(openDragProbeWindow), keyEquivalent: "")
+            dragProbeTest.target = self
+            testMenu.addItem(dragProbeTest)
+        
+            let testSubmenuItem = NSMenuItem(title: L("Demostraciones de prueba"), action: nil, keyEquivalent: "")
+            testSubmenuItem.submenu = testMenu
+            menu.addItem(testSubmenuItem)
+        
+            let debugPanelItem = NSMenuItem(
+                title: "Panel de Pruebas (Live Activities)...",
+                action: #selector(openDebugPanel),
+                keyEquivalent: "p"
+            )
+            debugPanelItem.target = self
+            menu.addItem(debugPanelItem)
+        
+            let studioItem = NSMenuItem(title: L("🎬 Animation Studio (bolitas)"), action: #selector(openAnimationStudio), keyEquivalent: "")
+            studioItem.target = self
+            menu.addItem(studioItem)
+        
+            let spectrumMonitorItem = NSMenuItem(
+                title: "Monitor de Audio Real y Overscroll...",
+                action: #selector(openAudioSpectrumMonitor),
+                keyEquivalent: "m"
+            )
+            spectrumMonitorItem.target = self
+            menu.addItem(spectrumMonitorItem)
         }
+        
+        let feedbackItem = NSMenuItem(title: L("Enviar comentarios…"), action: #selector(sendFeedback), keyEquivalent: "")
+        feedbackItem.target = self
+        menu.addItem(feedbackItem)
 
-        testMenu.addItem(NSMenuItem.separator())
-
-        let fileDropTest = NSMenuItem(title: L("Simular Soltar Archivo (Card Pop-Up)"), action: #selector(testSimulatedFileDrop), keyEquivalent: "")
-        fileDropTest.target = self
-        testMenu.addItem(fileDropTest)
-        
-        let dragProbeTest = NSMenuItem(title: L("🔍 Sonda Drag & Drop (Paso 0)"), action: #selector(openDragProbeWindow), keyEquivalent: "")
-        dragProbeTest.target = self
-        testMenu.addItem(dragProbeTest)
-        
-        let testSubmenuItem = NSMenuItem(title: L("Demostraciones de prueba"), action: nil, keyEquivalent: "")
-        testSubmenuItem.submenu = testMenu
-        menu.addItem(testSubmenuItem)
-        
-        let debugPanelItem = NSMenuItem(
-            title: "Panel de Pruebas (Live Activities)...",
-            action: #selector(openDebugPanel),
-            keyEquivalent: "p"
-        )
-        debugPanelItem.target = self
-        menu.addItem(debugPanelItem)
-        
-        let studioItem = NSMenuItem(title: L("🎬 Animation Studio (bolitas)"), action: #selector(openAnimationStudio), keyEquivalent: "")
-        studioItem.target = self
-        menu.addItem(studioItem)
-        
-        let spectrumMonitorItem = NSMenuItem(
-            title: "Monitor de Audio Real y Overscroll...",
-            action: #selector(openAudioSpectrumMonitor),
-            keyEquivalent: "m"
-        )
-        spectrumMonitorItem.target = self
-        menu.addItem(spectrumMonitorItem)
-        
         let settingsItem = NSMenuItem(
             title: "Ajustes y Preferencias...",
             action: #selector(openSettingsWindow),
@@ -322,7 +329,7 @@ public final class StatusItemManager: NSObject {
         }
         AppState.shared.enableAirPodsAnimation = true
         AirPodsActivityProvider.shared.publishAirPodsActivity(
-            name: "AirPods Pro de Luis",
+            name: "AirPods Pro",
             batteryLevel: 100,
             leftPercent: 100,
             rightPercent: 100,
@@ -448,7 +455,11 @@ public final class StatusItemManager: NSObject {
     }
     
     @objc private func openAccessibilityOnboarding() {
-        AccessibilityOnboardingWindowController.showAlways()
+        WelcomeWindowController.showAlways()
+    }
+
+    @objc private func sendFeedback() {
+        FeedbackService.exportDiagnostics()
     }
     
     @objc private func testBrightnessSlider() {
@@ -482,8 +493,8 @@ public final class StatusItemManager: NSObject {
     
     @objc private func testSimulatedFileDrop() {
         AppState.shared.isDropInvitationActive = true
-        let desktopUrl = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: "/tmp")
-        let sampleFile = desktopUrl.appendingPathComponent("Documento_Ejemplo.pdf")
+        // Archivo de ejemplo en la carpeta temporal (antes se creaba en el escritorio del usuario)
+        let sampleFile = FileManager.default.temporaryDirectory.appendingPathComponent("Documento de ejemplo.txt")
         if !FileManager.default.fileExists(atPath: sampleFile.path) {
             try? "Contenido de prueba para el Notch".write(to: sampleFile, atomically: true, encoding: .utf8)
         }

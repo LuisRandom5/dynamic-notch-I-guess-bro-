@@ -12,13 +12,17 @@
 		<data>
 		D+qSmnYM5CkVZ3tKZVqdERAi3C4=
 		</data>
-		<key>Resources/MediaRemoteBridge.swift</key>
+		<key>Resources/MediaRemoteBridge.dylib</key>
 		<data>
-		TjkNi5GRBnkpL5XApF9rf/sIhkE=
+		aXofPJAWPSzUGIlK6vfqEHh51qk=
+		</data>
+		<key>Resources/MediaRemoteBridge.pl</key>
+		<data>
+		NSMRvfBOl3IOX+3Pp5Heun8z2Q8=
 		</data>
 		<key>Resources/Metadata.appintents/extract.actionsdata</key>
 		<data>
-		jCZIeCt/RF4ADkN3V4bAJM+2IcI=
+		HRMqkfn7M8QRPtGqrOoV8024Aus=
 		</data>
 		<key>Resources/Metadata.appintents/version.json</key>
 		<data>
@@ -32,7 +36,7 @@
 		<dict>
 			<key>hash</key>
 			<data>
-			lxa0E6gyvkBFMVl+sAO3oekICCY=
+			XwCDA9MO6q7TcJ3KFX+4+0skY3k=
 			</data>
 			<key>optional</key>
 			<true/>
@@ -63,18 +67,25 @@
 			eD4RABDLdoVCiB6Re/AmXA+3Lg7+3Jpdj2y1Jxf6fgY=
 			</data>
 		</dict>
-		<key>Resources/MediaRemoteBridge.swift</key>
+		<key>Resources/MediaRemoteBridge.dylib</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			ixYnmynsTa4DwtEjdPyRIyzmnWLYZ9JiKpaCdYKKWZc=
+			KMi9fmpBejSomrxDC/66TmvO85KhA+Ljr+FXdEApZjI=
+			</data>
+		</dict>
+		<key>Resources/MediaRemoteBridge.pl</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			GiUQl+JjlSof2K8B8FLsyG/10dbNsVy6rNAZ9m4JfLM=
 			</data>
 		</dict>
 		<key>Resources/Metadata.appintents/extract.actionsdata</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			tI0tZxzo2VFnWHugXCHXYn3MAWJap+Eo/ImN4Idt7Nc=
+			MgcJ2YdYn5QetM+odqPGNOeQzCzPm1gNnLdos6DRpDE=
 			</data>
 		</dict>
 		<key>Resources/Metadata.appintents/version.json</key>
@@ -95,7 +106,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			53kem4Z3yrb45Jn56PyNbZ/jlkzZPRotEz6o2x6pdU8=
+			I3vsWKFX7BWmtqCbr0RXkGTmd/j8FxGJ5d1w7OP7piY=
 			</data>
 			<key>optional</key>
 			<true/>

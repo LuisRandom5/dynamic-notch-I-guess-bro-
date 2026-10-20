@@ -473,3 +473,32 @@
 "Brillo" = "Brightness";
 "Silencio" = "Mute";
 "Volumen" = "Volume";
+
+/* Bienvenida y permisos, comentarios de la beta */
+"Bienvenido a Dynamic Notch" = "Welcome to Dynamic Notch";
+"Para que la isla muestre todo, macOS necesita tu permiso. Sólo Accesibilidad es necesaria; lo demás es opcional y puedes darlo después." = "For the island to show everything, macOS needs your permission. Only Accessibility is required; the rest is optional and you can grant it later.";
+"Accesibilidad" = "Accessibility";
+"Necesario" = "Required";
+"Volumen, brillo y teclas multimedia en la isla, y avisos de otras apps." = "Volume, brightness and media keys on the island, and alerts from other apps.";
+"Abrir Ajustes" = "Open Settings";
+"Calendario" = "Calendar";
+"Opcional" = "Optional";
+"Tu próxima reunión con la cuenta regresiva y el botón para unirte. Sólo se lee." = "Your next meeting with a countdown and a join button. Read only.";
+"Contactos" = "Contacts";
+"La foto y el nombre de quien te llama o te escribe." = "The photo and name of whoever calls or messages you.";
+"Bluetooth" = "Bluetooth";
+"La animación y la batería de tus AirPods al conectarlos." = "Your AirPods' animation and battery when they connect.";
+"Música, Safari y WhatsApp Web: la primera vez macOS te preguntará si Dynamic Notch puede controlarlas. Acepta para ver canciones y mensajes." = "Music, Safari and WhatsApp Web: the first time, macOS will ask whether Dynamic Notch can control them. Allow it to see songs and messages.";
+"Barras de la música: macOS pedirá escuchar el audio del sistema mientras algo suena. No se graba ni se guarda nada." = "Music bars: macOS will ask to listen to system audio while something plays. Nothing is recorded or saved.";
+"Es una beta: si algo falla o se ve raro, usa \"Enviar comentarios…\" en el menú de la barra." = "This is a beta: if something breaks or looks off, use \"Send Feedback…\" in the menu bar menu.";
+"Listo" = "Done";
+"Bienvenida y permisos" = "Welcome and Permissions";
+"Enviar comentarios" = "Send Feedback";
+"Se guardará en tu escritorio un .zip con el registro de la app y datos de tu Mac (versión de macOS, modelo, pantalla y permisos). No incluye el texto de tus mensajes, pero puede traer nombres de contactos y canciones.\n\nMándaselo a quien te invitó a la beta y cuéntale qué pasó y a qué hora." = "A .zip with the app's log and details about your Mac (macOS version, model, display and permissions) will be saved to your Desktop. It doesn't include the text of your messages, but it may contain contact and song names.\n\nSend it to whoever invited you to the beta and tell them what happened and when.";
+"Guardar en el escritorio" = "Save to Desktop";
+"Cancelar" = "Cancel";
+"No se pudo guardar el diagnóstico" = "Couldn't save the diagnostics";
+"No se pudo crear el .zip" = "Couldn't create the .zip";
+"Permisos…" = "Permissions…";
+"⚠️ Falta un permiso: Accesibilidad…" = "⚠️ Missing permission: Accessibility…";
+"Enviar comentarios…" = "Send Feedback…";

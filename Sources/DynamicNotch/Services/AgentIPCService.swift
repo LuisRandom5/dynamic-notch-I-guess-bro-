@@ -224,18 +224,45 @@ public final class AgentIPCService {
             }
             
             let bodyData = currentData.subdata(in: bodyStartIndex..<min(bodyStartIndex + contentLength, currentData.count))
+            guard Self.isTrustedLocalClient(headerLines: lines.dropFirst()) else {
+                DNDLogger.log("AgentIPCService: petición rechazada (viene de un navegador o de otro host): \(method) \(path)")
+                self.sendHTTPResponse(connection: connection, statusCode: 403, statusText: "Forbidden",
+                                      jsonObject: ["error": "Sólo acepta programas locales (no páginas web)"])
+                return
+            }
+            if !BuildFlavor.hasDeveloperTools, path.hasPrefix("/debug/") || path == "/glasslab" {
+                self.sendHTTPResponse(connection: connection, statusCode: 404, statusText: "Not Found", jsonObject: ["error": "not found"])
+                return
+            }
             self.routeRequest(method: method, path: path, bodyData: bodyData, connection: connection)
         }
     }
     
+    /// Sólo programas de esta Mac (scripts, hooks, `dynamicnotch`): una página web abierta en el navegador podría
+    /// mandar peticiones a 127.0.0.1 y leer o mostrar cosas en la isla. Los navegadores siempre agregan `Origin` o
+    /// `Sec-Fetch-*` (las herramientas de línea de comandos no), y `Host` distinto de localhost delata un DNS rebinding.
+    static func isTrustedLocalClient<S: Sequence>(headerLines: S) -> Bool where S.Element == String {
+        for line in headerLines {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces).lowercased()
+            if name == "origin" || name.hasPrefix("sec-fetch-") { return false }
+            if name == "host" {
+                let host = value.split(separator: ":").first.map(String.init) ?? value
+                if !["127.0.0.1", "localhost", "[::1]"].contains(host) { return false }
+            }
+        }
+        return true
+    }
+
     // MARK: - Enrutamiento de Peticiones HTTP
     
     private func routeRequest(method: String, path: String, bodyData: Data, connection: NWConnection) {
         DNDLogger.log("AgentIPCService: Request \(method) \(path)")
         
-        // Soporte CORS preflight
+        // Sin CORS: las páginas web no pueden usar este servidor (ver isTrustedLocalClient)
         if method == "OPTIONS" {
-            sendCORSPreflightResponse(connection: connection)
+            sendHTTPResponse(connection: connection, statusCode: 403, statusText: "Forbidden", jsonObject: [:])
             return
         }
         
@@ -412,6 +439,20 @@ public final class AgentIPCService {
             sendHTTPResponse(connection: connection, statusCode: mode == nil ? 400 : 200, statusText: mode == nil ? "Bad Request" : "OK",
                              jsonObject: ["status": mode == nil ? "modo inválido" : "ok"])
             
+        case ("POST", "/debug/feedback-archive"):
+            // Diagnóstico: arma el .zip de "Enviar comentarios" en /tmp (sin la alerta) y dice dónde quedó
+            DispatchQueue.main.async {
+                let result: [String: Any]
+                do { result = ["path": try FeedbackService.writeArchive(in: URL(fileURLWithPath: "/tmp")).path] }
+                catch { result = ["error": error.localizedDescription] }
+                self.sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: result)
+            }
+
+        case ("POST", "/debug/render-welcome"):
+            // Diagnóstico: la ventana de bienvenida y permisos en /tmp/dn_welcome.png
+            DispatchQueue.main.async { WelcomeWindowController.snapshot(to: "/tmp/dn_welcome.png") }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+
         case ("POST", "/debug/speed"):
             // Diagnóstico: cámara lenta de las transformaciones ({"speed": 0.2} … 1.0) para revisarlas cuadro a cuadro
             let speed = (((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["speed"] as? Double) ?? 1.0
@@ -1141,7 +1182,6 @@ public final class AgentIPCService {
             "HTTP/1.1 \(statusCode) \(statusText)",
             "Content-Type: application/json; charset=utf-8",
             "Content-Length: \(bodyData.count)",
-            "Access-Control-Allow-Origin: *",
             "Connection: close",
             "",
             ""
@@ -1151,24 +1191,6 @@ public final class AgentIPCService {
         responseData.append(bodyData)
         
         connection.send(content: responseData, completion: .contentProcessed({ _ in
-            connection.cancel()
-        }))
-    }
-    
-    private func sendCORSPreflightResponse(connection: NWConnection) {
-        let headers = [
-            "HTTP/1.1 204 No Content",
-            "Access-Control-Allow-Origin: *",
-            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers: Content-Type, Authorization",
-            "Access-Control-Max-Age: 86400",
-            "Content-Length: 0",
-            "Connection: close",
-            "",
-            ""
-        ].joined(separator: "\r\n")
-        
-        connection.send(content: Data(headers.utf8), completion: .contentProcessed({ _ in
             connection.cancel()
         }))
     }

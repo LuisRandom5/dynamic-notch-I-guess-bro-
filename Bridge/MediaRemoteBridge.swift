@@ -1,8 +1,13 @@
+// Puente de "lo que está sonando" (MediaRemote). Desde macOS 15.4 MediaRemote sólo responde a procesos firmados
+// por Apple, así que esto se compila como biblioteca y la carga `/usr/bin/perl` (que viene en todos los Mac y es de
+// Apple): ver Resources/MediaRemoteBridge.pl y NowPlayingService. Antes se corría con `/usr/bin/swift`, que sólo
+// existe con las herramientas de desarrollo instaladas (en otros Mac salía la ventana para instalarlas).
+// Protocolo: una línea JSON por cambio en la salida estándar; comandos por la entrada estándar (toggle, next…).
 import Foundation
 import AppKit
 
 let path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
-guard let handle = dlopen(path, RTLD_NOW) else { exit(1) }
+let handle: UnsafeMutableRawPointer = dlopen(path, RTLD_NOW) ?? { exit(1) }()
 
 typealias MRRegisterForNotifications = @convention(c) (DispatchQueue) -> Void
 typealias MRGetNowPlayingInfo = @convention(c) (DispatchQueue, @escaping (CFDictionary?) -> Void) -> Void
@@ -28,7 +33,6 @@ let getBundle = unsafeBitCast(bundleSym, to: MRClientGetBundleIdentifier.self)
 let getName = unsafeBitCast(nameSym, to: MRClientGetDisplayName.self)
 let sendCommand = unsafeBitCast(cmdSym, to: MRSendCommand.self)
 
-register(DispatchQueue.main)
 
 var lastPayloadString = ""
 var lastSentArtKey = ""
@@ -231,68 +235,78 @@ func emitNowPlaying() {
     }
 }
 
-// 1. Escuchar notificaciones del sistema (tiempo real sin latencia)
-let center = NotificationCenter.default
-let notifNames = [
-    "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
-    "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
-    "kMRMediaRemoteNowPlayingApplicationDidChangeNotification"
-]
-for n in notifNames {
-    center.addObserver(forName: NSNotification.Name(n), object: nil, queue: .main) { _ in
+func startBridge() {
+    register(DispatchQueue.main)
+
+    // 1. Escuchar notificaciones del sistema (tiempo real sin latencia)
+    let center = NotificationCenter.default
+    let notifNames = [
+        "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
+        "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
+        "kMRMediaRemoteNowPlayingApplicationDidChangeNotification"
+    ]
+    for n in notifNames {
+        center.addObserver(forName: NSNotification.Name(n), object: nil, queue: .main) { _ in
+            emitNowPlaying()
+        }
+    }
+
+    // 2. Heartbeat ligero de respaldo (2.5s en vez de 1.0s para ahorrar CPU cuando está en segundo plano)
+    Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { _ in
         emitNowPlaying()
     }
-}
 
-// 2. Heartbeat ligero de respaldo (2.5s en vez de 1.0s para ahorrar CPU cuando está en segundo plano)
-Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { _ in
+    // 3. Leer comandos de stdin en segundo plano
+    let stdinSource = DispatchSource.makeReadSource(fileDescriptor: fileno(stdin), queue: DispatchQueue.global())
+    stdinSource.setEventHandler {
+        var buffer = [UInt8](repeating: 0, count: 256)
+        let bytesRead = read(fileno(stdin), &buffer, buffer.count)
+        if bytesRead > 0 {
+            let cmd = String(decoding: buffer[0..<bytesRead], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            DispatchQueue.main.async {
+                switch cmd {
+                case "toggle":
+                    _ = sendCommand(2, nil)
+                case "play":
+                    _ = sendCommand(0, nil)
+                case "pause":
+                    _ = sendCommand(1, nil)
+                case "next":
+                    _ = sendCommand(4, nil)
+                case "prev":
+                    _ = sendCommand(5, nil)
+                case "shuffle":
+                    _ = sendCommand(6, nil)
+                case "repeat":
+                    _ = sendCommand(7, nil)
+                case "refresh", "getArtwork":
+                    lastPayloadString = ""
+                    lastSentArtKey = ""
+                    emitNowPlaying()
+                default:
+                    break
+                }
+                emitNowPlaying()
+            }
+        } else {
+            // EOF o pipe roto: el proceso padre DynamicNotch se cerró. Terminar limpiamente sin bucle de CPU.
+            stdinSource.cancel()
+            exit(0)
+        }
+    }
+    stdinSource.setCancelHandler {
+        exit(0)
+    }
+    stdinSource.resume()
+
+    // Emit inicial
     emitNowPlaying()
 }
 
-// 3. Leer comandos de stdin en segundo plano
-let stdinSource = DispatchSource.makeReadSource(fileDescriptor: fileno(stdin), queue: DispatchQueue.global())
-stdinSource.setEventHandler {
-    var buffer = [UInt8](repeating: 0, count: 256)
-    let bytesRead = read(fileno(stdin), &buffer, buffer.count)
-    if bytesRead > 0 {
-        let cmd = String(decoding: buffer[0..<bytesRead], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        DispatchQueue.main.async {
-            switch cmd {
-            case "toggle":
-                _ = sendCommand(2, nil)
-            case "play":
-                _ = sendCommand(0, nil)
-            case "pause":
-                _ = sendCommand(1, nil)
-            case "next":
-                _ = sendCommand(4, nil)
-            case "prev":
-                _ = sendCommand(5, nil)
-            case "shuffle":
-                _ = sendCommand(6, nil)
-            case "repeat":
-                _ = sendCommand(7, nil)
-            case "refresh", "getArtwork":
-                lastPayloadString = ""
-                lastSentArtKey = ""
-                emitNowPlaying()
-            default:
-                break
-            }
-            emitNowPlaying()
-        }
-    } else {
-        // EOF o pipe roto: el proceso padre DynamicNotch se cerró. Terminar limpiamente sin bucle de CPU.
-        stdinSource.cancel()
-        exit(0)
-    }
+/// Punto de entrada que llama perl (`DynaLoader::dl_install_xsub`): los dos argumentos son los de una XSUB y no se usan
+@_cdecl("dn_media_bridge_main")
+public func dnMediaBridgeMain(_ perl: UnsafeMutableRawPointer?, _ cv: UnsafeMutableRawPointer?) {
+    setvbuf(stdout, nil, _IOLBF, 0)
+    startBridge()
+    RunLoop.main.run()
 }
-stdinSource.setCancelHandler {
-    exit(0)
-}
-stdinSource.resume()
-
-// Emit inicial
-emitNowPlaying()
-
-RunLoop.main.run()

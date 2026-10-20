@@ -43,6 +43,8 @@ public final class AnimationSpeedManager: ObservableObject {
     }
     
     private func setupKeyboardShortcut() {
+        // Cámara lenta: herramienta de desarrollo (no en la beta)
+        guard BuildFlavor.hasDeveloperTools else { return }
         // Atajo ⌘⇧S (Cmd + Shift + S) para alternar cámara lenta (1.0x <-> 0.2x)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.modifierFlags.contains([.command, .shift]) && event.charactersIgnoringModifiers?.lowercased() == "s" {

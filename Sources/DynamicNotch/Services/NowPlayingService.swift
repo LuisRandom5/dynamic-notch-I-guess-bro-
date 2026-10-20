@@ -31,38 +31,47 @@ public final class NowPlayingService {
     }
     
     // MARK: - Ciclo de vida del Proceso Puente
-    private func locateBridgeScript() -> String? {
-        // 1. Recursos empaquetados en la app (.app/Contents/Resources/MediaRemoteBridge.swift)
-        if let bundlePath = Bundle.main.path(forResource: "MediaRemoteBridge", ofType: "swift") {
-            if FileManager.default.fileExists(atPath: bundlePath) {
-                return bundlePath
+
+    /// Puente ya preparado (script de perl + biblioteca), para no repetir la copia en cada reinicio
+    private var preparedBridge: (script: String, library: String)?
+    /// Caídas seguidas del puente poco después de arrancar (para espaciar los reintentos)
+    private var quickFailures = 0
+
+    /// El puente es una biblioteca que carga `/usr/bin/perl` (firmado por Apple, en todos los Mac): desde macOS 15.4
+    /// MediaRemote sólo responde a procesos de Apple. La biblioteca se copia a Application Support como archivo NUEVO:
+    /// la del paquete puede venir en cuarentena (descargada de internet) y Gatekeeper bloquearía que perl la cargue.
+    private func prepareBridge() -> (script: String, library: String)? {
+        if let preparedBridge { return preparedBridge }
+        guard let script = Bundle.main.path(forResource: "MediaRemoteBridge", ofType: "pl"),
+              let bundled = Bundle.main.url(forResource: "MediaRemoteBridge", withExtension: "dylib"),
+              let bytes = try? Data(contentsOf: bundled),
+              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            DNDLogger.log("NowPlayingService: no se encontró el puente de MediaRemote en el paquete")
+            return nil
+        }
+        let dir = support.appendingPathComponent("com.luisrandom.DynamicNotch", isDirectory: true)
+        let library = dir.appendingPathComponent("MediaRemoteBridge.dylib")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if (try? Data(contentsOf: library)) != bytes {
+                try? FileManager.default.removeItem(at: library)
+                try bytes.write(to: library)
             }
+        } catch {
+            DNDLogger.log("NowPlayingService: no se pudo preparar el puente: \(error.localizedDescription)")
+            return nil
         }
-        
-        // 2. Ruta relativa a Resources en el bundle
-        let resourceURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/MediaRemoteBridge.swift")
-        if FileManager.default.fileExists(atPath: resourceURL.path) {
-            return resourceURL.path
-        }
-        
-        // 3. Ruta en el código fuente del proyecto
-        let devPath = "/Users/luisangelceroncastro/Documents/Dynamic Notch/Resources/MediaRemoteBridge.swift"
-        if FileManager.default.fileExists(atPath: devPath) {
-            return devPath
-        }
-        
-        return nil
+        let prepared = (script: script, library: library.path)
+        preparedBridge = prepared
+        return prepared
     }
-    
+
     private func startBridgeProcess() {
-        guard let scriptPath = locateBridgeScript() else {
-            print("[NowPlayingService] Error: No se encontró MediaRemoteBridge.swift")
-            return
-        }
+        guard let bridge = prepareBridge() else { return }
         
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        process.arguments = [scriptPath]
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = [bridge.script, bridge.library]
         
         let stdin = Pipe()
         let stdout = Pipe()
@@ -82,10 +91,15 @@ public final class NowPlayingService {
             self?.processIncomingData(availableData)
         }
         
+        let startedAt = Date()
         process.terminationHandler = { [weak self] _ in
             guard let self = self, !self.isTerminating else { return }
-            print("[NowPlayingService] MediaRemoteBridge terminado. Reiniciando en 1.5s...")
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+            // Si se cae enseguida una y otra vez (p. ej. un Mac donde no carga), se espera cada vez más en vez de
+            // reintentar sin fin cada 1.5 s
+            self.quickFailures = Date().timeIntervalSince(startedAt) < 10 ? self.quickFailures + 1 : 0
+            let delay = min(60, 1.5 * pow(2, Double(max(0, self.quickFailures - 1))))
+            DNDLogger.log("NowPlayingService: el puente terminó; reinicio en \(Int(delay)) s")
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
                 self.startBridgeProcess()
             }
         }

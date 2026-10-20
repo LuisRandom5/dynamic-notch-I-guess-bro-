@@ -1,9 +1,29 @@
 #!/bin/bash
 set -e
 
+# Uso: ./scripts/build_app.sh            → compilación de desarrollo (DynamicNotch.app en el proyecto, se abre sola)
+#      ./scripts/build_app.sh --beta     → beta para probadores, sin herramientas de desarrollo (dist/, no se abre)
+#      BETA_NUMBER=2 ./scripts/build_app.sh --beta
+BETA=0
+[ "${1:-}" = "--beta" ] && BETA=1
+VERSION="2.1"
+BUILD_NUMBER="2.1.0"
+BETA_NUMBER="${BETA_NUMBER:-1}"
+
 # Directory setup
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="${PROJECT_DIR}/DynamicNotch.app"
+BUILD_PATH="${PROJECT_DIR}/.build"
+EXTRA_SWIFT_FLAGS=()
+if [ "${BETA}" = "1" ]; then
+    # Carpeta de compilación aparte: no se recompila todo al volver a la de desarrollo
+    BUILD_PATH="${PROJECT_DIR}/.build-beta"
+    EXTRA_SWIFT_FLAGS=(-Xswiftc -DBETA)
+    VERSION="${VERSION}-beta.${BETA_NUMBER}"
+    BUILD_NUMBER="${BUILD_NUMBER}.${BETA_NUMBER}"
+    DIST_DIR="${PROJECT_DIR}/dist/DynamicNotch-${VERSION}"
+    APP_BUNDLE="${DIST_DIR}/DynamicNotch.app"
+fi
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
@@ -19,8 +39,8 @@ export SWIFTPM_MODULECACHE_OVERRIDE="${PROJECT_DIR}/.build/ModuleCache"
 mkdir -p "${CLANG_MODULE_CACHE_PATH}"
 # Las acciones de Atajos (App Intents) necesitan los valores constantes que el compilador extrae del código;
 # Xcode lo hace solo, con SwiftPM se pide aquí y luego se generan los metadatos (ver más abajo)
-CONST_VALUES="${PROJECT_DIR}/.build/DynamicNotch.swiftconstvalues"
-swift build --disable-sandbox -c release -Xcc -fmodules-cache-path="${CLANG_MODULE_CACHE_PATH}" \
+CONST_VALUES="${BUILD_PATH}/DynamicNotch.swiftconstvalues"
+swift build --disable-sandbox -c release --build-path "${BUILD_PATH}" ${EXTRA_SWIFT_FLAGS[@]+"${EXTRA_SWIFT_FLAGS[@]}"} -Xcc -fmodules-cache-path="${CLANG_MODULE_CACHE_PATH}" \
     -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file -Xswiftc -Xfrontend -Xswiftc "${PROJECT_DIR}/scripts/appintents_protocols.json" \
     -Xswiftc -emit-const-values-path -Xswiftc "${CONST_VALUES}"
 
@@ -31,13 +51,17 @@ mkdir -p "${STAGE_BUNDLE}/Contents/MacOS"
 mkdir -p "${STAGE_BUNDLE}/Contents/Resources"
 
 # Copy binary
-cp -X -f "${PROJECT_DIR}/.build/release/DynamicNotch" "${STAGE_BUNDLE}/Contents/MacOS/DynamicNotch"
+cp -X -f "${BUILD_PATH}/release/DynamicNotch" "${STAGE_BUNDLE}/Contents/MacOS/DynamicNotch"
 chmod +x "${STAGE_BUNDLE}/Contents/MacOS/DynamicNotch"
 
 # Copy resources without extended attributes
 if [ -d "${PROJECT_DIR}/Resources" ]; then
     cp -X -rf "${PROJECT_DIR}/Resources/"* "${STAGE_BUNDLE}/Contents/Resources/"
 fi
+
+# Puente de "lo que está sonando": biblioteca que carga /usr/bin/perl (ver Bridge/MediaRemoteBridge.swift)
+xcrun swiftc -O -emit-library -module-name DNMediaBridge "${PROJECT_DIR}/Bridge/MediaRemoteBridge.swift" \
+    -target arm64-apple-macosx14.0 -o "${STAGE_BUNDLE}/Contents/Resources/MediaRemoteBridge.dylib"
 
 # Create Info.plist
 cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
@@ -54,9 +78,9 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
     <key>CFBundleIdentifier</key>
     <string>com.luisrandom.DynamicNotch</string>
     <key>CFBundleVersion</key>
-    <string>2.1.0</string>
+    <string>__BUILD_NUMBER__</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.1</string>
+    <string>__VERSION__</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>es</string>
     <key>CFBundleLocalizations</key>
@@ -67,7 +91,7 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
     <key>CFBundleExecutable</key>
     <string>DynamicNotch</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
@@ -103,10 +127,12 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
 </plist>
 EOF
 
+sed -i '' -e "s/__BUILD_NUMBER__/${BUILD_NUMBER}/" -e "s/__VERSION__/${VERSION}/" "${STAGE_BUNDLE}/Contents/Info.plist"
+
 # Metadatos de App Intents (Atajos y Siri): lo que Xcode genera al compilar una app
 if [ -n "${DEVELOPER_DIR:-}" ] && xcrun --find appintentsmetadataprocessor >/dev/null 2>&1 && [ -f "${CONST_VALUES}" ]; then
     echo "🧩 Generando acciones de Atajos..."
-    AI_DIR="${PROJECT_DIR}/.build/appintents"
+    AI_DIR="${BUILD_PATH}/appintents"
     rm -rf "${AI_DIR}" && mkdir -p "${AI_DIR}"
     find "${PROJECT_DIR}/Sources/DynamicNotch" -name "*.swift" > "${AI_DIR}/sources.txt"
     echo "${CONST_VALUES}" > "${AI_DIR}/constvalues.txt"
@@ -129,6 +155,19 @@ echo "✍️ Firmando app localmente con Designated Requirement estable..."
 find "${STAGE_BUNDLE}" -name '._*' -delete 2>/dev/null || true
 xattr -cr "${STAGE_BUNDLE}" 2>/dev/null || true
 codesign --force --deep -s - --entitlements "${PROJECT_DIR}/entitlements.plist" -r='designated => identifier "com.luisrandom.DynamicNotch"' "${STAGE_BUNDLE}"
+
+if [ "${BETA}" = "1" ]; then
+    # Beta: carpeta con la app y la guía, y un .zip listo para mandar (la app de desarrollo no se toca)
+    rm -rf "${DIST_DIR}" && mkdir -p "${DIST_DIR}"
+    cp -R "${STAGE_BUNDLE}" "${APP_BUNDLE}"
+    rm -rf "${STAGE_BUNDLE}"
+    cp "${PROJECT_DIR}/docs/BETA_LEEME.md" "${DIST_DIR}/LEEME.md"
+    ZIP="${PROJECT_DIR}/dist/DynamicNotch-${VERSION}.zip"
+    rm -f "${ZIP}"
+    ditto -c -k --norsrc --noextattr --keepParent "${DIST_DIR}" "${ZIP}"
+    echo "✅ Beta lista: ${ZIP}"
+    exit 0
+fi
 
 rm -rf "${APP_BUNDLE}"
 cp -R "${STAGE_BUNDLE}" "${APP_BUNDLE}"

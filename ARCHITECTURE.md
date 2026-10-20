@@ -80,9 +80,9 @@ Ubicación: `Sources/DynamicNotch/Activities/`
 
 ## 5. Motores de Bajo Nivel y Servicios (`Sources/DynamicNotch/Services/`)
 
-### A. Detección y Control de Música (`MusicService.swift` y `Resources/MediaRemoteBridge.swift`)
+### A. Detección y Control de Música (`MusicService.swift` y `Bridge/MediaRemoteBridge.swift`)
 - **Apple Music y Spotify**: Se escuchan notificaciones nativas del sistema (`com.apple.Music.playerInfo` y `com.spotify.client.PlaybackStateChanged`).
-- **YouTube y Navegadores Web (Safari, Chrome, Arc, Brave, Firefox)**: Se utiliza `NowPlayingService`, el cual ejecuta en segundo plano un script en Swift (`MediaRemoteBridge.swift`) que accede vía `dlopen` al framework privado `/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote`.
+- **YouTube y Navegadores Web (Safari, Chrome, Arc, Brave, Firefox)**: Se utiliza `NowPlayingService`: `Bridge/MediaRemoteBridge.swift` se compila como biblioteca (`MediaRemoteBridge.dylib`) y la carga `/usr/bin/perl` con `Resources/MediaRemoteBridge.pl`; accede vía `dlopen` al framework privado `MediaRemote`. Desde macOS 15.4 MediaRemote sólo responde a procesos firmados por Apple (perl lo es y viene en todos los Mac; antes se usaba `/usr/bin/swift`, que exige las herramientas de desarrollo). La app copia la biblioteca a Application Support como archivo nuevo para que Gatekeeper no la bloquee si la beta llegó en cuarentena.
 - **Filtro Anti-Flicker**: Para evitar que el reproductor chiquito desaparezca "de la nada", `MusicService` incluye:
   - Verificación activa por AppleScript (`isAppleMusicActuallyPlaying`, `isSpotifyActuallyPlaying`) si `MediaRemote` emite un falso positivo de pausa.
   - Debounce de 2.5 segundos para reproductores web antes de confirmar una pausa real.
@@ -175,7 +175,7 @@ killall -9 DynamicNotch 2>/dev/null || true
 
 1. **Nunca rompas la ventana flotante**: No cambies `NotchPanel` a `NSWindow` estándar con barra de título. El panel debe ser transparente y sin bordes.
 2. **Cuidado con los hilos**: Todo cambio a `@Published` en `AppState`, `MusicService`, `ActivityCenter` y `NotificationActivityProvider` DEBE ocurrir en el hilo principal (`DispatchQueue.main.async`).
-3. **Conserva `MediaRemoteBridge.swift`**: Este script es copiado al bundle en `Contents/Resources/`. Si modificas la lógica de detección universal de YouTube/navegadores, actualiza tanto `Resources/MediaRemoteBridge.swift` como la versión empaquetada.
+3. **El puente de MediaRemote es una biblioteca para perl**: `build_app.sh` compila `Bridge/MediaRemoteBridge.swift` a `Contents/Resources/MediaRemoteBridge.dylib`. No lo conviertas en un ejecutable propio: macOS le negaría los datos.
 4. **Respeta los resortes de Apple**: Las animaciones usan `AnimationSpeedManager.shared.spring(response:dampingFraction:)`. No uses animaciones lineales o temporizadas fijas (`.linear`, `.easeInOut`) para las formas principales del notch; deben sentirse elásticas y físicas.
 5. **El micrófono nunca se usa**: la captura de audio del sistema (process tap) sólo corre mientras algo suena; la cámara y el micrófono sólo se consultan con `…IsRunningSomewhere`.
 6. **Transiciones de las bolitas**: en macOS 27 una transición `.modifier` no le pasa su valor a la vista; para animar entrada y salida usa estado propio (`LiquidSatelliteHost`) y conserva la vista que se va (`departingSatellites`).

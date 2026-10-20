@@ -434,10 +434,10 @@ public struct ActivityDebugView: View {
                                             isSimulation: true
                                         )
                                     } else {
-                                        let sampleMonogram = ContactLookupService.shared.generateMonogramAvatar(for: "Luis Ángel", initials: "LA")
+                                        let sampleMonogram = ContactLookupService.shared.generateMonogramAvatar(for: "Ana García", initials: "AG")
                                         CallActivityProvider.shared.startIncomingCall(
                                             name: "Llamada celular de iPhone",
-                                            handle: "Luis Ángel",
+                                            handle: "Ana García",
                                             avatar: sampleMonogram,
                                             isSimulation: true
                                         )
@@ -740,7 +740,7 @@ public struct ActivityDebugView: View {
                         HStack(spacing: 8) {
                             Button(action: {
                                 let details = BluetoothAudioService.shared.queryConnectedAirPods()
-                                let name = details?.deviceName ?? "AirPods de Luis Angel"
+                                let name = details?.deviceName ?? "AirPods"
                                 let bat = details?.primaryBattery ?? 85
                                 AirPodsActivityProvider.shared.publishAirPodsActivity(
                                     name: name,

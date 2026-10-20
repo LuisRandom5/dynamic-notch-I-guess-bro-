@@ -365,17 +365,19 @@ public struct SettingsView: View {
                             }
                         }
                         
-                        Button(action: {
-                            ActivityDebugWindow.shared.show()
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "slider.horizontal.3")
-                                Text("Abrir Bisección de Capas y Debug")
+                        if BuildFlavor.hasDeveloperTools {
+                            Button(action: {
+                                ActivityDebugWindow.shared.show()
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "slider.horizontal.3")
+                                    Text("Abrir Bisección de Capas y Debug")
+                                }
+                                .font(.system(size: 11.5, weight: .medium))
                             }
-                            .font(.system(size: 11.5, weight: .medium))
+                            .buttonStyle(.bordered)
+                            .padding(.top, 4)
                         }
-                        .buttonStyle(.bordered)
-                        .padding(.top, 4)
                     }
                     .padding(.top, 4)
                 }
@@ -721,48 +723,50 @@ public struct SettingsView: View {
             )
             
             // Grupo 4: Diagnóstico y Sonda en Tiempo Real
-            Button(action: {
-                DragProbeDebugWindowController.shared.toggleWindow()
-            }) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(LinearGradient(
-                                colors: [DesignTokens.blue, Color.purple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "gauge.with.needle")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                    }
+            if BuildFlavor.hasDeveloperTools {
+                Button(action: {
+                    DragProbeDebugWindowController.shared.toggleWindow()
+                }) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(LinearGradient(
+                                    colors: [DesignTokens.blue, Color.purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "gauge.with.needle")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                        }
                     
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Sonda de Detección Drag & Drop en Vivo")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text("Monitorea coordenadas, proximidad euclidiana y eventos de NSPasteboard (0% CPU en reposo).")
-                            .font(.system(size: 11))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sonda de Detección Drag & Drop en Vivo")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text("Monitorea coordenadas, proximidad euclidiana y eventos de NSPasteboard (0% CPU en reposo).")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                     }
-                    Spacer()
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
     
@@ -805,48 +809,50 @@ public struct SettingsView: View {
             visualizerStyleAndCalibrationCard
             
             // Acceso al Monitor de Audio en Tiempo Real
-            Button(action: {
-                AudioSpectrumTestWindowController.shared.show()
-            }) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(LinearGradient(
-                                colors: [PlayerMetrics.visualizerTopGradient, PlayerMetrics.visualizerBottomGradient],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "waveform")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                    }
+            if BuildFlavor.hasDeveloperTools {
+                Button(action: {
+                    AudioSpectrumTestWindowController.shared.show()
+                }) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(LinearGradient(
+                                    colors: [PlayerMetrics.visualizerTopGradient, PlayerMetrics.visualizerBottomGradient],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "waveform")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                        }
                     
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Abrir Laboratorio de Espectro FFT (6 y 10 Bandas)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text("Visualiza picos dBFS, Peak Hold y calibra ganancia, ataque y caída por banda.")
-                            .font(.system(size: 11))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Abrir Laboratorio de Espectro FFT (6 y 10 Bandas)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text("Visualiza picos dBFS, Peak Hold y calibra ganancia, ataque y caída por banda.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                     }
-                    Spacer()
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(NSColor.controlBackgroundColor).opacity(0.65))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             
             lockScreenViabilityCard
         }
@@ -1009,62 +1015,68 @@ public struct SettingsView: View {
                 }
                 .padding(.horizontal, 4)
                 
-                ToggleRow(
-                    title: "Modo Debug de contornos",
-                    subtitle: "Dibuja contornos de colores en ventana, silueta y capas para comprobar la geometría",
-                    isOn: $appState.lockScreenDebugOutlines
+                if BuildFlavor.hasDeveloperTools {
+                    ToggleRow(
+                        title: "Modo Debug de contornos",
+                        subtitle: "Dibuja contornos de colores en ventana, silueta y capas para comprobar la geometría",
+                        isOn: $appState.lockScreenDebugOutlines
+                    )
+                }
+            }
+            
+            if BuildFlavor.hasDeveloperTools {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Diagnóstico:")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Text(lockScreenBridge.diagnosticStatus)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.cyan.opacity(0.9))
+                        .lineLimit(2)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
                 )
             }
             
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Diagnóstico:")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                Text(lockScreenBridge.diagnosticStatus)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.cyan.opacity(0.9))
-                    .lineLimit(2)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
-            )
-            
             HStack(spacing: 10) {
                 // Botón de prueba en pantalla de bloqueo con cuenta atrás
-                if lockScreenManager.testCountdownSeconds > 0 {
-                    Button(action: {
-                        lockScreenManager.cancelArmedTest()
-                    }) {
-                        HStack(spacing: 6) {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                            Text("Bloquea en \(lockScreenManager.testCountdownSeconds)s (⌘⌃Q) • Cancelar")
-                                .font(.system(size: 11.5, weight: .semibold))
+                if BuildFlavor.hasDeveloperTools {
+                    if lockScreenManager.testCountdownSeconds > 0 {
+                        Button(action: {
+                            lockScreenManager.cancelArmedTest()
+                        }) {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                Text("Bloquea en \(lockScreenManager.testCountdownSeconds)s (⌘⌃Q) • Cancelar")
+                                    .font(.system(size: 11.5, weight: .semibold))
+                            }
+                            .foregroundColor(.yellow)
+                            .padding(.vertical, 7)
+                            .padding(.horizontal, 12)
+                            .background(Capsule().fill(Color.yellow.opacity(0.18)))
                         }
-                        .foregroundColor(.yellow)
-                        .padding(.vertical, 7)
-                        .padding(.horizontal, 12)
-                        .background(Capsule().fill(Color.yellow.opacity(0.18)))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(action: {
-                        lockScreenManager.startCountdownAndArmLockScreenTest(seconds: 4)
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "lock.circle.fill")
-                            Text("Probar en pantalla de bloqueo (⌘⌃Q)")
-                                .font(.system(size: 11.5, weight: .semibold))
+                        .buttonStyle(.plain)
+                    } else {
+                        Button(action: {
+                            lockScreenManager.startCountdownAndArmLockScreenTest(seconds: 4)
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "lock.circle.fill")
+                                Text("Probar en pantalla de bloqueo (⌘⌃Q)")
+                                    .font(.system(size: 11.5, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.vertical, 7)
+                            .padding(.horizontal, 12)
+                            .background(Capsule().fill(Color.cyan.opacity(0.85)))
                         }
-                        .foregroundColor(.white)
-                        .padding(.vertical, 7)
-                        .padding(.horizontal, 12)
-                        .background(Capsule().fill(Color.cyan.opacity(0.85)))
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 
                 // Previsualizar reproductor en escritorio
@@ -1418,11 +1430,13 @@ public struct SettingsView: View {
                     
                     Spacer()
                     
-                    Button("Ventana de Calibración...") {
-                        AudioSpectrumTestWindowController.shared.show()
+                    if BuildFlavor.hasDeveloperTools {
+                        Button("Ventana de Calibración...") {
+                            AudioSpectrumTestWindowController.shared.show()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
             }
             .padding(14)
@@ -1466,26 +1480,28 @@ public struct SettingsView: View {
                 )
                 
                 if callDetector.isEnabled {
-                    Button(action: {
-                        CallActivityProvider.shared.startIncomingCall(
-                            name: "FaceTime Audio",
-                            handle: "Mamá",
-                            isSimulation: true
-                        )
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Probar llamada entrante en el Notch")
-                                .font(.system(size: 11.5, weight: .semibold))
+                    if BuildFlavor.hasDeveloperTools {
+                        Button(action: {
+                            CallActivityProvider.shared.startIncomingCall(
+                                name: "FaceTime Audio",
+                                handle: "Mamá",
+                                isSimulation: true
+                            )
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("Probar llamada entrante en el Notch")
+                                    .font(.system(size: 11.5, weight: .semibold))
+                            }
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.green.opacity(0.16)))
                         }
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.green.opacity(0.16)))
+                        .buttonStyle(.plain)
+                        .padding(.leading, 4)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 4)
                 }
                 
                 ToggleRow(
@@ -1523,20 +1539,22 @@ public struct SettingsView: View {
                     }
                     
                     HStack(spacing: 10) {
-                        Button(action: {
-                            whatsAppObserver.simulateTestNotification()
-                        }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "message.fill")
-                                Text("Probar Notificación de WhatsApp")
-                                    .font(.system(size: 11.5, weight: .semibold))
+                        if BuildFlavor.hasDeveloperTools {
+                            Button(action: {
+                                whatsAppObserver.simulateTestNotification()
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "message.fill")
+                                    Text("Probar Notificación de WhatsApp")
+                                        .font(.system(size: 11.5, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(Color(red: 0.15, green: 0.78, blue: 0.45).opacity(0.85)))
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color(red: 0.15, green: 0.78, blue: 0.45).opacity(0.85)))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                         
                         Button(action: {
                             whatsAppObserver.activateWhatsAppWeb()
@@ -1567,24 +1585,26 @@ public struct SettingsView: View {
                     isOn: $messagesObserver.isEnabled
                 )
                 
-                if messagesObserver.isEnabled {
-                    HStack(spacing: 10) {
-                        Button(action: {
-                            messagesObserver.simulateTestNotification()
-                        }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "message.fill")
-                                Text("Probar Notificación de iMessage")
-                                    .font(.system(size: 11.5, weight: .semibold))
+                if BuildFlavor.hasDeveloperTools {
+                    if messagesObserver.isEnabled {
+                        HStack(spacing: 10) {
+                            Button(action: {
+                                messagesObserver.simulateTestNotification()
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "message.fill")
+                                    Text("Probar Notificación de iMessage")
+                                        .font(.system(size: 11.5, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(Color(red: 0.18, green: 0.52, blue: 0.98).opacity(0.90)))
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color(red: 0.18, green: 0.52, blue: 0.98).opacity(0.90)))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
                     }
-                    .padding(.horizontal, 8)
                 }
                 
                 HStack(spacing: 8) {
@@ -1626,7 +1646,7 @@ public struct SettingsView: View {
                     
                     if !volumeInterceptor.hasAccessibilityPermission {
                         Button("Configurar...") {
-                            AccessibilityOnboardingWindowController.showIfNeeded()
+                            WelcomeWindowController.showAlways()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -1711,10 +1731,12 @@ extension SettingsView {
                 subtitle: "Cuando el cursor está sobre el notch, sólo crece el notch; la bolita se queda y se hace un poco más pequeña.",
                 isOn: $appState.bubbleShrinksOnNotchHover
             )
-            Button {
-                AnimationStudioWindow.shared.show()
-            } label: {
-                Label("Ajustar la animación en Animation Studio…", systemImage: "film.stack")
+            if BuildFlavor.hasDeveloperTools {
+                Button {
+                    AnimationStudioWindow.shared.show()
+                } label: {
+                    Label("Ajustar la animación en Animation Studio…", systemImage: "film.stack")
+                }
             }
             
             SettingsGroupTitle("Integraciones del sistema", systemImage: "switch.2")

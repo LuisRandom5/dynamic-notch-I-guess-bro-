@@ -15,11 +15,6 @@ public struct AirDropIconView: View {
             img.isTemplate = true
             return img
         }
-        let projectResPath = "/Users/luisangelceroncastro/Documents/Dynamic Notch/Resources/airdrop.png"
-        if let img = NSImage(contentsOfFile: projectResPath) {
-            img.isTemplate = true
-            return img
-        }
         let path = "/System/Library/PrivateFrameworks/SharingUI.framework/Resources/AirDrop-large.png"
         if let img = NSImage(contentsOfFile: path) {
             img.isTemplate = true

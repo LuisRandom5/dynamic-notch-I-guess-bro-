@@ -81,10 +81,6 @@ public struct ActivityAirPodsPillView: View {
             if let bundlePro = Bundle.main.url(forResource: "airpods_pro_2", withExtension: "gif") {
                 return bundlePro
             }
-            let docPro = "/Users/luisangelceroncastro/Documents/animaciones (creo que terminadas)/airpods pro 2.gif"
-            if FileManager.default.fileExists(atPath: docPro) {
-                return URL(fileURLWithPath: docPro)
-            }
         }
         
         // 2. AirPods 3, 4, 5 (modelo estándar)
@@ -94,10 +90,6 @@ public struct ActivityAirPodsPillView: View {
         let localPath = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Assets/airpods_3_4_5.gif")
         if FileManager.default.fileExists(atPath: localPath.path) {
             return localPath
-        }
-        let userDocPath = "/Users/luisangelceroncastro/Documents/animaciones (creo que terminadas)/airpods 3-4-5gif.gif"
-        if FileManager.default.fileExists(atPath: userDocPath) {
-            return URL(fileURLWithPath: userDocPath)
         }
         
         return nil
