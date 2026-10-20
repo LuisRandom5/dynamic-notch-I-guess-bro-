@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Destello radial al estilo de la marca de Claude: rayos redondeados de largo irregular alrededor de un centro.
 /// `phase` hace "respirar" los rayos mientras Claude trabaja.
@@ -43,36 +44,70 @@ public struct ClaudeSparkShape: Shape {
 
 /// Marca de Claude lista para usarse en la bolita, las alas y la tarjeta del notch.
 ///
-/// El giro lento y la "respiración" mientras Claude trabaja son animaciones de Core Animation
-/// (repeatForever) sobre una forma fija: corren en el GPU a la frecuencia de la pantalla (60/120 Hz)
-/// sin redibujar la forma ni tocar el hilo principal en cada cuadro.
+/// La "respiración" mientras Claude trabaja es una animación de Core Animation sobre una capa
+/// (`CABasicAnimation` en el servidor de ventanas): la app no hace nada por cuadro. Con `repeatForever` de
+/// SwiftUI el hilo principal recalculaba el layout de la ventana en cada cuadro (~5 % de CPU mientras
+/// Claude trabajaba).
 public struct ClaudeMarkView: View {
     public static let orange = Color(red: 0.851, green: 0.467, blue: 0.341) // #D97757
-    
+
     public let size: CGFloat
     public let isAnimating: Bool
-    
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathe = false
-    
+
     public init(size: CGFloat, isAnimating: Bool = false) {
         self.size = size
         self.isAnimating = isAnimating
     }
-    
-    private var active: Bool { isAnimating && !reduceMotion }
-    
+
     public var body: some View {
-        ClaudeSparkShape(phase: 0)
-            .fill(Self.orange)
+        ClaudeMarkLayerView(size: size, breathing: isAnimating && !reduceMotion)
             .frame(width: size, height: size)
-            .scaleEffect(active && !breathe ? 0.9 : 1.0)
-            .animation(active ? .easeInOut(duration: 1.25).repeatForever(autoreverses: true) : .easeOut(duration: 0.3), value: breathe)
-            .onAppear { update(active) }
-            .onChange(of: active) { _, isActive in update(isActive) }
     }
-    
-    private func update(_ isActive: Bool) {
-        breathe = isActive
+}
+
+/// La marca dibujada en una `CAShapeLayer`; respirar = escala 1 ⇄ 0.9 en bucle dentro de Core Animation
+private struct ClaudeMarkLayerView: NSViewRepresentable {
+    let size: CGFloat
+    let breathing: Bool
+
+    private static let breatheKey = "claude.breathe"
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: CGRect(x: 0, y: 0, width: size, height: size))
+        view.wantsLayer = true
+        let shape = CAShapeLayer()
+        shape.fillColor = NSColor(ClaudeMarkView.orange).cgColor
+        view.layer?.addSublayer(shape)
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        guard let shape = view.layer?.sublayers?.first as? CAShapeLayer else { return }
+        let bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        if shape.bounds != bounds {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            shape.bounds = bounds
+            shape.position = CGPoint(x: size / 2, y: size / 2)
+            // El sistema de coordenadas de la capa crece hacia arriba: se voltea para que coincida con SwiftUI
+            var flip = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -size)
+            shape.path = ClaudeSparkShape(phase: 0).path(in: bounds).cgPath.copy(using: &flip)
+            CATransaction.commit()
+        }
+        let running = shape.animation(forKey: Self.breatheKey) != nil
+        if breathing && !running {
+            let pulse = CABasicAnimation(keyPath: "transform.scale")
+            pulse.fromValue = 0.9
+            pulse.toValue = 1.0
+            pulse.duration = 1.25
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            shape.add(pulse, forKey: Self.breatheKey)
+        } else if !breathing && running {
+            shape.removeAnimation(forKey: Self.breatheKey)
+        }
     }
 }
