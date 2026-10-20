@@ -315,11 +315,11 @@ struct PillGestureModifier<G: Gesture>: ViewModifier {
     let isEnabled: Bool
     let gesture: G
     
+    // Sin `if`/`else`: cambiar de rama recreaba TODA la píldora (fondo y contenido) cada vez que se abría el
+    // reproductor o llegaba una actividad, y SwiftUI fundía la copia vieja con la nueva: a media animación la isla
+    // se veía doble y translúcida y la forma nueva aparecía de golpe con su tamaño final. Así la vista conserva su
+    // identidad y sólo se apaga el gesto (los de adentro siguen funcionando).
     func body(content: Content) -> some View {
-        if isEnabled {
-            content.gesture(gesture)
-        } else {
-            content
-        }
+        content.gesture(gesture, including: isEnabled ? .all : .subviews)
     }
 }

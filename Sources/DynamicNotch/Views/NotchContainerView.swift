@@ -255,26 +255,34 @@ public struct NotchContainerView: View {
                         // alrededor del centro negro y desaparecía de golpe al final)
                         // Si al cerrar quedan alas de cristal (música), el vidrio se queda: la forma se encoge hasta ellas
                         isDissolving: isCollapsing && activityCenter.expandedActivity == nil
-                            && !(appState.glassWingsEnabled && appState.shouldShowCompact)
+                            && !(appState.glassWingsEnabled && appState.shouldShowCompact),
+                        surfaceWidth: cardExpandedWidth,
+                        surfaceHeight: cardExpandedHeight
                     )
                     .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                     // Keyline de la Isla Dinámica: en modo oscuro, un borde fino del color de lo que se muestra
                     // la separa del contenido oscuro de detrás (sólo en negro OLED y con algo en el notch)
+                    // Siempre presente (no se inserta): si apareciera con la actividad, nacería ya con el tamaño final
+                    // y se veía una píldora fantasma más grande mientras la forma negra todavía crecía. Así sigue la
+                    // forma cuadro a cuadro y sólo su opacidad se anima: entra cuando la forma ya casi llegó.
                     .overlay(alignment: .top) {
-                        if let keyline = keylineColor {
-                            containerPillShape
-                                .stroke(keyline.opacity(0.42), lineWidth: 1)
-                                .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
-                                .allowsHitTesting(false)
-                                .transition(.opacity)
-                        }
+                        containerPillShape
+                            .stroke(keylineColor ?? .clear, lineWidth: 1)
+                            .animation(keylineColor == nil ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.3).delay(0.28)) {
+                                $0.opacity(keylineColor == nil ? 0 : 0.42)
+                            }
+                            .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                            .allowsHitTesting(false)
                     }
-                    .animation(.easeInOut(duration: 0.3), value: keylineColor != nil)
+
                     
                     mainModeContentView
                         // Estándar: el contenido se desenfoca un instante mientras la forma se transforma.
                         // Primero el desenfoque y DESPUÉS el recorte: el desenfoque nunca se sale de la forma
                         .morphBlur(on: morphKey, hold: appState.gestureBlurHold)
+                        .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
+                        // Recorte con la misma silueta que el fondo, con el tamaño como dato animable (ver
+                        // ElasticPillShape.surfaceSize): el contenido nunca se sale de la isla mientras se transforma
                         .clipShape(containerPillShape)
                     
                     // Zona táctil superior en el notch para cerrar al hacer click en el notch

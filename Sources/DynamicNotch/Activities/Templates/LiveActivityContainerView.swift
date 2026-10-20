@@ -57,8 +57,8 @@ public struct LiveActivityContainerView: View {
                         ))
                 case .card:
                     if activity.id.hasPrefix("notification_"),
-                       let payload = notificationProvider.currentPayload,
-                       payload.id == activity.id {
+                       let payload = [notificationProvider.currentPayload, notificationProvider.closingPayload]
+                           .compactMap({ $0 }).first(where: { $0.id == activity.id }) {
                         QuickReplyNotificationView(
                             id: payload.id,
                             title: payload.title,
@@ -69,6 +69,9 @@ public struct LiveActivityContainerView: View {
                             appIcon: payload.appIcon,
                             tintColor: payload.tintColor
                         )
+                        // Al cerrarse, la MISMA tarjeta se apaga antes de que la forma se encoja y se quita ya invisible
+                        .opacity(center.dismissingActivityId == activity.id ? 0 : 1)
+                        .animation(.easeOut(duration: 0.08), value: center.dismissingActivityId == activity.id)
                         .transition(.asymmetric(
                             insertion: .opacity.animation(.easeInOut(duration: 0.18)),
                             removal: .opacity.animation(.easeOut(duration: 0.10))
@@ -91,6 +94,10 @@ public struct LiveActivityContainerView: View {
                                 insertion: .opacity.animation(.easeInOut(duration: 0.18)),
                                 removal: .opacity.animation(.easeOut(duration: 0.10))
                             ))
+                    } else if activity.id.hasPrefix("notification_") || activity.id.hasPrefix("agent_") {
+                        // Sin datos del proveedor: nunca caer a la vista genérica de abajo (metía una copia nueva de la
+                        // tarjeta que aparecía mientras la forma se encogía)
+                        EmptyView()
                     } else if let custom = activity.customView {
                         custom
                             .transition(.asymmetric(

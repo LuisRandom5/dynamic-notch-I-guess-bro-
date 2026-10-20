@@ -70,6 +70,9 @@ public final class NotificationActivityProvider: ObservableObject {
     @Published public private(set) var isQuickReplyExpanded: Bool = false
     @Published public private(set) var currentNotificationId: String? = nil
     @Published public private(set) var currentPayload: NotificationPayload? = nil
+    /// El aviso que se está cerrando: la tarjeta lo sigue mostrando (desvaneciéndose) mientras la isla se recoge.
+    /// Sin él, al borrar `currentPayload` la vista cambiaba de golpe y su copia saliente se veía fuera de la forma.
+    @Published public private(set) var closingPayload: NotificationPayload? = nil
     @Published public var dragPullOffset: CGFloat = 0
     @Published public var dynamicReplyHeight: CGFloat = 186
     
@@ -107,6 +110,7 @@ public final class NotificationActivityProvider: ObservableObject {
         DNDLogger.log("NotificationActivityProvider.handleActivityRemoved -> limpiando estado para id=\(id)")
         NotchWindowManager.shared.setAllowsKeyInput(false)
         setNotificationState(active: false, expanded: false, id: nil)
+        closingPayload = currentPayload
         currentPayload = nil
         // Si había avisos esperando, sale el siguiente
         if !pendingNotifications.isEmpty { scheduleFlush(after: 0.35) }
@@ -233,6 +237,7 @@ public final class NotificationActivityProvider: ObservableObject {
         
         NotchWindowManager.shared.setAllowsKeyInput(false)
         setNotificationState(active: false, expanded: false, id: nil)
+        closingPayload = currentPayload
         currentPayload = nil
         
         if let onDismiss = onDismissRequested {

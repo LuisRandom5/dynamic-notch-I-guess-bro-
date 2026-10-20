@@ -431,12 +431,15 @@ extension NotchContainerView {
     }
     
     var containerPillShape: ElasticPillShape {
-        ElasticPillShape(
+        var shape = ElasticPillShape(
             topRadius: topRadius,
             bottomRadius: bottomRadius,
             stretch: 0,
             verticalStretch: 0
         )
+        // El tamaño viaja en la forma (animable): fondo, borde y recorte del contenido siguen la misma curva
+        shape.surfaceSize = CGSize(width: cardExpandedWidth, height: cardExpandedHeight)
+        return shape
     }
     
     var morphSpring: Animation {

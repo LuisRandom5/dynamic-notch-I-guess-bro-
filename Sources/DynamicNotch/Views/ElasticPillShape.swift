@@ -13,6 +13,11 @@ public struct ElasticPillShape: Shape {
     /// Impulso del borde derecho (pt) por la física de las bolitas: negativo = el borde retrocede (la gota se
     /// desprende y la cápsula se recoge), positivo = se abulta (absorbe el volumen de la gota). Sin cambiar alto.
     public var trailingImpulse: CGFloat = 0
+    /// Tamaño de la silueta como dato ANIMABLE (centrada arriba en el rectángulo que la recibe). Sin él (cero), la
+    /// silueta llena el rectángulo, cuyo cambio de tamaño SwiftUI interpola por su cuenta y no igual en un relleno
+    /// que en un recorte: el contenido se salía de la isla mientras ésta crecía o se encogía. Con el tamaño aquí,
+    /// fondo, borde y recorte del contenido siguen exactamente la misma curva.
+    public var surfaceSize: CGSize = .zero
     
     public init(
         topRadius: CGFloat = 0,
@@ -28,24 +33,35 @@ public struct ElasticPillShape: Shape {
         self.topBleed = topBleed
     }
     
-    public var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>> {
+    public var animatableData: AnimatablePair<
+        AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>>,
+        AnimatablePair<CGFloat, CGFloat>
+    > {
         get {
             AnimatablePair(
-                AnimatablePair(topRadius, bottomRadius),
-                AnimatablePair(AnimatablePair(stretch, verticalStretch), trailingImpulse)
+                AnimatablePair(
+                    AnimatablePair(topRadius, bottomRadius),
+                    AnimatablePair(AnimatablePair(stretch, verticalStretch), trailingImpulse)
+                ),
+                AnimatablePair(surfaceSize.width, surfaceSize.height)
             )
         }
         set {
-            topRadius = newValue.first.first
-            bottomRadius = newValue.first.second
-            stretch = newValue.second.first.first
-            verticalStretch = newValue.second.first.second
-            trailingImpulse = newValue.second.second
+            topRadius = newValue.first.first.first
+            bottomRadius = newValue.first.first.second
+            stretch = newValue.first.second.first.first
+            verticalStretch = newValue.first.second.first.second
+            trailingImpulse = newValue.first.second.second
+            surfaceSize = CGSize(width: newValue.second.first, height: newValue.second.second)
         }
     }
     
-    public func path(in rect: CGRect) -> Path {
+    public func path(in proposedRect: CGRect) -> Path {
         var path = Path()
+        let rect = surfaceSize.width > 0 && surfaceSize.height > 0
+            ? CGRect(x: proposedRect.midX - surfaceSize.width / 2, y: proposedRect.minY,
+                     width: surfaceSize.width, height: surfaceSize.height)
+            : proposedRect
         
         let absStretch = abs(stretch)
         let maxS = max(1.0, OverscrollMetrics.maxStretch)
@@ -130,3 +146,4 @@ public struct ElasticPillShape: Shape {
         return path
     }
 }
+

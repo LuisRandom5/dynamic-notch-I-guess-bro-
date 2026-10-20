@@ -115,6 +115,10 @@ public struct DynamicNotchBackgroundView: View {
     public var isDissolving: Bool = false
     /// Isla flotante (sin cámara detrás): vidrio en toda la forma y también en reposo
     public var isFloatingSurface: Bool = false
+    /// Ancho de la superficie (el del marco que le da el contenedor): decide si el notch cerrado tiene alas
+    public var surfaceWidth: CGFloat = 0
+    /// Alto de la superficie: con el ancho, viaja en la forma como dato animable (ver ElasticPillShape.surfaceSize)
+    public var surfaceHeight: CGFloat = 0
 
     public init(
         topRadius: CGFloat,
@@ -128,8 +132,12 @@ public struct DynamicNotchBackgroundView: View {
         trailingImpulse: CGFloat = 0,
         cameraCenterOffset: CGFloat = 0,
         isFloatingSurface: Bool = false,
-        isDissolving: Bool = false
+        isDissolving: Bool = false,
+        surfaceWidth: CGFloat = 0,
+        surfaceHeight: CGFloat = 0
     ) {
+        self.surfaceWidth = surfaceWidth
+        self.surfaceHeight = surfaceHeight
         self.isFloatingSurface = isFloatingSurface
         self.trailingImpulse = trailingImpulse
         self.cameraCenterOffset = cameraCenterOffset
@@ -160,18 +168,22 @@ public struct DynamicNotchBackgroundView: View {
                 topBleed: topBleed
             )
             shape.trailingImpulse = trailingImpulse
+            shape.surfaceSize = CGSize(width: surfaceWidth, height: surfaceHeight)
             return shape
         }()
         
         // Accesibilidad: Si el usuario activó "Reducir transparencia" o "Aumentar contraste", usar Negro Puro OLED
         let mode = appState.effectiveAppearanceMode
         
-        GeometryReader { geo in
+        // Sin GeometryReader: su contenido se acomoda en un pase aparte y la forma negra no seguía la misma
+        // curva que el recorte del contenido (al cerrar una tarjeta, el contenido viejo se asomaba por fuera).
+        // El contenedor le pasa el ancho.
+        Group {
             let notchHeight = ScreenService.shared.currentGeometry.height
             let notchWidth = ScreenService.shared.currentGeometry.width
             // Notch cerrado con actividad (música, temporizador…): la píldora es más ancha que la cámara y sus
             // lados ("alas") son de cristal; el centro sigue negro detrás de la cámara física
-            let hasGlassWings = appState.glassWingsEnabled && !isExpanded && geo.size.width > notchWidth + 12
+            let hasGlassWings = appState.glassWingsEnabled && !isExpanded && surfaceWidth > notchWidth + 12
             let showsGlass = isExpanded || hasGlassWings || isFloatingSurface
             
             ZStack {
@@ -223,7 +235,8 @@ public struct DynamicNotchBackgroundView: View {
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
-                                    .frame(width: bandWidth, height: hasGlassWings ? geo.size.height : notchHeight + 12)
+                                    .frame(width: bandWidth)
+                                    .frame(maxHeight: hasGlassWings ? .infinity : notchHeight + 12)
                                     .mask(
                                         LinearGradient(
                                             stops: [
@@ -242,8 +255,9 @@ public struct DynamicNotchBackgroundView: View {
                                 }
                             }
                             .allowsHitTesting(false)
-                            .opacity(isDissolving ? 0 : 1)
-                            .animation(isDissolving ? .easeOut(duration: 0.34) : .easeIn(duration: 0.12), value: isDissolving)
+                            .animation(isDissolving ? .easeOut(duration: 0.34) : .easeIn(duration: 0.12)) {
+                                $0.opacity(isDissolving ? 0 : 1)
+                            }
                             // El vidrio se dibuja siempre con apariencia oscura: es la variante "Clear puro" elegida en
                             // el laboratorio; en apariencia clara macOS lo vuelve blanquecino y esmerilado
                             .environment(\.colorScheme, .dark)
@@ -266,20 +280,22 @@ public struct DynamicNotchBackgroundView: View {
                             }
                         }
                         .clipShape(pillShape)
-                        .opacity(isExpanded ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.18), value: isExpanded)
+                        .animation(.easeInOut(duration: 0.18)) { $0.opacity(isExpanded ? 1.0 : 0.0) }
                     }
                     
                     // En reposo absoluto (notch cerrado sin actividad): negro puro para fundirse con la cámara física
                     pillShape
                         .fill(Color.black)
-                        .opacity(showsGlass && !isLegacyGlass ? 0.0 : (isExpanded ? 0.0 : 1.0))
+                        .animation(.easeInOut(duration: 0.24)) {
+                            $0.opacity(showsGlass && !isLegacyGlass ? 0.0 : (isExpanded ? 0.0 : 1.0))
+                        }
                 }
             }
-            .animation(.easeInOut(duration: 0.24), value: showsGlass)
             .animation(.easeInOut(duration: 0.35), value: backdrop.isBackdropBright)
         }
-        .animation(.easeInOut(duration: 0.24), value: isExpanded)
+        // Las animaciones propias (fundidos del vidrio y del negro) van SÓLO en la opacidad: un
+        // `.animation(value: isExpanded)` aquí cambiaba también la curva del TAMAÑO de la forma, que se encogía
+        // más rápido que el recorte del contenido y dejaba asomar el contenido viejo (p. ej. al cerrar WhatsApp)
         .environment(\.controlActiveState, .key)
         .allowsHitTesting(false)
     }

@@ -69,6 +69,11 @@
 ### Diseño
 - En la isla flotante (sin cámara) las tarjetas de mensaje quedan parejas arriba y abajo, como en el iPhone.
 - El color del avatar de un contacto ya no cambia en cada arranque.
+- Transformaciones de la isla sin cuadros rotos (revisadas cuadro a cuadro a 60 fps):
+  - Al abrir el reproductor o llegar un aviso (carga, AirPods, volumen, WhatsApp), la isla ya no se ve doble ni translúcida a media animación: se transforma como una sola forma.
+  - El contenido ya no se sale de la forma mientras crece o se encoge.
+  - Al cerrarse un mensaje ya no se asoma el texto viejo por fuera de la isla.
+  - El borde fino de color aparece cuando la forma ya llegó, en vez de verse como una píldora fantasma más grande.
 
 ### Estabilidad
 - Una tarjeta abierta ya no se queda abierta para siempre:

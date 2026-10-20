@@ -412,6 +412,12 @@ public final class AgentIPCService {
             sendHTTPResponse(connection: connection, statusCode: mode == nil ? 400 : 200, statusText: mode == nil ? "Bad Request" : "OK",
                              jsonObject: ["status": mode == nil ? "modo inválido" : "ok"])
             
+        case ("POST", "/debug/speed"):
+            // Diagnóstico: cámara lenta de las transformaciones ({"speed": 0.2} … 1.0) para revisarlas cuadro a cuadro
+            let speed = (((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["speed"] as? Double) ?? 1.0
+            DispatchQueue.main.async { AnimationSpeedManager.shared.setSpeed(speed) }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+
         case ("GET", "/debug/fullscreen"):
             var info: [String: Any] = [:]
             DispatchQueue.main.sync { info = FullScreenMediaMonitor.shared.debugSnapshot() }
