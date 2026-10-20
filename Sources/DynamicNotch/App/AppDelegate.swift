@@ -2,6 +2,11 @@ import AppKit
 import SwiftUI
 
 public final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// dynamicnotch://activity?… (API pública, ver docs/API.md)
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { _ = PublicActivityAPI.handle(url: url) }
+    }
+
     /// App de barra de menú: si macOS la "reabre" (al activarla sin ventanas, o un `open` mientras ya corre),
     /// SwiftUI abriría por su cuenta la ventana de la escena `Settings`. Los ajustes se abren sólo desde el menú.
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

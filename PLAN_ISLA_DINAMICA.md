@@ -259,9 +259,9 @@ Factibilidad: ✅ API pública sin permisos raros · ⚠️ requiere permiso o h
 
 | # | Falta |
 |---|---|
-| X1 | **API pública de Live Activities** de Dynamic Notch: formalizar el servidor IPC (`/claude`, `/progress`, `/timer`) como un contrato estable al estilo `ActivityAttributes` / `ContentState`. JSON ≤ 4 KB con plantillas compacta, mínima y expandida; iniciar, actualizar y terminar; `relevance`, `staleDate` y `alert`. |
-| X2 | CLI (`dynamicnotch activity start …`), esquema de URL y Atajos (App Intents) para iniciar actividades desde scripts y Atajos. |
-| X3 | Documentación para desarrolladores y ejemplos (GitHub Actions, builds de Xcode, renders, descargas). |
+| X1 ✅ (`PublicActivityAPI`, `POST /activity`) | **API pública de Live Activities** de Dynamic Notch: formalizar el servidor IPC (`/claude`, `/progress`, `/timer`) como un contrato estable al estilo `ActivityAttributes` / `ContentState`. JSON ≤ 4 KB con plantillas compacta, mínima y expandida; iniciar, actualizar y terminar; `relevance`, `staleDate` y `alert`. |
+| X2 ◐ (comando `dynamicnotch` y `dynamicnotch://` ✅; App Intents pendiente: el build con SPM no genera sus metadatos) | CLI (`dynamicnotch activity start …`), esquema de URL y Atajos (App Intents) para iniciar actividades desde scripts y Atajos. |
+| X3 ✅ (docs/API.md) | Documentación para desarrolladores y ejemplos (GitHub Actions, builds de Xcode, renders, descargas). |
 
 ### 3.6 Estabilidad, rendimiento y deuda técnica (P0)
 

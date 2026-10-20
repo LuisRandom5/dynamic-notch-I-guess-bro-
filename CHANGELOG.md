@@ -15,6 +15,12 @@
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
 - Carga y batería baja como en el iPhone: la isla se abre a lo ancho con "Cargando" o "Batería baja" y la batería con su porcentaje.
 
+### API para tus scripts y apps (nuevo)
+- Cualquier script, Atajo o app pone su propia actividad en la isla: iniciar, actualizar lo que cambia y terminar con resumen, como las Live Activities del iPhone. Contrato v1 (JSON ≤ 4 KB) con título, icono, color, progreso, valor corto, relevancia, alerta, enlace y "sin actualizar".
+- Comando `dynamicnotch` (`start`, `update`, `end`, `list` y `run … -- comando`, que muestra ✓ o ✗ y devuelve el código de salida).
+- `POST 127.0.0.1:48123/activity` y `dynamicnotch://activity?…` (Atajos, Raycast, Alfred).
+- Documentación y ejemplos en docs/API.md (Xcode, descargas, CI).
+
 ### Integraciones nuevas (Ajustes › Actividades › Integraciones del sistema)
 - **Carga completa:** aviso al llegar al 100 % con el cargador conectado (una vez por conexión).
 - **Notas de Voz:** mientras grabas, la isla muestra la onda roja y el tiempo, como en el iPhone.

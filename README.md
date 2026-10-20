@@ -2,6 +2,9 @@
 
 > **Isla Dinámica 100% nativa para el Notch de tu MacBook**, escrita en **Swift, SwiftUI y AppKit**. Diseñada para integrarse en macOS con el mismo nivel de rendimiento, consumo de batería y fluidez que una función oficial de Apple.
 
+- 🧩 **API para tus scripts y apps:**
+  - Pon tu propia actividad en la isla (builds, tests, descargas, deploys) con `dynamicnotch run tests -- swift test`, por HTTP local o con `dynamicnotch://` desde Atajos. Ver [docs/API.md](docs/API.md).
+
 ---
 
 ## ✨ Características Nativas

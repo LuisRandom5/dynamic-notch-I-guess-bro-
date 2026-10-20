@@ -68,6 +68,17 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
     <string>Sólo mientras reproduces música o video, para que las barras del notch sigan el sonido. No se graba ni se guarda nada.</string>
     <key>NSContactsUsageDescription</key>
     <string>Dynamic Notch necesita acceder a tus contactos para mostrar la foto y el nombre de quien te llama.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.luisrandom.DynamicNotch.activity</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>dynamicnotch</string>
+            </array>
+        </dict>
+    </array>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Para mostrar en la isla tu próxima reunión con la cuenta regresiva y el botón para unirte. Sólo se lee; nunca se cambia nada.</string>
     <key>NSCalendarsUsageDescription</key>

@@ -545,6 +545,35 @@ public final class AgentIPCService {
         case ("POST", "/ask"), ("POST", "/perm"), ("POST", "/permission"), ("POST", "/authorize"):
             handleAskRequest(bodyData: bodyData, connection: connection)
             
+        case ("POST", "/activity"):
+            // API pública v1 (docs/API.md): iniciar, actualizar o terminar una actividad propia
+            let request: PublicActivityAPI.Request
+            do {
+                request = try PublicActivityAPI.parse(bodyData)
+            } catch {
+                sendHTTPResponse(connection: connection, statusCode: 400, statusText: "Bad Request",
+                                 jsonObject: ["error": "\(error)", "version": PublicActivityAPI.version])
+                return
+            }
+            let outcome = DispatchQueue.main.sync { PublicActivityAPI.apply(request) }
+            switch outcome {
+            case .started, .updated, .ended:
+                let name = outcome == .started ? "started" : (outcome == .updated ? "updated" : "ended")
+                sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK",
+                                 jsonObject: ["status": name, "id": request.id, "version": PublicActivityAPI.version])
+            case .notFound:
+                sendHTTPResponse(connection: connection, statusCode: 404, statusText: "Not Found",
+                                 jsonObject: ["error": "No hay una actividad con ese id", "id": request.id])
+            case .tooMany:
+                sendHTTPResponse(connection: connection, statusCode: 429, statusText: "Too Many Requests",
+                                 jsonObject: ["error": "Máximo \(PublicActivityAPI.maxActive) actividades de la API a la vez"])
+            }
+
+        case ("GET", "/activity"):
+            let items = DispatchQueue.main.sync { PublicActivityAPI.activeSummary() }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK",
+                             jsonObject: ["activities": items, "version": PublicActivityAPI.version])
+
         case ("POST", "/timer"):
             handleTimerRequest(bodyData: bodyData, connection: connection)
             

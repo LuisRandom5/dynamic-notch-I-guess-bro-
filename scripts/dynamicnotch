@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# dynamicnotch — actividades propias en la Isla Dinámica (API pública v1)
+# Contrato completo y ejemplos: docs/API.md
+# ==============================================================================
+set -u
+
+BASE_URL="http://127.0.0.1:${DYNAMICNOTCH_PORT:-48123}"
+
+show_help() {
+    cat <<'EOF'
+Uso: dynamicnotch <comando> <id> [opciones]
+
+Comandos:
+  start  <id>   Inicia una actividad (bolita junto a la isla)
+  update <id>   Actualiza sólo lo que cambia
+  end    <id>   La termina; muestra el resumen unos segundos y se va
+  run    <id> [opciones] -- <comando…>
+                Ejecuta un comando con su actividad: ✓ verde si sale bien, ✗ roja si falla
+                (devuelve el código de salida del comando)
+  list          Actividades de la API vivas
+
+Opciones:
+  --title T       Título                 --subtitle S    Texto secundario
+  --icon NOMBRE   Símbolo SF (p. ej. hammer.fill)
+  --color C       #RRGGBB o green, blue, red, orange, yellow, purple, pink, teal, indigo, gray
+  --progress P    0…1 (anillo en la bolita)
+  --value V       Texto corto a la derecha (p. ej. "3/10"), máx. 12 caracteres
+  --url URL       Se abre al hacer clic (http/https)
+  --relevance N   0…1000 (más alto = más importante)
+  --stale SEG     Sin actualizar en SEG segundos → se atenúa
+  --after SEG     (end) segundos de resumen antes de irse
+  --notch         Puede ocupar el notch (por defecto vive como bolita)
+  --alert         Se expande un momento con esta actualización
+  --sound         …y suena
+
+Ejemplos:
+  dynamicnotch start build --title "Compilando" --icon hammer.fill --progress 0
+  dynamicnotch update build --progress 0.6 --value "6/10"
+  dynamicnotch end build --title "Listo" --color green --after 4
+  dynamicnotch run tests --title "Tests" --icon checklist -- swift test
+EOF
+}
+
+# Texto JSON seguro (comillas, barras, saltos de línea y tabuladores)
+json_string() {
+    local s=$1
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    s=${s//$'\t'/\\t}
+    s=${s//$'\r'/}
+    printf '"%s"' "$s"
+}
+
+# Construye el JSON a partir de las opciones; deja los argumentos que no son opciones en REST
+build_payload() {
+    local action=$1 id=$2; shift 2
+    local fields
+    fields="\"id\":$(json_string "$id"),\"action\":$(json_string "$action")"
+    REST=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --title)     fields+=",\"title\":$(json_string "$2")"; shift 2 ;;
+            --subtitle)  fields+=",\"subtitle\":$(json_string "$2")"; shift 2 ;;
+            --icon)      fields+=",\"icon\":$(json_string "$2")"; shift 2 ;;
+            --color)     fields+=",\"color\":$(json_string "$2")"; shift 2 ;;
+            --progress)  fields+=",\"progress\":$(json_string "$2")"; shift 2 ;;
+            --value)     fields+=",\"value\":$(json_string "$2")"; shift 2 ;;
+            --url)       fields+=",\"url\":$(json_string "$2")"; shift 2 ;;
+            --relevance) fields+=",\"relevance\":$(json_string "$2")"; shift 2 ;;
+            --stale)     fields+=",\"staleAfter\":$(json_string "$2")"; shift 2 ;;
+            --after)     fields+=",\"dismissAfter\":$(json_string "$2")"; shift 2 ;;
+            --notch)     fields+=",\"placement\":\"notch\""; shift ;;
+            --alert)     fields+=",\"alert\":true"; shift ;;
+            --sound)     fields+=",\"sound\":true"; shift ;;
+            --)          shift; REST=("$@"); break ;;
+            *)           echo "dynamicnotch: opción desconocida: $1" >&2; exit 2 ;;
+        esac
+    done
+    PAYLOAD="{${fields}}"
+}
+
+post() {
+    local response status
+    response=$(curl -sS -m 3 -w $'\n%{http_code}' -X POST -H 'Content-Type: application/json' \
+        --data-binary "$1" "${BASE_URL}/activity" 2>/dev/null) || {
+        echo "dynamicnotch: Dynamic Notch no está abierto (${BASE_URL})" >&2
+        return 3
+    }
+    status=${response##*$'\n'}
+    if [ "$status" != "200" ]; then
+        echo "dynamicnotch: ${response%$'\n'*}" >&2
+        return 1
+    fi
+}
+
+command=${1:-}
+case "$command" in
+    start|update|end)
+        [ $# -ge 2 ] || { show_help; exit 2; }
+        build_payload "$command" "$2" "${@:3}"
+        post "$PAYLOAD"
+        ;;
+    run)
+        [ $# -ge 2 ] || { show_help; exit 2; }
+        id=$2
+        build_payload start "$id" "${@:3}"
+        [ ${#REST[@]} -gt 0 ] || { echo "dynamicnotch: falta el comando después de --" >&2; exit 2; }
+        post "$PAYLOAD" || true
+        start_time=$(date +%s)
+        "${REST[@]}"
+        code=$?
+        elapsed=$(( $(date +%s) - start_time ))
+        if [ $code -eq 0 ]; then
+            build_payload end "$id" --icon checkmark.circle.fill --color green --subtitle "Terminó en ${elapsed} s" --after 5
+        else
+            build_payload end "$id" --icon xmark.circle.fill --color red --subtitle "Falló (código $code) a los ${elapsed} s" --after 8 --alert
+        fi
+        post "$PAYLOAD" || true
+        exit $code
+        ;;
+    list)
+        curl -sS -m 3 "${BASE_URL}/activity" || { echo "dynamicnotch: Dynamic Notch no está abierto" >&2; exit 3; }
+        echo
+        ;;
+    -h|--help|help|"")
+        show_help
+        ;;
+    *)
+        echo "dynamicnotch: comando desconocido: $command" >&2
+        show_help
+        exit 2
+        ;;
+esac
