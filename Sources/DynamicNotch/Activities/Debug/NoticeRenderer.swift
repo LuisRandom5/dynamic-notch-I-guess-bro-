@@ -32,6 +32,7 @@ enum NoticeRenderer {
             card(WhatsAppMessagePreview.describe("Foto"))
             card(WhatsAppMessagePreview.describe("Ana: Sticker", media: .sticker), title: "Familia")
             card(WhatsAppMessagePreview.describe("0:07", media: .voice))
+            card("2 mensajes nuevos sin leer", title: "WhatsApp")
             pill("Cargando", labelColor: .white.opacity(0.92), percentage: 83, tint: DesignTokens.green, bolt: true)
             pill("Batería baja", labelColor: DesignTokens.red, percentage: 10, tint: DesignTokens.red, bolt: false)
         }

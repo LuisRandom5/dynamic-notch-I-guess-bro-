@@ -423,6 +423,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         FrameHitchMonitor.shared.start()
         // Notch oculto mientras se ve algo a pantalla completa
         FullScreenMediaMonitor.shared.start()
+        // Pantalla bloqueada o dormida: los sondeos de pantalla se pausan
+        SystemIdleState.start()
         // Vidrio legible: detecta si detrás del notch hay algo claro (regular) o el fondo de pantalla (clear)
         BackdropBrightnessMonitor.shared.start()
         

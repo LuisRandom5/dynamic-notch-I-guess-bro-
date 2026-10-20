@@ -41,6 +41,7 @@ public final class BackdropBrightnessMonitor: ObservableObject {
     }
 
     private func scheduleEvaluate() {
+        guard !SystemIdleState.isScreenUnavailable else { return }
         // Datos de AppKit/estado en el hilo principal; la consulta pesada en segundo plano
         guard let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
               let mainHeight = NSScreen.screens.first?.frame.height else { return }

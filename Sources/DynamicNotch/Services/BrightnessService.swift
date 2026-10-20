@@ -81,7 +81,7 @@ public final class BrightnessService: ObservableObject {
         }
         
         pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-            guard let self = self, !self.isPollingBrightness else { return }
+            guard let self = self, !self.isPollingBrightness, !SystemIdleState.isScreenUnavailable else { return }
             // La lectura (DisplayServices) se hace fuera del hilo principal: cada 0.15 s robaba tiempo a las
             // animaciones del notch
             self.isPollingBrightness = true

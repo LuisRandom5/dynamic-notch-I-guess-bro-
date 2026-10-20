@@ -177,6 +177,7 @@ public final class SystemStatusActivityProvider {
     }
 
     private func pollPrivacy() {
+        guard !SystemIdleState.isScreenUnavailable else { return }
         guard AppState.shared.privacyIndicatorEnabled else {
             if privacyState.camera || privacyState.microphone {
                 privacyState = (false, false, false)

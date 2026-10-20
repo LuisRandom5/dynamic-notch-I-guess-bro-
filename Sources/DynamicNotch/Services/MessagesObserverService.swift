@@ -149,7 +149,7 @@ public final class MessagesObserverService: ObservableObject {
     }
 
     public func pollMessages() {
-        guard isEnabled, !isQuerying else { return }
+        guard isEnabled, !isQuerying, !SystemIdleState.isScreenUnavailable else { return }
         isQuerying = true
         // Los procesos se buscan en caché (pedir la lista de apps 8 veces por segundo costaba ~2 % de CPU) y la
         // lista de conversaciones de Mensajes se revisa una vez por segundo, no en cada vuelta

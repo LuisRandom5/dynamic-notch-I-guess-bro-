@@ -169,7 +169,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
 
     public func pollWhatsAppWeb() {
-        guard isEnabled && !isQuerying else { return }
+        guard isEnabled && !isQuerying, !SystemIdleState.isScreenUnavailable else { return }
         
         // Navegadores abiertos: lista en caché (pedirla a NSWorkspace en cada sondeo costaba tiempo del hilo
         // principal); se actualiza al abrir o cerrar apps

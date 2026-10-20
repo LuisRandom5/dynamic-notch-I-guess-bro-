@@ -4,7 +4,8 @@ import SwiftUI
 /// Descargas en curso como una sola actividad (HIG: mejor una actividad que rota que varias): Safari y las
 /// apps que publican su progreso (`NSProgress` de archivo) en la carpeta Descargas. Vive como bolita con el
 /// anillo de progreso; al terminar muestra el anillo completo un momento y se reabsorbe.
-public final class DownloadsActivityProvider {
+// Vive en el hilo principal: el suscriptor de Progress sólo reenvía al hilo principal
+public final class DownloadsActivityProvider: @unchecked Sendable {
     public static let shared = DownloadsActivityProvider()
     public static let activityId = "downloads"
 

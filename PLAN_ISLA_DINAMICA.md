@@ -397,6 +397,15 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 | 2 | Concentración: se escuchan `_NSDoNotDisturbEnabledNotification` / `…Disabled…`; probar activando No molestar (si no sale el aviso, macOS 27 ya no los publica). | Pendiente de probar |
 | 3 | Próxima reunión: probar con un evento real (pide permiso de Calendario al encender el ajuste). | Pendiente de probar |
 | 4 | Carrusel con la música (A-3): la música no es una actividad del `PresentationEngine` sino la capa de fondo del notch; para recorrerla con el swipe hay que volverla actividad de primera clase. Va junto con el refactor S5 (dividir `NotchContainerView` y `AppState`). | ✅ Hecho: la música entra al carrusel como bolita (`ActivityCenter.musicCarouselId`), regresa al notch al volver a ella, al tocar su bolita, al terminar la actividad que la desplazó o al dejar de sonar |
+| 5 | Lista completa de pruebas del usuario: [docs/PRUEBAS_2.1.md](docs/PRUEBAS_2.1.md) (monitor, novedades y lo de Safari). Al terminar: tag `v2.1` y página del release. | Pendiente del usuario |
+
+### Lo que queda en el plan después de la 2.1 (opcional)
+
+- **App Intents (Atajos nativos)**: el build con SPM no genera sus metadatos; hoy Atajos usa `dynamicnotch://`. Haría falta un target de Xcode.
+- **Indicador de grabación de pantalla**: macOS 27 no lo expone (ni por accesibilidad del Centro de control); sólo se detecta la herramienta de captura del sistema.
+- **Bolitas ovaladas con texto (A7)**: descartado por ahora (no quisiste la cuenta regresiva en la bolita del temporizador).
+- **Keyline por actividad (D4)**: P2, sólo se nota en modo cristal.
+- **Inglés**: toda la interfaz está en español; traducirla abriría mercado, pero es un trabajo grande (cientos de textos).
 
 ---
 

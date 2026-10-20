@@ -24,6 +24,10 @@ public struct QuickReplyNotificationView: View {
     }
     public var title: String { livePayload?.title ?? initialTitle }
     public var message: String { livePayload?.message ?? initialMessage }
+    private var senderIsTheApp: Bool {
+        title.lowercased() == appName.lowercased() || title.lowercased().hasPrefix("whatsapp")
+    }
+
     /// Lo que se muestra: "Mensaje nuevo" si el ajuste de privacidad lo pide (p. ej. grabando la pantalla)
     private var displayedMessage: String {
         NotificationActivityProvider.hidesMessageText ? "Mensaje nuevo" : message
@@ -118,6 +122,14 @@ public struct QuickReplyNotificationView: View {
                         Image(nsImage: avatar)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                    } else if senderIsTheApp {
+                        // Sin remitente: el ícono de la app, como el iPhone
+                        ZStack {
+                            Circle().fill(tintColor)
+                            Image(systemName: appIcon)
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
                     } else {
                         ZStack {
                             Circle().fill(LinearGradient(
@@ -134,20 +146,22 @@ public struct QuickReplyNotificationView: View {
                 .frame(width: 40, height: 40)
                 .clipShape(Circle())
 
-                // Icono de la app, como en las notificaciones de comunicación del iPhone
-                RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                    .fill(tintColor)
-                    .frame(width: 17, height: 17)
-                    .overlay(
-                        Image(systemName: appIcon)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                            .stroke(Color.black, lineWidth: 1.5)
-                    )
-                    .offset(x: 4, y: 3)
+                if !senderIsTheApp {
+                    // Icono de la app, como en las notificaciones de comunicación del iPhone
+                    RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                        .fill(tintColor)
+                        .frame(width: 17, height: 17)
+                        .overlay(
+                            Image(systemName: appIcon)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                                .stroke(Color.black, lineWidth: 1.5)
+                        )
+                        .offset(x: 4, y: 3)
+                }
             }
             .frame(width: 44, height: 44)
 
@@ -167,6 +181,7 @@ public struct QuickReplyNotificationView: View {
                                 .background(Circle().fill(Color.white.opacity(0.14)))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Descartar aviso")
                         .transition(.opacity.combined(with: .scale(scale: 0.7)))
                     } else {
                         Text("ahora")

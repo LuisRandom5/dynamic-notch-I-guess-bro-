@@ -771,9 +771,23 @@ public final class AudioSpectrumEngine: ObservableObject {
         }.resume()
     }
     
+    /// Primera pista de audio (`tracks(withMediaType:)` está obsoleta; esto ya corre en segundo plano, así que
+    /// se espera la versión asíncrona)
+    private static func firstAudioTrack(of asset: AVURLAsset) -> AVAssetTrack? {
+        final class Box: @unchecked Sendable { var track: AVAssetTrack? }
+        let box = Box()
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            box.track = try? await asset.loadTracks(withMediaType: .audio).first
+            done.signal()
+        }
+        done.wait()
+        return box.track
+    }
+
     static func decodeAudioFileToMonoPCM(url: URL, targetSampleRate: Double) -> [Float] {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .audio).first,
+        guard let track = Self.firstAudioTrack(of: asset),
               let reader = try? AVAssetReader(asset: asset) else {
             return []
         }

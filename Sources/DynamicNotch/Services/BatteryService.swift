@@ -76,15 +76,11 @@ public final class BatteryService: ObservableObject {
             }
             
             // Carga completa: sólo si en esta conexión se estuvo cargando (no al conectar ya lleno)
-            if !isPluggedIn {
-                pendingFullChargeNotice = false
-            } else if isCharging && percentage < 100 {
-                pendingFullChargeNotice = true
-            } else if pendingFullChargeNotice && (isCharged || percentage >= 100) {
-                pendingFullChargeNotice = false
-                if notifyOnChange {
-                    DispatchQueue.main.async { [weak self] in self?.onFullyCharged?() }
-                }
+            let step = Self.fullChargeStep(pending: pendingFullChargeNotice, pluggedIn: isPluggedIn, charging: isCharging,
+                                           charged: isCharged, percentage: percentage)
+            pendingFullChargeNotice = step.pending
+            if step.notify && notifyOnChange {
+                DispatchQueue.main.async { [weak self] in self?.onFullyCharged?() }
             }
 
             if notifyOnChange, let wasPluggedIn = wasPluggedIn {
@@ -103,6 +99,15 @@ public final class BatteryService: ObservableObject {
         }
     }
     
+    /// Regla pura del aviso de carga completa (una vez por conexión, y sólo si se vio cargando por debajo del 100 %)
+    static func fullChargeStep(pending: Bool, pluggedIn: Bool, charging: Bool, charged: Bool,
+                               percentage: Int) -> (pending: Bool, notify: Bool) {
+        if !pluggedIn { return (false, false) }
+        if charging && percentage < 100 { return (true, false) }
+        if pending && (charged || percentage >= 100) { return (false, true) }
+        return (pending, false)
+    }
+
     private func startMonitoring() {
         let callback: IOPowerSourceCallbackType = { _ in
             BatteryService.shared.refreshBatteryStatus(notifyOnChange: true)

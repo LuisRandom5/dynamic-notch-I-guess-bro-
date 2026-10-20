@@ -675,6 +675,8 @@ public struct NotchPlayerView: View {
                             .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
                     }
                     .help(musicService.isShuffle ? "Aleatorio activado" : "Activar modo aleatorio")
+                    .accessibilityLabel("Aleatorio")
+                    .accessibilityValue(musicService.isShuffle ? "Activado" : "Desactivado")
                     
                     let isRepeatActive = musicService.repeatMode != .off
                     PlayerControlButton(
@@ -692,6 +694,8 @@ public struct NotchPlayerView: View {
                             .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
                     }
                     .help("Modo de repetición: \(musicService.repeatMode.label)")
+                    .accessibilityLabel("Repetir")
+                    .accessibilityValue(musicService.repeatMode.label)
                 }
                 
                 Spacer()
@@ -721,6 +725,7 @@ public struct NotchPlayerView: View {
                         .frame(width: PlayerMetrics.sideButtonWidth, height: PlayerMetrics.sideButtonWidth)
                 }
                 .help("Seleccionar salida de audio (AirPlay / AirPods)")
+                .accessibilityLabel("Salida de audio")
             }
             .padding(.horizontal, 10)
             
@@ -736,6 +741,7 @@ public struct NotchPlayerView: View {
                     SkipGlyph(direction: .backward, trigger: previousTick)
                         .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                 }
+                .accessibilityLabel("Anterior")
                 
                 PlayerControlButton(scaleAmount: 0.82, haloSize: 38) {
                     appState.hapticService.triggerExpand()
@@ -750,6 +756,7 @@ public struct NotchPlayerView: View {
                         .frame(width: PlayerMetrics.playPauseWidth, height: PlayerMetrics.playPauseHeight)
                 }
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: track.isPlaying)
+                .accessibilityLabel(track.isPlaying ? "Pausar" : "Reproducir")
                 
                 PlayerControlButton(scaleAmount: 0.82, haloSize: 32) {
                     appState.hapticService.triggerSnap()
@@ -760,6 +767,7 @@ public struct NotchPlayerView: View {
                     SkipGlyph(direction: .forward, trigger: nextTick)
                         .frame(width: PlayerMetrics.skipButtonWidth, height: PlayerMetrics.skipButtonHeight)
                 }
+                .accessibilityLabel("Siguiente")
             }
         }
     }

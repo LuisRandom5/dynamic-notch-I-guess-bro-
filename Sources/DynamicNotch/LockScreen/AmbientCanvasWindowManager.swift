@@ -73,9 +73,9 @@ public final class AmbientCanvasWindowManager: ObservableObject {
             window.isMovableByWindowBackground = false
             window.acceptsMouseMovedEvents = true
             
-            let canvasView = AmbientMusicCanvasView { [weak self] in
+            let canvasView = AmbientMusicCanvasView(onDismiss: { [weak self] in
                 self?.hideCanvas()
-            }
+            })
             .environmentObject(MusicService.shared)
             .environmentObject(LyricsService.shared)
             .environmentObject(AudioDeviceService.shared)

@@ -53,7 +53,7 @@ public final class AppVisibilityMonitor: ObservableObject {
 
     private func refresh() {
         let targets = watched
-        guard !targets.isEmpty else { return }
+        guard !targets.isEmpty, !SystemIdleState.isScreenUnavailable else { return }
         let pidsByBundle: [String: Set<pid_t>] = Dictionary(uniqueKeysWithValues: targets.map { id in
             (id, Set(NSRunningApplication.runningApplications(withBundleIdentifier: id).map(\.processIdentifier)))
         })

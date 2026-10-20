@@ -45,7 +45,7 @@ public final class FullScreenDetectorService: ObservableObject {
     private var isChecking = false
 
     public func checkFullScreenState() {
-        guard !isChecking, let screen = ScreenService.shared.targetScreen ?? NSScreen.main else { return }
+        guard !isChecking, !SystemIdleState.isScreenUnavailable, let screen = ScreenService.shared.targetScreen ?? NSScreen.main else { return }
         isChecking = true
         let screenFrame = screen.frame
         let myPID = ProcessInfo.processInfo.processIdentifier

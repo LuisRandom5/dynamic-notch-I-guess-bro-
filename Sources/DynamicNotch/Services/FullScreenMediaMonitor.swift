@@ -40,7 +40,8 @@ public final class FullScreenMediaMonitor {
     ]
 
     private func evaluate() {
-        guard AppState.shared.hideNotchInFullScreen || isHidingNotch,
+        guard !SystemIdleState.isScreenUnavailable,
+              AppState.shared.hideNotchInFullScreen || isHidingNotch,
               let screen = ScreenService.shared.targetScreen ?? NSScreen.main,
               let mainHeight = NSScreen.screens.first?.frame.height else { return }
         let enabled = AppState.shared.hideNotchInFullScreen

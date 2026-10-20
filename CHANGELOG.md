@@ -13,6 +13,7 @@
 ### Avisos al estilo iPhone
 - Mensajes de WhatsApp como la notificación del iPhone: foto del contacto con el icono de la app, nombre, "ahora" y el mensaje en dos líneas, sin botones ni textos de ayuda (la X aparece al pasar el puntero).
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
+- Si WhatsApp no puede decir quién escribió, el aviso muestra el ícono de la app en lugar de un monograma.
 - Mensajes seguidos sin pisarse: otro mensaje del mismo contacto actualiza la tarjeta; uno de otro contacto espera a que el anterior se vea al menos 2.5 s; mientras respondes, los nuevos esperan su turno en lugar de perderse.
 - Carga y batería baja como en el iPhone: la isla se abre a lo ancho con "Cargando" o "Batería baja" y la batería con su porcentaje.
 
@@ -52,7 +53,11 @@
 - El color del avatar de un contacto ya no cambia en cada arranque.
 
 ### Estabilidad
+- Compila sin advertencias (lectura de audio con la API asíncrona de AVFoundation).
+- VoiceOver lee los botones del reproductor (Anterior, Reproducir/Pausar, Siguiente, Aleatorio, Repetir, Salida de audio) y la X de los avisos.
 - El canal local de Claude y los agentes (puerto 48123) reintenta abrirse si al arrancar sigue ocupado por la instancia anterior; antes quedaba muerto hasta reiniciar la app.
+
+- Con la pantalla bloqueada o dormida se pausan los sondeos que sólo sirven en pantalla (WhatsApp, avisos, llamadas por accesibilidad, pantalla completa, brillo, fondo); antes seguían toda la noche.
 
 ### Privacidad
 - El log de diagnóstico (/tmp/notch_dnd.log) ya no guarda el texto de los mensajes, sólo es legible por tu usuario y rota a los 5 MB.

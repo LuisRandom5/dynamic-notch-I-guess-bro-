@@ -272,28 +272,38 @@ public final class NotificationActivityProvider: ObservableObject {
             self?.presentNotification(title: title, message: message, handle: handle, avatar: avatar, appIcon: appIcon,
                                       appName: appName, tint: tint, enableQuickReply: enableQuickReply, duration: duration)
         }
-        guard isNotificationActive, let current = currentPayload else {
+        let current = isNotificationActive ? currentPayload : nil
+        let elapsed = Date().timeIntervalSince(currentShownAt)
+        switch Self.arrival(hasCurrent: current != nil, sameSender: current?.handle.lowercased() == sender,
+                            replying: isQuickReplyExpanded, elapsed: elapsed) {
+        case .present:
             present()
             return
-        }
-        // Otro mensaje del mismo contacto: se actualiza la tarjeta que ya se ve (y se queda un poco más)
-        if current.handle.lowercased() == sender && !isQuickReplyExpanded {
+        case .updateCurrent:
+            // Otro mensaje del mismo contacto: se actualiza la tarjeta que ya se ve (y se queda un poco más)
+            guard let current else { return }
             updateActiveNotification(title: title, message: message, handle: current.handle)
             if let activity = ActivityCenter.shared.activeActivities.first(where: { $0.id == current.id }) {
                 ActivityCenter.shared.publish(activity) // reinicia su tiempo en pantalla
             }
             return
-        }
-        // Respondiendo, o el aviso actual apenas se ve: el nuevo espera su turno
-        let elapsed = Date().timeIntervalSince(currentShownAt)
-        guard isQuickReplyExpanded || elapsed < Self.minimumOnScreen else {
-            present()
-            return
+        case .enqueue:
+            break // respondiendo, o el aviso actual apenas se ve: el nuevo espera su turno
         }
         pendingNotifications.removeAll { $0.sender == sender }
         pendingNotifications.append(PendingNotification(sender: sender, present: present))
         if pendingNotifications.count > Self.maxPending { pendingNotifications.removeFirst() }
         scheduleFlush(after: max(0.2, Self.minimumOnScreen - elapsed))
+    }
+
+    public enum Arrival: Equatable { case present, updateCurrent, enqueue }
+
+    /// Regla pura de un aviso que llega mientras otro se ve
+    public static func arrival(hasCurrent: Bool, sameSender: Bool, replying: Bool, elapsed: TimeInterval) -> Arrival {
+        guard hasCurrent else { return .present }
+        if sameSender && !replying { return .updateCurrent }
+        if replying || elapsed < minimumOnScreen { return .enqueue }
+        return .present
     }
 
     private func scheduleFlush(after delay: TimeInterval) {
@@ -348,7 +358,9 @@ public final class NotificationActivityProvider: ObservableObject {
         
         // Generar avatar monograma instantáneo para jamás bloquear el hilo principal en ContactStore
         var contactAvatar = avatar
-        if contactAvatar == nil {
+        // Sin remitente conocido ("WhatsApp"): la tarjeta muestra el ícono de la app, no un monograma
+        let senderIsTheApp = title.lowercased() == appName.lowercased() || title.lowercased().hasPrefix("whatsapp")
+        if contactAvatar == nil && !senderIsTheApp {
             let initials = ContactLookupService.shared.extractInitials(from: resolvedHandle)
             contactAvatar = ContactLookupService.shared.generateMonogramAvatar(for: resolvedHandle, initials: initials)
             

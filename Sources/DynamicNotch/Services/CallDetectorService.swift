@@ -159,6 +159,9 @@ public final class CallDetectorService: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self, self.isEnabled else { return }
                 self.checkTelephonyCalls()
+                // Con la pantalla bloqueada o dormida no se buscan banners por accesibilidad (sí las llamadas
+                // del sistema, que son baratas)
+                guard !SystemIdleState.isScreenUnavailable else { return }
                 self.checkFaceTimeState()
                 self.checkWhatsAppState()
                 self.checkDiscordState()
