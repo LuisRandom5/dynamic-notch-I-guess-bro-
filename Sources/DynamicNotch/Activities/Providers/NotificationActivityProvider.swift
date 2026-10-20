@@ -108,11 +108,10 @@ public final class NotificationActivityProvider: ObservableObject {
         NotchWindowManager.shared.setAllowsKeyInput(false)
         setNotificationState(active: false, expanded: false, id: nil)
         currentPayload = nil
+        // Si había avisos esperando, sale el siguiente
+        if !pendingNotifications.isEmpty { scheduleFlush(after: 0.35) }
     }
     
-    /// Actualiza en caliente el título, mensaje y avatar de la notificación activa sin parpadeo
-    /// Sólo tiene sentido responder si sabemos a QUIÉN: un remitente genérico ("WhatsApp") o un resumen
-    /// ("2 mensajes nuevos sin leer") no identifican un chat, así que se ofrece abrir la app en su lugar.
     /// ¿Ocultar el texto de los mensajes ahora? (ajuste "Texto de los mensajes")
     public static var hidesMessageText: Bool {
         switch AppState.shared.messagePreviewPrivacy {
@@ -127,6 +126,8 @@ public final class NotificationActivityProvider: ObservableObject {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.screencaptureui").isEmpty
     }
 
+    /// Sólo tiene sentido responder si sabemos a QUIÉN: un remitente genérico ("WhatsApp") o un resumen
+    /// ("2 mensajes nuevos sin leer") no identifican un chat, así que se ofrece abrir la app en su lugar.
     public static func canQuickReply(title: String, message: String) -> Bool {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if t.isEmpty || t == "whatsapp" || t == "whatsapp web" || t == "mensajes" || t == "messages" { return false }
@@ -136,6 +137,7 @@ public final class NotificationActivityProvider: ObservableObject {
         return !isSummary
     }
     
+    /// Actualiza en caliente el título, mensaje y avatar de la notificación activa sin parpadeo
     public func updateActiveNotification(title: String, message: String, handle: String? = nil, avatar: NSImage? = nil, enableQuickReply: Bool? = nil) {
         guard let current = currentPayload else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -241,7 +243,79 @@ public final class NotificationActivityProvider: ObservableObject {
     }
     
     /// Muestra una notificación interactiva en la isla con soporte de swipe down para responder
+    // MARK: - Avisos seguidos (como el iPhone: no se pisan)
+
+    /// Lo mínimo que se ve un aviso antes de que otro de OTRO contacto lo reemplace
+    public static let minimumOnScreen: TimeInterval = 2.5
+    private static let maxPending = 4
+    private struct PendingNotification {
+        let sender: String
+        let present: () -> Void
+    }
+    private var pendingNotifications: [PendingNotification] = []
+    private var pendingFlush: DispatchWorkItem?
+    private var currentShownAt = Date.distantPast
+
     public func showNotification(
+        title: String,
+        message: String,
+        handle: String = "",
+        avatar: NSImage? = nil,
+        appIcon: String = "message.fill",
+        appName: String = "WhatsApp",
+        tint: Color = Color(red: 0.15, green: 0.78, blue: 0.45),
+        enableQuickReply: Bool = true,
+        duration: TimeInterval? = 6.0
+    ) {
+        let sender = (handle.isEmpty ? title : handle).lowercased()
+        let present: () -> Void = { [weak self] in
+            self?.presentNotification(title: title, message: message, handle: handle, avatar: avatar, appIcon: appIcon,
+                                      appName: appName, tint: tint, enableQuickReply: enableQuickReply, duration: duration)
+        }
+        guard isNotificationActive, let current = currentPayload else {
+            present()
+            return
+        }
+        // Otro mensaje del mismo contacto: se actualiza la tarjeta que ya se ve (y se queda un poco más)
+        if current.handle.lowercased() == sender && !isQuickReplyExpanded {
+            updateActiveNotification(title: title, message: message, handle: current.handle)
+            if let activity = ActivityCenter.shared.activeActivities.first(where: { $0.id == current.id }) {
+                ActivityCenter.shared.publish(activity) // reinicia su tiempo en pantalla
+            }
+            return
+        }
+        // Respondiendo, o el aviso actual apenas se ve: el nuevo espera su turno
+        let elapsed = Date().timeIntervalSince(currentShownAt)
+        guard isQuickReplyExpanded || elapsed < Self.minimumOnScreen else {
+            present()
+            return
+        }
+        pendingNotifications.removeAll { $0.sender == sender }
+        pendingNotifications.append(PendingNotification(sender: sender, present: present))
+        if pendingNotifications.count > Self.maxPending { pendingNotifications.removeFirst() }
+        scheduleFlush(after: max(0.2, Self.minimumOnScreen - elapsed))
+    }
+
+    private func scheduleFlush(after delay: TimeInterval) {
+        pendingFlush?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.flushPending() }
+        pendingFlush = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func flushPending() {
+        guard !pendingNotifications.isEmpty else { return }
+        // Mientras se escribe una respuesta, la fila espera
+        if isQuickReplyExpanded {
+            scheduleFlush(after: 1.0)
+            return
+        }
+        let next = pendingNotifications.removeFirst()
+        next.present()
+        if !pendingNotifications.isEmpty { scheduleFlush(after: Self.minimumOnScreen) }
+    }
+
+    private func presentNotification(
         title: String,
         message: String,
         handle: String = "",
@@ -326,6 +400,7 @@ public final class NotificationActivityProvider: ObservableObject {
             enableQuickReply: effectiveQuickReply
         )
         self.currentPayload = payload
+        currentShownAt = Date()
         setNotificationState(active: true, expanded: false, id: activityId)
         
         // Pre-configurar dimensiones del contenedor ANTES de publicar para que el hit-test y la geometría sean inmediatos

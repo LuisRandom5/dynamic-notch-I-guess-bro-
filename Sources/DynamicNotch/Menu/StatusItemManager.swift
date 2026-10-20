@@ -157,6 +157,23 @@ public final class StatusItemManager: NSObject {
         
         testMenu.addItem(NSMenuItem.separator())
         
+        // Novedades 2.1 (cada una corre su demo sin tocar nada del sistema)
+        let newIn21: [(String, Selector)] = [
+            ("Carga completa (100 %)", #selector(testFullCharge)),
+            ("Concentración activada", #selector(testFocus)),
+            ("Próxima reunión (ejemplo con Meet)", #selector(testMeeting)),
+            ("WhatsApp: foto", #selector(testWhatsAppPhoto)),
+            ("WhatsApp: dos mensajes seguidos (fila)", #selector(testNotificationQueue)),
+            ("Actividad de la API (compilando, 10 s)", #selector(testAPIActivity))
+        ]
+        for (title, action) in newIn21 {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            testMenu.addItem(item)
+        }
+
+        testMenu.addItem(NSMenuItem.separator())
+
         let fileDropTest = NSMenuItem(title: "Simular Soltar Archivo (Card Pop-Up)", action: #selector(testSimulatedFileDrop), keyEquivalent: "")
         fileDropTest.target = self
         testMenu.addItem(fileDropTest)
@@ -341,6 +358,48 @@ public final class StatusItemManager: NSObject {
         AirDropActivityProvider.shared.startSimulatedTransfer()
     }
     
+    @objc private func testFullCharge() {
+        ChargingActivityProvider.shared.publishFullyChargedActivity()
+    }
+
+    @objc private func testFocus() {
+        SystemStatusActivityProvider.shared.simulateFocusChange(on: true)
+    }
+
+    @objc private func testMeeting() {
+        CalendarActivityProvider.shared.showSample()
+    }
+
+    @objc private func testWhatsAppPhoto() {
+        WhatsAppWebObserverService.shared.simulateTestNotification(message: WhatsAppMessagePreview.describe("Foto"))
+    }
+
+    /// Carlos y, medio segundo después, Ana: Ana espera a que Carlos se vea 2.5 s
+    @objc private func testNotificationQueue() {
+        WhatsAppWebObserverService.shared.simulateTestNotification()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            WhatsAppWebObserverService.shared.simulateTestNotification(sender: "Ana", message: "¿Ya viste lo que te mandé?")
+        }
+    }
+
+    /// Una actividad como las de `dynamicnotch`: progreso de 0 a 100 % en 10 s y resumen
+    @objc private func testAPIActivity() {
+        func send(_ json: [String: Any]) {
+            if let request = try? PublicActivityAPI.parse(json) { PublicActivityAPI.apply(request) }
+        }
+        send(["id": "demo-build", "action": "start", "title": "Compilando", "icon": "hammer.fill", "progress": 0.0])
+        for step in 1...10 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(step)) {
+                if step < 10 {
+                    send(["id": "demo-build", "progress": Double(step) / 10])
+                } else {
+                    send(["id": "demo-build", "action": "end", "title": "Listo", "icon": "checkmark.circle.fill",
+                          "color": "green", "progress": 1.0, "dismissAfter": 4])
+                }
+            }
+        }
+    }
+
     @objc private func testMusicDemo() {
         let isCurrentlyPlaying = MusicService.shared.currentTrack.isPlaying && MusicService.shared.hasActiveMusic
         

@@ -483,10 +483,7 @@ public final class MessagesObserverService: ObservableObject {
     // MARK: - Despacho de Notificación a Dynamic Notch
     private func dispatchNotification(sender: String, message: String) {
         DispatchQueue.main.async {
-            if NotificationActivityProvider.shared.isNotificationActive &&
-                NotificationActivityProvider.shared.isQuickReplyExpanded {
-                return
-            }
+            // (Si estás respondiendo otro mensaje, NotificationActivityProvider lo deja esperando su turno)
             
             // Buscar avatar en Contactos nativos de macOS
             let contactInfo = ContactLookupService.shared.lookupContact(name: sender)

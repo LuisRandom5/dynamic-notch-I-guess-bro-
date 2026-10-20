@@ -149,6 +149,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             WhatsAppWebObserverService.shared.simulateTestNotification(message: WhatsAppMessagePreview.describe("Foto"))
         }
 
+        notifCenter.observe("com.luisrandom.DynamicNotch.testWhatsAppAna") { _ in
+            WhatsAppWebObserverService.shared.simulateTestNotification(sender: "Ana", message: "¿Ya viste lo que te mandé?")
+        }
+
         notifCenter.observe("com.luisrandom.DynamicNotch.testCharging") { _ in
             ChargingActivityProvider.shared.publishChargingActivity(percentage: 83, isLowPower: false, isPluggedIn: true)
         }

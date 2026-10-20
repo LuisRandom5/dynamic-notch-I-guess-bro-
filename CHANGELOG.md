@@ -13,6 +13,7 @@
 ### Avisos al estilo iPhone
 - Mensajes de WhatsApp como la notificación del iPhone: foto del contacto con el icono de la app, nombre, "ahora" y el mensaje en dos líneas, sin botones ni textos de ayuda (la X aparece al pasar el puntero).
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
+- Mensajes seguidos sin pisarse: otro mensaje del mismo contacto actualiza la tarjeta; uno de otro contacto espera a que el anterior se vea al menos 2.5 s; mientras respondes, los nuevos esperan su turno en lugar de perderse.
 - Carga y batería baja como en el iPhone: la isla se abre a lo ancho con "Cargando" o "Batería baja" y la batería con su porcentaje.
 
 ### Carrusel con la música

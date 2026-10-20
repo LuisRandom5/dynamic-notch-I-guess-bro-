@@ -1147,10 +1147,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
             return
         }
         DispatchQueue.main.async {
-            if NotificationActivityProvider.shared.isNotificationActive &&
-                NotificationActivityProvider.shared.isQuickReplyExpanded {
-                return
-            }
+            // (Si estás respondiendo otro mensaje, NotificationActivityProvider lo deja esperando su turno)
             
             let isKnownContact = sender != "WhatsApp Web" &&
                                 sender != "WhatsApp" &&
@@ -1579,12 +1576,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
     
     /// Simula una notificación interactiva de WhatsApp para pruebas de UI y Quick Reply
-    public func simulateTestNotification(message: String = "¡Hola! ¿Cómo va el nuevo reproductor de pantalla de bloqueo?") {
+    public func simulateTestNotification(sender: String = "Carlos", message: String = "¡Hola! ¿Cómo va el nuevo reproductor de pantalla de bloqueo?") {
         DNDLogger.log("WhatsAppWebObserverService.simulateTestNotification CALLED")
         NotificationActivityProvider.shared.showNotification(
-            title: "Carlos",
+            title: sender,
             message: message,
-            handle: "Carlos",
+            handle: sender,
             appIcon: "message.fill",
             appName: "WhatsApp",
             tint: Color(red: 0.15, green: 0.78, blue: 0.45),

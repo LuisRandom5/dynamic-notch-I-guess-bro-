@@ -1,33 +1,39 @@
 # 🍏 Dynamic Notch (macOS Nativo)
 
-> **Isla Dinámica 100% nativa para el Notch de tu MacBook**, escrita en **Swift, SwiftUI y AppKit**. Diseñada para integrarse en macOS con el mismo nivel de rendimiento, consumo de batería y fluidez que una función oficial de Apple.
-
-- 🧩 **API para tus scripts y apps:**
-  - Pon tu propia actividad en la isla (builds, tests, descargas, deploys) con `dynamicnotch run tests -- swift test`, por HTTP local o con `dynamicnotch://` desde Atajos. Ver [docs/API.md](docs/API.md).
+> **La Isla Dinámica del iPhone en tu Mac**, con notch o sin él, escrita en **Swift, SwiftUI y AppKit**. Pensada para sentirse como una función oficial de Apple, gastando poco CPU y batería.
 
 ---
 
-## ✨ Características Nativas
+## ✨ Qué hace
 
-- ⚡ **100% Nativo en Swift & SwiftUI:**
-  - Sin Electron, sin navegadores embebidos, sin consumo desmedido de RAM.
-  - ~0.3% de CPU en reposo y respuesta instantánea a 60/120Hz ProMotion.
-- 📐 **Detección Automática de Hardware:**
-  - Utiliza las APIs de macOS (`NSScreen.auxiliaryTopLeftArea` y `auxiliaryTopRightArea`) para calcular al milímetro el notch físico de tu MacBook Pro o Air.
-- 🪟 **Panel Flotante Sin Pérdida de Foco (`NSPanel.nonactivatingPanel`):**
-  - Flota sobre la barra de menús, ventanas y aplicaciones a pantalla completa (`.fullScreenAuxiliary`).
-  - **Hit-Testing Inteligente:** Clics fuera del notch atraviesan la ventana transparente hacia las apps que tengas debajo.
-- 🎵 **Música en Tiempo Real (Spotify & Apple Music):**
-  - Escucha instantánea de eventos del sistema mediante `DistributedNotificationCenter` (cero consumo por sondeo continuo).
-  - Título, artista, álbum, carátula en alta definición y controles de reproducción.
-- ⚡ **Conexión MagSafe en Vivo:**
-  - Detecta mediante `IOKit` el instante exacto en que conectas el cargador para mostrar la animación de carga rápida con el porcentaje de batería real.
-- 📁 **Notch Shelf (Bandeja de Arrastrar y Soltar):**
-  - Arrastra capturas, fotos o documentos directamente al notch para guardarlos temporalmente y moverlos después a otras apps.
-- 📳 **Retroalimentación Háptica en Trackpad:**
-  - Genera micro-pulsaciones táctiles en el Trackpad Force Touch de tu MacBook al expandirse o interactuar.
-- 🧭 **Icono en la Barra de Menús (Menu Bar Item):**
-  - Menú discreto para activar/desactivar, alternar expansión al pasar el cursor (hover), probar alertas y salir.
+- 🏝️ **Isla Dinámica en cualquier Mac:**
+  - Con notch, la isla abraza la cámara.
+  - Sin notch (MacBook Air viejas o un monitor externo), es una cápsula flotante del alto de la barra de menús, separada del borde como en el iPhone.
+  - Desde el menú eliges la pantalla y la forma (isla o notch).
+- 🫧 **Varias actividades a la vez:**
+  - Una en el notch y hasta dos bolitas líquidas a los lados; el resto espera en cola.
+  - Deslizar a lo ancho recorre las actividades, incluida la música.
+  - Las bolitas se ocultan mientras ves su app.
+- 🎵 **Música (Apple Music, Spotify y navegadores):**
+  - Carátula, barras que siguen el sonido, controles con las animaciones de Apple Music y letras.
+  - Se esconde en pantalla completa.
+- 💬 **Avisos al estilo iPhone:**
+  - WhatsApp con respuesta rápida; dice si es foto, sticker, audio, etc.
+  - Carga, carga completa y batería baja.
+  - Bloq Mayús, red y VPN.
+  - Cámara y micrófono en uso, Notas de Voz grabando y Concentración.
+  - Descargas y próxima reunión, con botón para unirte.
+  - Opción para ocultar el texto de los mensajes al grabar la pantalla.
+- 🤖 **Claude y agentes:** una bolita que muestra en qué está trabajando Claude Code, con su tarjeta de progreso.
+- 🧩 **API para tus scripts y apps:**
+  - Pon tu propia actividad en la isla (builds, tests, descargas, deploys) con `dynamicnotch run tests -- swift test`.
+  - También por HTTP local o con `dynamicnotch://` desde Atajos.
+  - Ver [docs/API.md](docs/API.md).
+- 📁 **Repisa:** arrastra archivos al notch para guardarlos un rato y llevarlos a otra app.
+- ⚡ **Nativa y ligera:**
+  - Swift, SwiftUI y AppKit, sin Electron.
+  - ~2 % de CPU en reposo y ~13 % con música y las barras activas, medido en una MacBook Pro M-series.
+  - Nunca usa el micrófono.
 
 ---
 
