@@ -354,6 +354,11 @@ public final class AudioDeviceService: NSObject, ObservableObject {
         publishVolumeActivity(volume: currentVolume, isMuted: muted)
     }
     
+    /// Diagnóstico: muestra el aviso de volumen con el volumen actual, sin cambiarlo
+    public func previewVolumeHUD() {
+        publishVolumeActivity(volume: currentVolume, isMuted: isMuted)
+    }
+
     public func stepVolume(up: Bool) {
         let step: Float = 1.0 / 16.0 // 16 niveles estándar en macOS
         let newVol = up ? min(1.0, currentVolume + step) : max(0.0, currentVolume - step)

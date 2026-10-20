@@ -71,6 +71,14 @@
 - El color del avatar de un contacto ya no cambia en cada arranque.
 
 ### Estabilidad
+- Una tarjeta abierta ya no se queda abierta para siempre:
+  - Se cierra sola a los 15 s si nadie tiene el puntero encima.
+  - Lo urgente la recoge para mostrarse: llamada, AirPods, volumen y brillo, avisos del sistema y mensajes.
+  - Si su actividad terminó, espera como mucho 30 s.
+
+  Antes podía tapar todos los avisos siguientes, el reproductor y la repisa.
+- El aviso de volumen y brillo dice "Volumen", "Brillo" y "Silencio" (salía en inglés).
+- La demo de volumen ya no cambia el volumen real.
 - Compila sin advertencias (lectura de audio con la API asíncrona de AVFoundation).
 - VoiceOver lee los botones del reproductor (Anterior, Reproducir/Pausar, Siguiente, Aleatorio, Repetir, Salida de audio) y la X de los avisos.
 - El canal local de Claude y los agentes (puerto 48123) reintenta abrirse si al arrancar sigue ocupado por la instancia anterior; antes quedaba muerto hasta reiniciar la app.

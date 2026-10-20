@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - ActivitySliderPillView (Diseño Minimalista Integrado en las Alas del Notch - Imagen 1)
 /// Extiende el notch físico horizontalmente hacia los lados:
-/// - Ala izquierda: Icono de volumen/brillo + texto "Volume" / "Brightness".
+/// - Ala izquierda: Icono de volumen/brillo + texto "Volumen" / "Brillo".
 /// - Centro: Espacio libre para la cámara física del notch.
 /// - Ala derecha: Pequeña cápsula de progreso horizontal + nivel numérico (ej. "46").
 public struct ActivitySliderPillView: View {
@@ -40,12 +40,12 @@ public struct ActivitySliderPillView: View {
         if let state = sliderState {
             switch state {
             case .brightness:
-                return "Brightness"
+                return L("Brillo")
             case .volume(_, let muted):
-                return muted ? "Mute" : "Volume"
+                return muted ? L("Silencio") : L("Volumen")
             }
         }
-        return "Volume"
+        return L("Volumen")
     }
     
     // Icono correspondiente según el tipo y nivel

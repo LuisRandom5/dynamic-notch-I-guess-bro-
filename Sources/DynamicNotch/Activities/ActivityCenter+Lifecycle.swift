@@ -42,11 +42,18 @@ extension ActivityCenter {
         let delay = dismissAfter ?? AppState.shared.liveActivityEndSummaryDuration
         let finish: () -> Void = { [weak self] in
             guard let self = self else { return }
-            // Si el usuario tiene su tarjeta abierta, espera a que la cierre
+            // Si el usuario tiene su tarjeta abierta, espera a que la cierre: mientras tenga el puntero encima, o
+            // hasta 30 s (antes esperaba para siempre y la tarjeta tapaba todo lo demás)
             if self.expandedActivity?.id == id && self.alertingActivityId != id {
-                self.end(id: id, dismissAfter: 5, onRemove: onRemove)
-                return
+                let waited = self.endWaits[id, default: 0]
+                if AppState.shared.isHovered || waited < 6 {
+                    self.endWaits[id] = waited + 1
+                    self.end(id: id, dismissAfter: 5, onRemove: onRemove)
+                    return
+                }
+                self.collapseExpandedActivity()
             }
+            self.endWaits[id] = nil
             self.endTimers[id] = nil
             if let onRemove {
                 onRemove()

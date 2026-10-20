@@ -44,7 +44,36 @@ public final class ActivityCenter: ObservableObject {
     @Published public var fusingActivityId: String? = nil
     @Published public var fusionProgress: CGFloat = 0.0 // 0.0 (satélite) -> 1.0 (en contacto con el notch)
     @Published public var fusionSide: SatelliteSide = .right
-    @Published public var expandedActivity: LiveActivity? = nil
+    @Published public var expandedActivity: LiveActivity? = nil {
+        didSet {
+            guard expandedActivity?.id != oldValue?.id else { return }
+            expandedIdleTimer?.invalidate()
+            expandedIdleTimer = nil
+            if expandedActivity != nil { startExpandedIdleTimer() }
+        }
+    }
+    /// Una tarjeta abierta que nadie mira (sin el puntero encima) se cierra sola: antes podía quedarse abierta
+    /// para siempre y tapar todo lo demás
+    private var expandedIdleTimer: Timer?
+    /// Veces que una actividad terminada esperó a que se cerrara su tarjeta (5 s cada una)
+    var endWaits: [String: Int] = [:]
+    private var expandedLastAttention = Date()
+    static let expandedIdleTimeout: TimeInterval = 15
+
+    private func startExpandedIdleTimer() {
+        expandedLastAttention = Date()
+        let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+            guard let self, let open = self.expandedActivity else { return }
+            if AppState.shared.isHovered || self.alertingActivityId == open.id {
+                self.expandedLastAttention = Date()
+            } else if Date().timeIntervalSince(self.expandedLastAttention) >= Self.expandedIdleTimeout {
+                self.collapseExpandedActivity()
+            }
+        }
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        expandedIdleTimer = timer
+    }
     @Published public var isFusing: Bool = false
     
     // Dimensiones y curvatura de tarjeta personalizada
@@ -192,6 +221,13 @@ public final class ActivityCenter: ObservableObject {
         
         if dismissingActivityId == activity.id {
             dismissingActivityId = nil
+        }
+
+        // Lo urgente no espera a que cierres una tarjeta abierta: llamada, AirPods, volumen y brillo, avisos del
+        // sistema o un mensaje nuevo la recogen para mostrarse (sólo al aparecer, no en cada actualización)
+        if let open = expandedActivity, open.id != activity.id, !activeActivities.contains(where: { $0.id == activity.id }),
+           activity.isUrgent || activity.behavesAsSystemHUD || activity.id.hasPrefix("notification_") {
+            collapseExpandedActivity()
         }
         
         // La alerta es de esta actualización: se presenta una vez y no se guarda con la actividad

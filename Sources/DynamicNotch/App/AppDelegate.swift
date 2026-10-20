@@ -302,7 +302,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         notifCenter.observe("com.luisrandom.DynamicNotch.testVolumeHUD") { _ in
-            AudioDeviceService.shared.stepVolume(up: true)
+            // Sólo el aviso: antes subía el volumen real un paso cada vez
+            AudioDeviceService.shared.previewVolumeHUD()
         }
         
         notifCenter.observe("com.luisrandom.DynamicNotch.testAirDrop") { _ in
