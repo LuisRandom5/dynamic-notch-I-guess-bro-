@@ -12,7 +12,7 @@ public enum LockScreenState: Equatable {
 }
 
 /// Gestor del Reproductor de Pantalla de Bloqueo de Dynamic Notch.
-/// Implementa la máquina de estados reactiva descrita en PLAN_GEMINI_3_8_LOCKSCREEN.md (Paso 1).
+/// Implementa la máquina de estados reactiva descrita en docs/archivo/PLAN_GEMINI_3_8_LOCKSCREEN.md (Paso 1).
 public final class LockScreenManager: ObservableObject {
     public static let shared = LockScreenManager()
     
