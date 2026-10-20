@@ -7,7 +7,7 @@ struct AirPodsCardView: View {
     let state: AirPodsActivityState
     @ObservedObject private var ble = AirPodsBLEMonitor.shared
 
-    private var identity: AirPodsAssetService.Identity? { AirPodsAssetService.currentIdentity }
+    private var identity: AirPodsAssetService.Identity? { AirPodsAssetService.identity(for: state) }
 
     /// Lectura Bluetooth reciente del mismo modelo (trae si algo está cargando)
     private var reading: AirPodsBLEMonitor.Reading? {

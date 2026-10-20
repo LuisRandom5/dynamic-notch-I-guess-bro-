@@ -12,18 +12,22 @@ public final class AirPodsActivityProvider: ObservableObject {
         leftPercent: Int? = nil,
         rightPercent: Int? = nil,
         casePercent: Int? = nil,
-        duration: TimeInterval = 13.0
+        duration: TimeInterval = 13.0,
+        assetProduct: String? = nil,
+        assetVariant: String? = nil
     ) {
         guard AppState.shared.enableAirPodsAnimation else { return }
         // Para la próxima vez: las animaciones oficiales de este modelo (se bajan una vez de Apple)
-        AirPodsAssetService.shared.prefetch(AirPodsAssetService.currentIdentity)
+        if assetProduct == nil { AirPodsAssetService.shared.prefetch(AirPodsAssetService.currentIdentity) }
         
         let state = AirPodsActivityState(
             name: name,
             batteryLevel: batteryLevel,
             leftPercent: leftPercent,
             rightPercent: rightPercent,
-            casePercent: casePercent
+            casePercent: casePercent,
+            assetProduct: assetProduct,
+            assetVariant: assetVariant
         )
         
         var activity = LiveActivity(

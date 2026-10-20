@@ -781,6 +781,12 @@ public struct SettingsView: View {
                 isOn: $appState.enableAirPodsAnimation
             )
             PickerRow(
+                title: "Animación en las alas",
+                subtitle: "Mínima: el estuche se abre y se queda quieto con tus AirPods a la vista. Completa: se abre y gira, como la tarjeta del iPhone.",
+                selection: $appState.airPodsAnimationStyle,
+                label: { $0.title }
+            )
+            PickerRow(
                 title: "Color de tus AirPods Max",
                 subtitle: "Para mostrar la animación de tu color (macOS no lo dice). Los demás AirPods son blancos.",
                 selection: $appState.airPodsMaxColor,

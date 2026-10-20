@@ -773,6 +773,9 @@ public struct ActivityDebugView: View {
                 }
                 
                 // 4) INSPECCIÓN VISUAL (OVERLAY DE COMPARACIÓN PIXEL-PERFECT)
+                // Cada modelo y color con su animación oficial (sin tocar los AirPods conectados)
+                AirPodsAnimationTestBench()
+
                 GroupBox("4. Inspección Visual Pixel-Perfect (Modo Overlay)") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {

@@ -103,9 +103,16 @@ public struct ActivityAirPodsPillView: View {
         return nil
     }
     
+    @ObservedObject private var appState = AppState.shared
+
+    /// Modelo del aviso (el que pidió el banco de pruebas o los AirPods conectados)
+    private var assetIdentity: AirPodsAssetService.Identity? {
+        AirPodsAssetService.identity(for: activity.airpodsState)
+    }
+
     /// Video oficial del modelo conectado (si ya se bajó; si no, empieza a bajarlo para la próxima vez)
     private var officialClipURL: URL? {
-        AirPodsAssetService.shared.clipURL(.connectEngage, for: AirPodsAssetService.currentIdentity)
+        AirPodsAssetService.shared.clipURL(.connectEngage, for: assetIdentity)
     }
 
     private var batteryColor: Color {
@@ -123,8 +130,14 @@ public struct ActivityAirPodsPillView: View {
                 if let clip = officialClipURL {
                     // La animación oficial de Apple (el estuche que se abre), como en el iPhone
                     // Los Max son más anchos que el estuche: menos acercamiento para que no se recorten
-                    ProxCardVideoView(url: clip, rate: 1.4,
-                                      zoom: AirPodsAssetService.currentIdentity?.product.hasPrefix("AirPodsMax") == true ? 1.1 : 1.5)
+                    let isMax = assetIdentity?.product.hasPrefix("AirPodsMax") == true
+                    let minimal = appState.airPodsAnimationStyle == .minimal
+                    // Mínima: el estuche se abre y se queda quieto con los AirPods de frente (Max: gira a quedar de
+                    // frente). Completa: se abre y gira
+                    ProxCardVideoView(url: clip, rate: minimal ? 1 : 1.4, zoom: isMax ? 1.1 : 1.5,
+                                      startAt: minimal && isMax ? 2.9 : 0,
+                                      holdAt: minimal ? (isMax ? 4.0 : 1.25) : nil)
+                        .id("\(clip.path)|\(minimal)")
                         .frame(width: 36, height: 34)
                 } else if let url = animationURL {
                     AnimatedGIFView(gifURL: url, size: CGSize(width: 30, height: 26))

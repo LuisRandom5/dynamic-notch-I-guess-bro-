@@ -20,6 +20,8 @@
 - Carga, carga completa y batería baja como en el iPhone: la isla se abre a los lados con un rebote (igual que al conectar los AirPods) y el contenido sale de la cámara; la batería (dibujada como la del iPhone) se llena con un resorte, el rayo aparece con un rebote al cargar y, con batería baja, sólo el relleno rojo parpadea (el contorno se queda), como la alerta del iPhone. La tarjeta grande de antes ya no sale.
 
 ### AirPods con la animación oficial de Apple
+- **Discreto por defecto:** en las alas, el estuche se abre y se queda quieto con los AirPods a la vista (los Max giran hasta quedar de frente). La versión que gira se elige en Ajustes › "Animación en las alas".
+- **Banco de pruebas:** en el panel de pruebas, sección "AirPods: animaciones oficiales", se puede ver cualquier modelo y color (lo baja la primera vez) sin cambiar los AirPods conectados, y abrir su tarjeta.
 - **Animación oficial en la isla:** al conectar los AirPods, la isla muestra la animación oficial de **tu modelo** (el estuche que se abre y los auriculares, con fondo transparente), la misma de la tarjeta del iPhone.
 - **Modelos:** AirPods 1, 2, 3, 4, 4 con cancelación de ruido, Pro, Pro 2 (Lightning y USB-C), Pro 3 y Max (Lightning y USB-C) **en todos sus colores**. El color de los Max se elige en Ajustes, porque macOS no lo dice.
 - **Tarjeta al tocar la isla, como el iPhone:** auricular izquierdo, estuche y auricular derecho con sus imágenes oficiales y su batería. En los Max, girando en bucle.

@@ -59,19 +59,26 @@ public struct AirPodsActivityState: Equatable {
     public let leftPercent: Int?
     public let rightPercent: Int?
     public let casePercent: Int?
+    /// Para probar otro modelo sin cambiar los AirPods conectados (banco de pruebas): producto y color de Apple
+    public var assetProduct: String? = nil
+    public var assetVariant: String? = nil
     
     public init(
         name: String,
         batteryLevel: Int,
         leftPercent: Int? = nil,
         rightPercent: Int? = nil,
-        casePercent: Int? = nil
+        casePercent: Int? = nil,
+        assetProduct: String? = nil,
+        assetVariant: String? = nil
     ) {
         self.name = name
         self.batteryLevel = batteryLevel
         self.leftPercent = leftPercent
         self.rightPercent = rightPercent
         self.casePercent = casePercent
+        self.assetProduct = assetProduct
+        self.assetVariant = assetVariant
     }
 }
 

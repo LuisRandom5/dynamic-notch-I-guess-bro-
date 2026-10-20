@@ -119,6 +119,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             DragProbeDebugWindowController.shared.toggleWindow()
         }
         
+        notifCenter.observe("com.luisrandom.DynamicNotch.openTestPanel") { _ in
+            ActivityDebugWindow.shared.show()
+        }
+
         notifCenter.observe("com.luisrandom.DynamicNotch.openSettings") { _ in
             SettingsWindowController.shared.show()
         }

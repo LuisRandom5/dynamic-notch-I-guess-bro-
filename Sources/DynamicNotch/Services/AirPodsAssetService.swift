@@ -78,6 +78,34 @@ public final class AirPodsAssetService {
         return Identity(product: product, variant: variant)
     }
 
+    /// La del aviso: la que pidió el banco de pruebas o, si no, los AirPods conectados
+    public static func identity(for state: AirPodsActivityState?) -> Identity? {
+        if let product = state?.assetProduct {
+            return Identity(product: product, variant: state?.assetVariant ?? (product.hasPrefix("AirPodsMax") ? "Silver" : "White"))
+        }
+        return currentIdentity
+    }
+
+    /// ¿Ya está guardado el paquete? (sin empezar a bajarlo)
+    public func isAvailable(_ identity: Identity) -> Bool {
+        FileManager.default.fileExists(atPath: bundleDirectory(for: identity).appendingPathComponent(Clip.connectEngage.rawValue + ".mov").path)
+    }
+
+    /// Baja el paquete (si hace falta) y avisa en el hilo principal: true si quedó listo
+    public func ensureAvailable(_ identity: Identity, completion: @escaping (Bool) -> Void) {
+        if isAvailable(identity) { completion(true); return }
+        prefetch(identity)
+        var waited = 0.0
+        func poll() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self else { return }
+                waited += 0.5
+                if self.isAvailable(identity) { completion(true) } else if waited >= 90 { completion(false) } else { poll() }
+            }
+        }
+        poll()
+    }
+
     /// Los AirPods conectados ahora (o los últimos que se detectaron)
     public static var currentIdentity: Identity? {
         identity(productId: BluetoothAudioService.shared.currentProductId, model: BluetoothAudioService.shared.currentAirPodsModel)

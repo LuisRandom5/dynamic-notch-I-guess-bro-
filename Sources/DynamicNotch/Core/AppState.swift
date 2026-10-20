@@ -77,6 +77,11 @@ public final class AppState: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(bubbleTapAction.rawValue, forKey: "bubbleTapAction") }
     }
+    @Published public var airPodsAnimationStyle: AirPodsAnimationStyle = AirPodsAnimationStyle(
+        rawValue: UserDefaults.standard.string(forKey: "airPodsAnimationStyle") ?? ""
+    ) ?? .minimal {
+        didSet { UserDefaults.standard.set(airPodsAnimationStyle.rawValue, forKey: "airPodsAnimationStyle") }
+    }
     @Published public var airPodsMaxColor: AirPodsMaxColor = AirPodsMaxColor(
         rawValue: UserDefaults.standard.string(forKey: "airPodsMaxColor") ?? ""
     ) ?? .silver {

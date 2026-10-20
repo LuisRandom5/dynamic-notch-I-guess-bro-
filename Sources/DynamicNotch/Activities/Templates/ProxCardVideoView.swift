@@ -10,10 +10,13 @@ struct ProxCardVideoView: NSViewRepresentable {
     var rate: Float = 1.5
     var zoom: CGFloat = 1.45
     var loops = false
+    /// Desde dónde empieza y en qué segundo se queda quieto (modo mínimo)
+    var startAt: Double = 0
+    var holdAt: Double? = nil
 
     func makeNSView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
-        view.configure(url: url, rate: rate, zoom: zoom, loops: loops)
+        view.configure(url: url, rate: rate, zoom: zoom, loops: loops, startAt: startAt, holdAt: holdAt)
         return view
     }
 
@@ -27,6 +30,7 @@ struct ProxCardVideoView: NSViewRepresentable {
         private let playerLayer = AVPlayerLayer()
         private var player: AVQueuePlayer?
         private var looper: AVPlayerLooper?
+        private var boundaryObserver: Any?
         private var zoom: CGFloat = 1
 
         override init(frame: NSRect) {
@@ -40,7 +44,7 @@ struct ProxCardVideoView: NSViewRepresentable {
 
         required init?(coder: NSCoder) { nil }
 
-        func configure(url: URL, rate: Float, zoom: CGFloat, loops: Bool) {
+        func configure(url: URL, rate: Float, zoom: CGFloat, loops: Bool, startAt: Double, holdAt: Double?) {
             self.zoom = zoom
             let item = AVPlayerItem(url: url)
             let player = AVQueuePlayer()
@@ -49,10 +53,23 @@ struct ProxCardVideoView: NSViewRepresentable {
             if loops { looper = AVPlayerLooper(player: player, templateItem: item) } else { player.insert(item, after: nil) }
             playerLayer.player = player
             self.player = player
-            player.playImmediately(atRate: rate)
+            if let holdAt {
+                // Se queda quieto en ese cuadro (sin seguir decodificando video)
+                boundaryObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: CMTime(seconds: holdAt, preferredTimescale: 600))],
+                                                                  queue: .main) { [weak player] in player?.pause() }
+            }
+            if startAt > 0 {
+                player.seek(to: CMTime(seconds: startAt, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] _ in
+                    player?.playImmediately(atRate: rate)
+                }
+            } else {
+                player.playImmediately(atRate: rate)
+            }
         }
 
         func stop() {
+            if let boundaryObserver { player?.removeTimeObserver(boundaryObserver) }
+            boundaryObserver = nil
             player?.pause()
             looper = nil
             playerLayer.player = nil
