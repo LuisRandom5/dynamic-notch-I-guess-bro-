@@ -121,17 +121,28 @@ public final class CallDetectorService: ObservableObject {
     
     /// Lista de apps abiertas en memoria: se refresca sólo cuando una app abre o cierra. Recorrerla cada
     /// 0.35 s (y pedir el nombre de cada app) en el hilo principal se comía cuadros de las animaciones.
-    private var cachedRunningApps: [NSRunningApplication] = NSWorkspace.shared.runningApplications
+    /// Sólo las apps de llamadas (de ~100 abiertas suelen quedar 1–3): las revisiones de cada 0.35 s buscan en
+    /// esta lista corta en vez de comparar textos de todas las apps
+    private var cachedRunningApps: [NSRunningApplication] = CallDetectorService.callApps(in: NSWorkspace.shared.runningApplications)
     private var appCacheObservers: [NSObjectProtocol] = []
     
     private var runningApps: [NSRunningApplication] { cachedRunningApps }
+
+    private static let callAppMarkers = ["discord", "whatsapp", "facetime", "zoom", "slack", "teams", "com.apple.notificationcenterui"]
+
+    private static func callApps(in apps: [NSRunningApplication]) -> [NSRunningApplication] {
+        apps.filter { app in
+            let bundle = app.bundleIdentifier?.lowercased() ?? ""
+            return callAppMarkers.contains { bundle.contains($0) }
+        }
+    }
     
     private func observeRunningAppsChanges() {
         guard appCacheObservers.isEmpty else { return }
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
             appCacheObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.cachedRunningApps = NSWorkspace.shared.runningApplications
+                self?.cachedRunningApps = CallDetectorService.callApps(in: NSWorkspace.shared.runningApplications)
             })
         }
     }

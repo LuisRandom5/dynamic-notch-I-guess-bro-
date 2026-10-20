@@ -22,9 +22,9 @@
 - Cachés de letras y carátulas con límite.
 - WhatsApp: el contenido de Chrome se pide por accesibilidad una sola vez y sin `AXEnhancedUserInterface` (volvía lentas las animaciones de las ventanas del navegador); a Safari ya no se le pide.
 
-- En reposo la CPU baja de ~8.6 % a ~2.8 %:
+- En reposo la CPU baja de ~8.6 % a ~2 %:
   - Los avisos del Centro de notificaciones se detectan por evento (macOS avisa cuando aparece uno) en vez de revisar 8 veces por segundo; además se reemplazan más rápido (~20 ms).
-  - El detector de llamadas sólo revisa el Centro de notificaciones mientras hay un aviso.
+  - El detector de llamadas sólo revisa el Centro de notificaciones mientras hay un aviso, y busca entre las apps de llamadas en vez de entre todas las apps abiertas.
   - WhatsApp lee 8 chats en vez de 15 y baja el ritmo cuando la lista no cambia.
   - Pantalla completa se revisa cada 1.5 s (los cambios de escritorio avisan al instante) y el fondo sólo se analiza con cristal adaptable.
 
