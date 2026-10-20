@@ -110,6 +110,35 @@ public struct ActivityAirPodsPillView: View {
         AirPodsAssetService.identity(for: activity.airpodsState)
     }
 
+    /// Los auriculares en el bucle "cargado" (giran a la izquierda del cuadro; el estuche, a la derecha)
+    private static let earbudsCrop = CGRect(x: 0.08, y: 0.31, width: 0.38, height: 0.38)
+
+    /// La animación oficial para el ala, según el ajuste "Animación en las alas"
+    private var officialWingVideo: AnyView? {
+        let isMax = assetIdentity?.product.hasPrefix("AirPodsMax") == true
+        switch appState.airPodsAnimationStyle {
+        case .earbuds:
+            // Los AirPods girando en primer plano, sin estuche (los Max no tienen estuche: ellos solos girando)
+            if isMax, let loop = AirPodsAssetService.shared.clipURL(.maxLoop, for: assetIdentity) {
+                return AnyView(ProxCardVideoView(url: loop, rate: 1, zoom: 1.1, loops: true).id(loop.path))
+            }
+            // (Los AirPods de 1.ª generación lo traen como "ProxCard_loop")
+            if !isMax, let loop = AirPodsAssetService.shared.clipURL(.charged, for: assetIdentity)
+                ?? AirPodsAssetService.shared.clipURL(.maxLoop, for: assetIdentity) {
+                return AnyView(ProxCardVideoView(url: loop, rate: 1, loops: true, crop: Self.earbudsCrop).id(loop.path))
+            }
+        case .minimal, .full:
+            break
+        }
+        guard let clip = officialClipURL else { return nil }
+        // Estuche: quieto (se abre y se queda) o girando. Los Max son más anchos: menos acercamiento
+        let still = appState.airPodsAnimationStyle != .full
+        return AnyView(ProxCardVideoView(url: clip, rate: still ? 1 : 1.4, zoom: isMax ? 1.1 : 1.5,
+                                         startAt: still && isMax ? 2.9 : 0,
+                                         holdAt: still ? (isMax ? 4.0 : 1.25) : nil)
+            .id("\(clip.path)|\(still)"))
+    }
+
     /// Video oficial del modelo conectado (si ya se bajó; si no, empieza a bajarlo para la próxima vez)
     private var officialClipURL: URL? {
         AirPodsAssetService.shared.clipURL(.connectEngage, for: assetIdentity)
@@ -127,18 +156,8 @@ public struct ActivityAirPodsPillView: View {
         HStack(spacing: 0) {
             // Ala Izquierda (Leading): Animación de los AirPods girando en bucle ampliada a tamaño óptimo (30x26)
             ZStack {
-                if let clip = officialClipURL {
-                    // La animación oficial de Apple (el estuche que se abre), como en el iPhone
-                    // Los Max son más anchos que el estuche: menos acercamiento para que no se recorten
-                    let isMax = assetIdentity?.product.hasPrefix("AirPodsMax") == true
-                    let minimal = appState.airPodsAnimationStyle == .minimal
-                    // Mínima: el estuche se abre y se queda quieto con los AirPods de frente (Max: gira a quedar de
-                    // frente). Completa: se abre y gira
-                    ProxCardVideoView(url: clip, rate: minimal ? 1 : 1.4, zoom: isMax ? 1.1 : 1.5,
-                                      startAt: minimal && isMax ? 2.9 : 0,
-                                      holdAt: minimal ? (isMax ? 4.0 : 1.25) : nil)
-                        .id("\(clip.path)|\(minimal)")
-                        .frame(width: 36, height: 34)
+                if let wing = officialWingVideo {
+                    wing.frame(width: 36, height: 34)
                 } else if let url = animationURL {
                     AnimatedGIFView(gifURL: url, size: CGSize(width: 30, height: 26))
                         .frame(width: 30, height: 26)

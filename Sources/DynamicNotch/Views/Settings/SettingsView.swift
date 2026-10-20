@@ -782,7 +782,7 @@ public struct SettingsView: View {
             )
             PickerRow(
                 title: "Animación en las alas",
-                subtitle: "Mínima: el estuche se abre y se queda quieto con tus AirPods a la vista. Completa: se abre y gira, como la tarjeta del iPhone.",
+                subtitle: "AirPods girando: los auriculares giran en primer plano, sin estuche. Estuche quieto: se abre y se queda con tus AirPods a la vista. Estuche girando: se abre y gira, como la tarjeta del iPhone.",
                 selection: $appState.airPodsAnimationStyle,
                 label: { $0.title }
             )

@@ -44,12 +44,13 @@ struct AirPodsCardView: View {
                             .foregroundStyle(state.batteryLevel <= 20 ? DesignTokens.red : .white.opacity(0.85))
                     }
                 } else {
-                    part(image: "ProxCard_L", symbol: BluetoothAudioService.shared.currentAirPodsLeftSymbol,
+                    part(images: ["ProxCard_L"], symbol: BluetoothAudioService.shared.currentAirPodsLeftSymbol,
                          level: reading?.left ?? state.leftPercent, charging: reading?.leftCharging ?? false)
-                    part(image: (reading?.caseCharging ?? false) ? "ProxCard_case-closed-charging" : "ProxCard_case-closed-charged",
+                    part(images: [(reading?.caseCharging ?? false) ? "ProxCard_case-closed-charging" : "ProxCard_case-closed-charged",
+                                  "ProxCard_case-closed"],
                          symbol: BluetoothAudioService.shared.currentAirPodsCaseSymbol,
                          level: reading?.caseLevel ?? state.casePercent, charging: reading?.caseCharging ?? false)
-                    part(image: "ProxCard_R", symbol: BluetoothAudioService.shared.currentAirPodsLeftSymbol,
+                    part(images: ["ProxCard_R"], symbol: BluetoothAudioService.shared.currentAirPodsLeftSymbol,
                          level: reading?.right ?? state.rightPercent, charging: reading?.rightCharging ?? false, mirrored: true)
                 }
             }
@@ -60,10 +61,12 @@ struct AirPodsCardView: View {
     }
 
     @ViewBuilder
-    private func part(image: String, symbol: String, level: Int?, charging: Bool, mirrored: Bool = false) -> some View {
+    private func part(images: [String], symbol: String, level: Int?, charging: Bool, mirrored: Bool = false) -> some View {
         VStack(spacing: 6) {
             Group {
-                if let url = AirPodsAssetService.shared.imageURL(image, for: identity), let nsImage = NSImage(contentsOf: url) {
+                // El primer nombre que exista (los AirPods de 1.ª generación nombran distinto su estuche)
+                if let url = images.lazy.compactMap({ AirPodsAssetService.shared.imageURL($0, for: identity) }).first,
+                   let nsImage = NSImage(contentsOf: url) {
                     Image(nsImage: nsImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)

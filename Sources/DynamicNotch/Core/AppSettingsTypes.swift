@@ -102,16 +102,19 @@ public enum MessagePreviewPrivacy: String, CaseIterable, Identifiable {
 
 /// Cómo se ven los AirPods en las alas al conectarlos
 public enum AirPodsAnimationStyle: String, CaseIterable, Identifiable {
-    /// El estuche se abre y se queda quieto con los AirPods a la vista (discreto)
+    /// Los dos AirPods girando en primer plano, sin estuche (los Max, ellos solos)
+    case earbuds
+    /// El estuche se abre y se queda quieto con los AirPods a la vista
     case minimal
-    /// La animación completa: se abre y gira
+    /// El estuche se abre y gira
     case full
 
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .minimal: return "Mínima"
-        case .full: return "Completa"
+        case .earbuds: return "AirPods girando"
+        case .minimal: return "Estuche quieto"
+        case .full: return "Estuche girando"
         }
     }
 }
