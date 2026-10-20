@@ -186,3 +186,9 @@ killall -9 DynamicNotch 2>/dev/null || true
 - `Core/AppState.swift`: ajustes persistidos y estado. Extensiones: `+Subscriptions` (reacciones a servicios), `+Mode` (compacto, hover, abrir/cerrar, alertas), `+Shelf` (repisa). Opciones de los ajustes en `Core/AppSettingsTypes.swift`.
 - `Activities/ActivityCenter.swift`: publicar, quitar y repartir roles con `PresentationEngine`. Extensiones: `+Carousel` (swipe, traer al notch, la música como bolita), `+Lifecycle` (alertas, 8 h, obsoleto, resumen), `+Fusion` (bolita → notch → tarjeta).
 - API pública de actividades: `Activities/PublicActivityAPI.swift` y `docs/API.md`.
+
+## Idiomas y Atajos
+
+- **Idiomas:** el español es el idioma base (`CFBundleDevelopmentRegion = es`). Los `Text("…")` de SwiftUI se traducen solos; los textos que llegan como `String` (filas de Ajustes, menú, avisos) pasan por `L()` (`Core/Localization.swift`). Para traducir un texto nuevo, agrega `"texto en español" = "English text";` a `Resources/en.lproj/Localizable.strings`.
+- **Atajos y Siri:** `Activities/ShortcutsIntents.swift` (App Intents). `build_app.sh` compila con `-emit-const-values-path` y genera `Metadata.appintents` con `appintentsmetadataprocessor`, como Xcode.
+

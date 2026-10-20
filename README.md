@@ -29,6 +29,7 @@
   - Pon tu propia actividad en la isla (builds, tests, descargas, deploys) con `dynamicnotch run tests -- swift test`.
   - También por HTTP local o con `dynamicnotch://` desde Atajos.
   - Ver [docs/API.md](docs/API.md).
+- 🗣️ **Atajos, Siri e inglés:** acciones nativas en la app Atajos, y la interfaz en inglés si tu Mac está en inglés.
 - 📁 **Repisa:** arrastra archivos al notch para guardarlos un rato y llevarlos a otra app.
 - ⚡ **Nativa y ligera:**
   - Swift, SwiftUI y AppKit, sin Electron.

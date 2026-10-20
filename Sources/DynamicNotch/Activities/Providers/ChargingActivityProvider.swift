@@ -81,7 +81,7 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
         BrightnessService.shared.suppressAutoBrightnessSlider(duration: 3.5)
         publishBatteryNotice(
             id: providerId,
-            label: isPluggedIn ? "Cargando" : "Batería",
+            label: L(isPluggedIn ? "Cargando" : "Batería"),
             labelColor: Color.white.opacity(0.92),
             percentage: percentage,
             tint: tintColor,
@@ -94,7 +94,7 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
     public func publishLowBatteryActivity(percentage: Int) {
         publishBatteryNotice(
             id: "low_battery",
-            label: "Batería baja",
+            label: L("Batería baja"),
             labelColor: DesignTokens.red,
             percentage: percentage,
             tint: DesignTokens.red,
@@ -108,7 +108,7 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
     public func publishFullyChargedActivity() {
         publishBatteryNotice(
             id: providerId,
-            label: "Carga completa",
+            label: L("Carga completa"),
             labelColor: Color.white.opacity(0.92),
             percentage: 100,
             tint: DesignTokens.green,

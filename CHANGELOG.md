@@ -13,6 +13,7 @@
 ### Avisos al estilo iPhone
 - Mensajes de WhatsApp como la notificación del iPhone: foto del contacto con el icono de la app, nombre, "ahora" y el mensaje en dos líneas, sin botones ni textos de ayuda (la X aparece al pasar el puntero).
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
+- Las bolitas tienen su propia keyline del color de su actividad (modo oscuro + negro OLED), como la isla.
 - Si WhatsApp no puede decir quién escribió, el aviso muestra el ícono de la app en lugar de un monograma.
 - Mensajes seguidos sin pisarse: otro mensaje del mismo contacto actualiza la tarjeta; uno de otro contacto espera a que el anterior se vea al menos 2.5 s; mientras respondes, los nuevos esperan su turno en lugar de perderse.
 - Carga, carga completa y batería baja como en el iPhone: la isla se abre a los lados con un rebote (igual que al conectar los AirPods) y el contenido sale de la cámara; la batería (dibujada como la del iPhone) se llena con un resorte, el rayo aparece con un rebote al cargar y, con batería baja, sólo el relleno rojo parpadea (el contorno se queda), como la alerta del iPhone. La tarjeta grande de antes ya no sale.
@@ -26,6 +27,12 @@
 - Comando `dynamicnotch` (`start`, `update`, `end`, `list` y `run … -- comando`, que muestra ✓ o ✗ y devuelve el código de salida).
 - `POST 127.0.0.1:48123/activity` y `dynamicnotch://activity?…` (Atajos, Raycast, Alfred).
 - Documentación y ejemplos en docs/API.md (Xcode, descargas, CI).
+
+### En inglés (nuevo)
+- Si la Mac está en inglés, la app se ve en inglés: Ajustes, menú de la barra, avisos (Charging, Low Battery, Caps Lock…), mensajes ("📷 Photo", "now") y la próxima reunión. En español todo sigue igual. Traducciones en `Resources/en.lproj/Localizable.strings` (la clave es el texto en español).
+
+### Atajos y Siri (nuevo)
+- Acciones nativas en la app Atajos: "Mostrar actividad en la isla" y "Terminar actividad de la isla", y frases para Siri. `build_app.sh` genera sus metadatos (lo que Xcode hace al compilar una app).
 
 ### Integraciones nuevas (Ajustes › Actividades › Integraciones del sistema)
 - **Carga completa:** aviso al llegar al 100 % con el cargador conectado (una vez por conexión).

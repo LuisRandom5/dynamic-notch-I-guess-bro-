@@ -17,7 +17,12 @@ export COPYFILE_DISABLE=1
 export CLANG_MODULE_CACHE_PATH="${PROJECT_DIR}/.build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="${PROJECT_DIR}/.build/ModuleCache"
 mkdir -p "${CLANG_MODULE_CACHE_PATH}"
-swift build --disable-sandbox -c release -Xcc -fmodules-cache-path="${CLANG_MODULE_CACHE_PATH}"
+# Las acciones de Atajos (App Intents) necesitan los valores constantes que el compilador extrae del código;
+# Xcode lo hace solo, con SwiftPM se pide aquí y luego se generan los metadatos (ver más abajo)
+CONST_VALUES="${PROJECT_DIR}/.build/DynamicNotch.swiftconstvalues"
+swift build --disable-sandbox -c release -Xcc -fmodules-cache-path="${CLANG_MODULE_CACHE_PATH}" \
+    -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file -Xswiftc -Xfrontend -Xswiftc "${PROJECT_DIR}/scripts/appintents_protocols.json" \
+    -Xswiftc -emit-const-values-path -Xswiftc "${CONST_VALUES}"
 
 echo "📦 Empaquetando DynamicNotch.app..."
 STAGE_BUNDLE="/tmp/DynamicNotch_stage.app"
@@ -52,6 +57,13 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
     <string>2.1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>2.1</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>es</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>es</string>
+        <string>en</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>DynamicNotch</string>
     <key>LSMinimumSystemVersion</key>
@@ -90,6 +102,28 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
 </dict>
 </plist>
 EOF
+
+# Metadatos de App Intents (Atajos y Siri): lo que Xcode genera al compilar una app
+if [ -n "${DEVELOPER_DIR:-}" ] && xcrun --find appintentsmetadataprocessor >/dev/null 2>&1 && [ -f "${CONST_VALUES}" ]; then
+    echo "🧩 Generando acciones de Atajos..."
+    AI_DIR="${PROJECT_DIR}/.build/appintents"
+    rm -rf "${AI_DIR}" && mkdir -p "${AI_DIR}"
+    find "${PROJECT_DIR}/Sources/DynamicNotch" -name "*.swift" > "${AI_DIR}/sources.txt"
+    echo "${CONST_VALUES}" > "${AI_DIR}/constvalues.txt"
+    XCODE_BUILD_VERSION=$(xcodebuild -version 2>/dev/null | awk '/Build version/ {print $3}')
+    xcrun appintentsmetadataprocessor \
+        --output "${STAGE_BUNDLE}/Contents/Resources" \
+        --toolchain-dir "${DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain" \
+        --module-name DynamicNotch \
+        --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
+        --xcode-version "${XCODE_BUILD_VERSION:-27A9275}" \
+        --platform-family macOS \
+        --deployment-target 14.0 \
+        --target-triple arm64-apple-macosx14.0 \
+        --source-file-list "${AI_DIR}/sources.txt" \
+        --swift-const-vals-list "${AI_DIR}/constvalues.txt" \
+        --force --quiet-warnings >/dev/null 2>&1 || echo "⚠️ No se pudieron generar las acciones de Atajos (la app funciona igual)"
+fi
 
 echo "✍️ Firmando app localmente con Designated Requirement estable..."
 find "${STAGE_BUNDLE}" -name '._*' -delete 2>/dev/null || true

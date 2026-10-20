@@ -16,10 +16,36 @@
 		<data>
 		TjkNi5GRBnkpL5XApF9rf/sIhkE=
 		</data>
+		<key>Resources/Metadata.appintents/extract.actionsdata</key>
+		<data>
+		1bYpp+AnsB5Gycy84EtxUMbNfZ4=
+		</data>
+		<key>Resources/Metadata.appintents/version.json</key>
+		<data>
+		r36D8Is3IZfsLF1i7tG9VtpTD88=
+		</data>
 		<key>Resources/airdrop.png</key>
 		<data>
 		Mx/rRQQMu17aqf/5nfenJG+lRVI=
 		</data>
+		<key>Resources/en.lproj/Localizable.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			dtd16MFnHN4PQjYI+U26/FQJkiY=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/es.lproj/Localizable.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			vED4udJvKn6aw3C/Gnjh1GMVK18=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -44,12 +70,44 @@
 			ixYnmynsTa4DwtEjdPyRIyzmnWLYZ9JiKpaCdYKKWZc=
 			</data>
 		</dict>
+		<key>Resources/Metadata.appintents/extract.actionsdata</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			PUCVdOGYvVSr1XPwUhPZ6dfJzzI+dBwJ0wYussSPBSo=
+			</data>
+		</dict>
+		<key>Resources/Metadata.appintents/version.json</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			lzTVu0LJSVBacZy8p2uqlzb7lnjmOLQ/9SfCANPZ3qE=
+			</data>
+		</dict>
 		<key>Resources/airdrop.png</key>
 		<dict>
 			<key>hash2</key>
 			<data>
 			8C0ExdYnLnW+3UACRL2umDEYLoGr/x+PopYi7Aw8Bwk=
 			</data>
+		</dict>
+		<key>Resources/en.lproj/Localizable.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			uTv7BTi2FJlMBu3unwTcRedhcMiJvGkW9lVZSR+3n80=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/es.lproj/Localizable.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			040p8wP/ksCW8MvIaXEyGoGvOjCrYw+MlaeZ2Lj7co4=
+			</data>
+			<key>optional</key>
+			<true/>
 		</dict>
 	</dict>
 	<key>rules</key>

@@ -49,12 +49,16 @@ Conecta el ASUS. En **Isla Dinámica › Dónde se ve** elige su pantalla, y en 
     Debe salir la bolita y al final la ✓ verde.
 19. **Claude:** mientras trabajo, la bolita de Claude respira igual que antes, pero ya no calienta la Mac (ahora gasta ~2 % de CPU en vez de ~9 %).
 
+20. **Atajos:** abre la app Atajos, crea un atajo nuevo y busca "Dynamic Notch". Deben salir "Mostrar actividad en la isla" y "Terminar actividad de la isla". Pruébalas con un título y un ícono, como `hammer.fill`. Si no salen, abre la app una vez desde Finder y reinicia Atajos.
+21. **Inglés:** en Ajustes del Sistema › General › Idioma y región, en "Aplicaciones", agrega Dynamic Notch en English. Al reabrirla, Ajustes, menú y avisos deben verse en inglés. Luego quítalo.
+22. **Bordes de color en las bolitas:** con la Mac en modo oscuro y la apariencia OLED, cada bolita tiene un borde fino de su color.
+
 ## C. Pendientes que dependen de ti
 
-20. **WhatsApp con la pestaña de fondo:**
+23. **WhatsApp con la pestaña de fondo:**
     - En Safari ve a Ajustes › Avanzado y marca "Mostrar funciones para desarrolladores web".
     - Luego en Ajustes › Desarrollador marca "Permitir JavaScript desde Apple Events" (pide tu contraseña) y reinicia Safari.
     - Con WhatsApp en una pestaña de fondo, los avisos deben mostrar el mensaje real (y "📷 Foto", "Sticker", etc.).
-21. **Rendimiento después de unas horas:** en el Monitor de Actividad, la memoria de Dynamic Notch no debería crecer sin parar (antes llegaba a 253 MB) y la CPU debería quedar muy por debajo del 21 % de antes.
+24. **Rendimiento después de unas horas:** en el Monitor de Actividad, la memoria de Dynamic Notch no debería crecer sin parar (antes llegaba a 253 MB) y la CPU debería quedar muy por debajo del 21 % de antes.
 
 Cuando todo esté ✅, se publica la **2.1**: tag `v2.1` y la página del release con el CHANGELOG.

@@ -5,7 +5,9 @@ public enum WhatsAppMediaKind: String, CaseIterable {
     case photo, video, voice, sticker, gif, document, location, contact, poll
 
     /// Como lo dice la notificación del iPhone
-    public var label: String {
+    public var label: String { L(spanishLabel) }
+
+    private var spanishLabel: String {
         switch self {
         case .photo: return "📷 Foto"
         case .video: return "🎥 Video"

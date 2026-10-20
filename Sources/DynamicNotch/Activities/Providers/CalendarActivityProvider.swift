@@ -117,10 +117,10 @@ public final class CalendarActivityProvider {
         let tint = event.calendar.map { Color(nsColor: $0.color) } ?? DesignTokens.blue
         let meetingURL = Self.meetingURL(in: event)
         let service = meetingURL.flatMap(Self.serviceName(for:))
-        let title = event.title?.isEmpty == false ? event.title! : "Reunión"
-        let subtitle = [service.map { "Unirse con \($0)" }, event.location?.isEmpty == false && meetingURL == nil ? event.location : nil]
+        let title = event.title?.isEmpty == false ? event.title! : L("Reunión")
+        let subtitle = [service.map { String(format: L("Unirse con %@"), $0) }, event.location?.isEmpty == false && meetingURL == nil ? event.location : nil]
             .compactMap { $0 }
-            .first ?? "Próxima reunión"
+            .first ?? L("Próxima reunión")
 
         var activity = LiveActivity(
             id: Self.activityId,
@@ -168,13 +168,13 @@ public final class CalendarActivityProvider {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text(event.startDate > Date() ? "Empieza a las \(event.startDate.formatted(date: .omitted, time: .shortened))" : "Ya empezó")
+                    Text(event.startDate > Date() ? String(format: L("Empieza a las %@"), event.startDate.formatted(date: .omitted, time: .shortened)) : L("Ya empezó"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.62))
                 }
             } bottom: {
                 Button(action: open) {
-                    Text(service.map { "Unirse con \($0)" } ?? "Abrir Calendario")
+                    Text(service.map { String(format: L("Unirse con %@"), $0) } ?? L("Abrir Calendario"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

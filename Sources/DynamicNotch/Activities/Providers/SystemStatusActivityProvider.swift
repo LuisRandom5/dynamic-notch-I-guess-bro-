@@ -213,14 +213,14 @@ public final class SystemStatusActivityProvider {
         // Como los puntos de privacidad del iPhone: verde la cámara, naranja el micrófono
         let icon = camera ? "video.fill" : "mic.fill"
         let tint = camera ? DesignTokens.green : DesignTokens.orange
-        let title = camera && microphone ? "Cámara y micrófono" : (camera ? "Cámara" : "Micrófono")
+        let title = L(camera && microphone ? "Cámara y micrófono" : (camera ? "Cámara" : "Micrófono"))
         var activity = LiveActivity(
             id: Self.privacyId,
             kind: .recording,
             priority: ActivityRelevance.generic,
             style: .pill,
             title: title,
-            subtitle: "En uso por una app",
+            subtitle: L("En uso por una app"),
             leading: AnyView(Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundColor(tint)),
             trailing: AnyView(Text(title).font(.system(size: 12, weight: .semibold)).foregroundColor(tint)),
             bolitaVariant: .color(bgColor: tint.opacity(0.22), fgColor: tint, iconName: icon),
@@ -238,8 +238,8 @@ public final class SystemStatusActivityProvider {
             kind: .recording,
             priority: ActivityRelevance.generic,
             style: .pill,
-            title: "Grabando",
-            subtitle: "Notas de Voz",
+            title: L("Grabando"),
+            subtitle: L("Notas de Voz"),
             leading: AnyView(
                 Image(systemName: "waveform")
                     .font(.system(size: 13, weight: .bold))
@@ -318,7 +318,8 @@ public final class SystemStatusActivityProvider {
 
     /// Aviso de pocos segundos en el notch, como el del interruptor de silencio del iPhone: entra de inmediato
     /// (urgente) y regresa a lo que había
-    private func publishBrief(id: String, icon: String, label: String, tint: Color, duration: TimeInterval, wide: Bool = false) {
+    private func publishBrief(id: String, icon: String, label spanishLabel: String, tint: Color, duration: TimeInterval, wide: Bool = false) {
+        let label = L(spanishLabel)
         var notice = LiveActivity(
             id: id,
             priority: ActivityRelevance.systemStatus,

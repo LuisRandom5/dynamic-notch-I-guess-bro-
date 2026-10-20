@@ -25,7 +25,7 @@ public final class StatusItemManager: NSObject {
         let menu = NSMenu()
         
         // Header
-        let titleItem = NSMenuItem(title: "Dynamic Notch (macOS Nativo)", action: nil, keyEquivalent: "")
+        let titleItem = NSMenuItem(title: L("Dynamic Notch (macOS Nativo)"), action: nil, keyEquivalent: "")
         titleItem.isEnabled = false
         menu.addItem(titleItem)
         
@@ -95,63 +95,63 @@ public final class StatusItemManager: NSObject {
         // Test demos submenu
         let testMenu = NSMenu()
         
-        let brightnessTest = NSMenuItem(title: "Slider Brillo (75%)", action: #selector(testBrightnessSlider), keyEquivalent: "")
+        let brightnessTest = NSMenuItem(title: L("Slider Brillo (75%)"), action: #selector(testBrightnessSlider), keyEquivalent: "")
         brightnessTest.target = self
         testMenu.addItem(brightnessTest)
         
-        let volumeTest = NSMenuItem(title: "Slider Volumen (60%)", action: #selector(testVolumeSlider), keyEquivalent: "")
+        let volumeTest = NSMenuItem(title: L("Slider Volumen (60%)"), action: #selector(testVolumeSlider), keyEquivalent: "")
         volumeTest.target = self
         testMenu.addItem(volumeTest)
         
-        let muteTest = NSMenuItem(title: "Slider Volumen Silenciado (Mute)", action: #selector(testMuteSlider), keyEquivalent: "")
+        let muteTest = NSMenuItem(title: L("Slider Volumen Silenciado (Mute)"), action: #selector(testMuteSlider), keyEquivalent: "")
         muteTest.target = self
         testMenu.addItem(muteTest)
         
         testMenu.addItem(NSMenuItem.separator())
         
-        let magSafeTest = NSMenuItem(title: "Animación MagSafe (88%)", action: #selector(testMagSafe), keyEquivalent: "")
+        let magSafeTest = NSMenuItem(title: L("Animación MagSafe (88%)"), action: #selector(testMagSafe), keyEquivalent: "")
         magSafeTest.target = self
         testMenu.addItem(magSafeTest)
         
-        let airPods4Test = NSMenuItem(title: "Animación AirPods 4 (88% / 90% / 100%)", action: #selector(testAirPods4), keyEquivalent: "")
+        let airPods4Test = NSMenuItem(title: L("Animación AirPods 4 (88% / 90% / 100%)"), action: #selector(testAirPods4), keyEquivalent: "")
         airPods4Test.target = self
         testMenu.addItem(airPods4Test)
         
-        let airPodsTest = NSMenuItem(title: "Animación AirPods Pro (95% / 90% / 100%)", action: #selector(testAirPods), keyEquivalent: "")
+        let airPodsTest = NSMenuItem(title: L("Animación AirPods Pro (95% / 90% / 100%)"), action: #selector(testAirPods), keyEquivalent: "")
         airPodsTest.target = self
         testMenu.addItem(airPodsTest)
         
-        let lockScreenTest = NSMenuItem(title: "Previsualizar Reproductor Lock Screen (10s)", action: #selector(testLockScreenPreview), keyEquivalent: "")
+        let lockScreenTest = NSMenuItem(title: L("Previsualizar Reproductor Lock Screen (10s)"), action: #selector(testLockScreenPreview), keyEquivalent: "")
         lockScreenTest.target = self
         testMenu.addItem(lockScreenTest)
         
-        let batteryLowTest = NSMenuItem(title: "Alerta Batería Baja (12%)", action: #selector(testBatteryLow), keyEquivalent: "")
+        let batteryLowTest = NSMenuItem(title: L("Alerta Batería Baja (12%)"), action: #selector(testBatteryLow), keyEquivalent: "")
         batteryLowTest.target = self
         testMenu.addItem(batteryLowTest)
         
-        let musicDemoTest = NSMenuItem(title: "Canción Demo (Starboy)", action: #selector(testMusicDemo), keyEquivalent: "")
+        let musicDemoTest = NSMenuItem(title: L("Canción Demo (Starboy)"), action: #selector(testMusicDemo), keyEquivalent: "")
         musicDemoTest.target = self
         testMenu.addItem(musicDemoTest)
         
-        let airDropTest = NSMenuItem(title: "Simular AirDrop (Progreso → Éxito)", action: #selector(testAirDropTransfer), keyEquivalent: "")
+        let airDropTest = NSMenuItem(title: L("Simular AirDrop (Progreso → Éxito)"), action: #selector(testAirDropTransfer), keyEquivalent: "")
         airDropTest.target = self
         testMenu.addItem(airDropTest)
         
-        let shelfTest = NSMenuItem(title: "Abrir Bandeja de Archivos", action: #selector(testShelf), keyEquivalent: "")
+        let shelfTest = NSMenuItem(title: L("Abrir Bandeja de Archivos"), action: #selector(testShelf), keyEquivalent: "")
         shelfTest.target = self
         testMenu.addItem(shelfTest)
         
         testMenu.addItem(NSMenuItem.separator())
         
-        let timerCompactTest = NSMenuItem(title: "Temporizador Compacto (Minutka - 30s)", action: #selector(testTimerActivity), keyEquivalent: "")
+        let timerCompactTest = NSMenuItem(title: L("Temporizador Compacto (Minutka - 30s)"), action: #selector(testTimerActivity), keyEquivalent: "")
         timerCompactTest.target = self
         testMenu.addItem(timerCompactTest)
         
-        let timerCardTest = NSMenuItem(title: "Temporizador Expandido (Minutka Card - 30s)", action: #selector(testTimerCardActivity), keyEquivalent: "")
+        let timerCardTest = NSMenuItem(title: L("Temporizador Expandido (Minutka Card - 30s)"), action: #selector(testTimerCardActivity), keyEquivalent: "")
         timerCardTest.target = self
         testMenu.addItem(timerCardTest)
         
-        let notifTest = NSMenuItem(title: "Notificación Dinámica (WhatsApp)", action: #selector(testNotificationActivity), keyEquivalent: "")
+        let notifTest = NSMenuItem(title: L("Notificación Dinámica (WhatsApp)"), action: #selector(testNotificationActivity), keyEquivalent: "")
         notifTest.target = self
         testMenu.addItem(notifTest)
         
@@ -159,12 +159,12 @@ public final class StatusItemManager: NSObject {
         
         // Novedades 2.1 (cada una corre su demo sin tocar nada del sistema)
         let newIn21: [(String, Selector)] = [
-            ("Carga completa (100 %)", #selector(testFullCharge)),
-            ("Concentración activada", #selector(testFocus)),
-            ("Próxima reunión (ejemplo con Meet)", #selector(testMeeting)),
-            ("WhatsApp: foto", #selector(testWhatsAppPhoto)),
-            ("WhatsApp: dos mensajes seguidos (fila)", #selector(testNotificationQueue)),
-            ("Actividad de la API (compilando, 10 s)", #selector(testAPIActivity))
+            (L("Carga completa (100 %)"), #selector(testFullCharge)),
+            (L("Concentración activada"), #selector(testFocus)),
+            (L("Próxima reunión (ejemplo con Meet)"), #selector(testMeeting)),
+            (L("WhatsApp: foto"), #selector(testWhatsAppPhoto)),
+            (L("WhatsApp: dos mensajes seguidos (fila)"), #selector(testNotificationQueue)),
+            (L("Actividad de la API (compilando, 10 s)"), #selector(testAPIActivity))
         ]
         for (title, action) in newIn21 {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -174,15 +174,15 @@ public final class StatusItemManager: NSObject {
 
         testMenu.addItem(NSMenuItem.separator())
 
-        let fileDropTest = NSMenuItem(title: "Simular Soltar Archivo (Card Pop-Up)", action: #selector(testSimulatedFileDrop), keyEquivalent: "")
+        let fileDropTest = NSMenuItem(title: L("Simular Soltar Archivo (Card Pop-Up)"), action: #selector(testSimulatedFileDrop), keyEquivalent: "")
         fileDropTest.target = self
         testMenu.addItem(fileDropTest)
         
-        let dragProbeTest = NSMenuItem(title: "🔍 Sonda Drag & Drop (Paso 0)", action: #selector(openDragProbeWindow), keyEquivalent: "")
+        let dragProbeTest = NSMenuItem(title: L("🔍 Sonda Drag & Drop (Paso 0)"), action: #selector(openDragProbeWindow), keyEquivalent: "")
         dragProbeTest.target = self
         testMenu.addItem(dragProbeTest)
         
-        let testSubmenuItem = NSMenuItem(title: "Demostraciones de prueba", action: nil, keyEquivalent: "")
+        let testSubmenuItem = NSMenuItem(title: L("Demostraciones de prueba"), action: nil, keyEquivalent: "")
         testSubmenuItem.submenu = testMenu
         menu.addItem(testSubmenuItem)
         
@@ -194,7 +194,7 @@ public final class StatusItemManager: NSObject {
         debugPanelItem.target = self
         menu.addItem(debugPanelItem)
         
-        let studioItem = NSMenuItem(title: "🎬 Animation Studio (bolitas)", action: #selector(openAnimationStudio), keyEquivalent: "")
+        let studioItem = NSMenuItem(title: L("🎬 Animation Studio (bolitas)"), action: #selector(openAnimationStudio), keyEquivalent: "")
         studioItem.target = self
         menu.addItem(studioItem)
         
@@ -217,7 +217,7 @@ public final class StatusItemManager: NSObject {
         menu.addItem(NSMenuItem.separator())
         
         // Quit
-        let quitItem = NSMenuItem(title: "Salir de Dynamic Notch", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L("Salir de Dynamic Notch"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         
@@ -233,7 +233,7 @@ public final class StatusItemManager: NSObject {
     }
     
     private func islandMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Isla Dinámica", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: L("Isla Dinámica"), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
         let app = AppState.shared
         func add(_ title: String, _ action: Selector, tag: Int = 0, on: Bool, enabled: Bool = true) {
@@ -244,7 +244,7 @@ public final class StatusItemManager: NSObject {
             entry.isEnabled = enabled
             submenu.addItem(entry)
         }
-        let header = NSMenuItem(title: "Dónde se ve", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: L("Dónde se ve"), action: nil, keyEquivalent: "")
         header.isEnabled = false
         submenu.addItem(header)
         let hasPlainScreen = NSScreen.screens.contains { $0.auxiliaryTopLeftArea == nil }
@@ -252,7 +252,7 @@ public final class StatusItemManager: NSObject {
         add("En el monitor sin notch", #selector(setIslandPlacement(_:)), tag: 1, on: app.islandScreenPlacement == .withoutNotch, enabled: hasPlainScreen)
         add("Seguir al cursor", #selector(setIslandPlacement(_:)), tag: 2, on: app.islandScreenPlacement == .followCursor)
         submenu.addItem(NSMenuItem.separator())
-        let shapeHeader = NSMenuItem(title: "Forma en pantallas sin notch", action: nil, keyEquivalent: "")
+        let shapeHeader = NSMenuItem(title: L("Forma en pantallas sin notch"), action: nil, keyEquivalent: "")
         shapeHeader.isEnabled = false
         submenu.addItem(shapeHeader)
         add("Isla flotante (como el iPhone)", #selector(setIslandStyle(_:)), tag: 0, on: app.islandStyle == .floating)

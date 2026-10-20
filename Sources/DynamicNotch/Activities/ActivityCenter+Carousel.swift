@@ -19,7 +19,7 @@ extension ActivityCenter {
             id: Self.musicCarouselId,
             kind: .music,
             style: .pill,
-            title: track.title.isEmpty ? "Música" : track.title,
+            title: track.title.isEmpty ? L("Música") : track.title,
             subtitle: track.artist,
             bolitaVariant: .color(bgColor: pink.opacity(0.22), fgColor: pink, iconName: "music.note"),
             tint: pink,

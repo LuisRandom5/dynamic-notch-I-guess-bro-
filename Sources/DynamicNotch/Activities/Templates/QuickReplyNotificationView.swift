@@ -30,7 +30,7 @@ public struct QuickReplyNotificationView: View {
 
     /// Lo que se muestra: "Mensaje nuevo" si el ajuste de privacidad lo pide (p. ej. grabando la pantalla)
     private var displayedMessage: String {
-        NotificationActivityProvider.hidesMessageText ? "Mensaje nuevo" : message
+        NotificationActivityProvider.hidesMessageText ? L("Mensaje nuevo") : message
     }
     public var handle: String { livePayload?.handle ?? initialHandle }
     public var avatar: NSImage? { livePayload?.avatar ?? initialAvatar }

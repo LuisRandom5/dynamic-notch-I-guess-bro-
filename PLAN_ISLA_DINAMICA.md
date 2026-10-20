@@ -401,11 +401,11 @@ Se recorre completa antes de pasar a la Fase B, en modo negro y en los dos crist
 
 ### Lo que queda en el plan después de la 2.1 (opcional)
 
-- **App Intents (Atajos nativos)**: el build con SPM no genera sus metadatos; hoy Atajos usa `dynamicnotch://`. Haría falta un target de Xcode.
+- ✅ **App Intents (Atajos nativos)**: `build_app.sh` extrae los valores constantes (`-emit-const-values-path`) y corre `appintentsmetadataprocessor` como lo haría Xcode.
 - **Indicador de grabación de pantalla**: macOS 27 no lo expone (ni por accesibilidad del Centro de control); sólo se detecta la herramienta de captura del sistema.
 - **Bolitas ovaladas con texto (A7)**: descartado por ahora (no quisiste la cuenta regresiva en la bolita del temporizador).
-- **Keyline por actividad (D4)**: P2, sólo se nota en modo cristal.
-- **Inglés**: toda la interfaz está en español; traducirla abriría mercado, pero es un trabajo grande (cientos de textos).
+- ✅ **Keyline por actividad (D4)**: cada bolita con el color de su actividad.
+- ✅ **Inglés**: `Resources/en.lproj/Localizable.strings` (450 textos) + `L()` para los textos armados en código. Quedan en español los textos con valores intercalados (p. ej. \"5 min\" en frases) y las herramientas de diagnóstico.
 
 ---
 

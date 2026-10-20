@@ -281,6 +281,14 @@ public struct NotchBolitaView: View {
     public var body: some View {
         minimalDynamicIslandView
             .frame(width: size, height: size)
+            // Keyline propia (como la isla): cada bolita con el color de SU actividad
+            .overlay {
+                if showsKeyline {
+                    Circle()
+                        .strokeBorder(iconColor.opacity(0.42), lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
             // Contenido obsoleto (sin actualizaciones desde su staleDate): atenuado, como el "sin actualizar"
             // de las Live Activities
             .saturation(isStale ? 0.25 : 1)
@@ -313,6 +321,12 @@ public struct NotchBolitaView: View {
             .help(accessibilityText)
     }
     
+    /// Igual que la keyline de la isla: modo oscuro, negro OLED y el ajuste encendido
+    private var showsKeyline: Bool {
+        appState.keylineEnabled && appState.effectiveAppearanceMode == .pureOLED
+            && BackdropBrightnessMonitor.shared.isSystemDarkMode
+    }
+
     private var isStale: Bool {
         center.staleActivityIds.contains(activity.id)
     }

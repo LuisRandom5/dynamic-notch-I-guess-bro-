@@ -14,6 +14,13 @@
     <string>2.1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>2.1</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>es</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>es</string>
+        <string>en</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>DynamicNotch</string>
     <key>LSMinimumSystemVersion</key>

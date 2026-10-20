@@ -55,7 +55,7 @@ public struct SettingsView: View {
                         HStack(spacing: 5) {
                             Image(systemName: tab.icon)
                                 .font(.system(size: 12.5, weight: .semibold))
-                            Text(tab.rawValue)
+                            Text(L(tab.rawValue))
                                 .font(.system(size: 12.5, weight: .medium))
                                 .lineLimit(1)
                         }
@@ -1896,7 +1896,7 @@ private struct SettingsGroupTitle: View {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(DesignTokens.blue)
-            Text(title)
+            Text(L(title))
                 .font(.system(size: 13.5, weight: .semibold))
         }
         .padding(.top, 6)
@@ -1915,8 +1915,8 @@ private struct SliderRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 13, weight: .medium))
-                    Text(subtitle)
+                    Text(L(title)).font(.system(size: 13, weight: .medium))
+                    Text(L(subtitle))
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1955,16 +1955,16 @@ private struct PickerRow<Value: Hashable & Identifiable & CaseIterable>: View wh
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text(L(title))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.primary)
-            Text(subtitle)
+            Text(L(subtitle))
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Picker("", selection: $selection) {
                 ForEach(Value.allCases) { value in
-                    Text(label(value)).tag(value)
+                    Text(L(label(value))).tag(value)
                 }
             }
             .labelsHidden()
@@ -1991,10 +1991,10 @@ private struct ToggleRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(L(title))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.primary)
-                Text(subtitle)
+                Text(L(subtitle))
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
