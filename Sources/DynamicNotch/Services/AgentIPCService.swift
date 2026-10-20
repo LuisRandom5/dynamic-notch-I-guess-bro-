@@ -48,13 +48,16 @@ public final class AgentIPCService {
     public func start() {
         queue.async { [weak self] in
             guard let self = self, !self.isRunning else { return }
+            self.isStopped = false
             self.startServer()
         }
     }
     
     public func stop() {
         queue.async { [weak self] in
-            guard let self = self, self.isRunning else { return }
+            guard let self = self else { return }
+            self.isStopped = true
+            guard self.isRunning else { return }
             self.listener?.cancel()
             self.listener = nil
             self.isRunning = false
@@ -74,6 +77,24 @@ public final class AgentIPCService {
         }
     }
     
+    /// Arranques fallidos seguidos (p. ej. el puerto sigue ocupado por la instancia anterior al relanzar)
+    private var failedStarts = 0
+    /// Detenido a propósito: los reintentos no lo vuelven a abrir
+    private var isStopped = false
+
+    /// Sin reintento, un puerto ocupado al arrancar dejaba a Claude y a los agentes sin canal hasta reiniciar la app
+    private func retryAfterFailure() {
+        listener?.cancel()
+        listener = nil
+        failedStarts += 1
+        let delay: TimeInterval = failedStarts <= 5 ? 2 : 10
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, !self.isStopped, !self.isRunning, self.listener == nil else { return }
+            DNDLogger.log("AgentIPCService: reintentando abrir el puerto (intento \(self.failedStarts + 1))")
+            self.startServer()
+        }
+    }
+
     private func startServer() {
         do {
             let tcpOptions = NWProtocolTCP.Options()
@@ -96,10 +117,12 @@ public final class AgentIPCService {
                 switch state {
                 case .ready:
                     self?.isRunning = true
+                    self?.failedStarts = 0
                     DNDLogger.log("AgentIPCService: Escuchando activamente en 127.0.0.1:\(self?.port ?? 48123)")
                 case .failed(let error):
                     DNDLogger.log("AgentIPCService error: \(error.localizedDescription)")
                     self?.isRunning = false
+                    self?.retryAfterFailure()
                 case .cancelled:
                     self?.isRunning = false
                 default:
@@ -111,6 +134,7 @@ public final class AgentIPCService {
             listener.start(queue: queue)
         } catch {
             DNDLogger.log("AgentIPCService: Falló al inicializar listener: \(error.localizedDescription)")
+            retryAfterFailure()
         }
     }
     

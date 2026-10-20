@@ -32,6 +32,9 @@
 - En la isla flotante (sin cámara) las tarjetas de mensaje quedan parejas arriba y abajo, como en el iPhone.
 - El color del avatar de un contacto ya no cambia en cada arranque.
 
+### Estabilidad
+- El canal local de Claude y los agentes (puerto 48123) reintenta abrirse si al arrancar sigue ocupado por la instancia anterior; antes quedaba muerto hasta reiniciar la app.
+
 ### Privacidad
 - El log de diagnóstico (/tmp/notch_dnd.log) ya no guarda el texto de los mensajes, sólo es legible por tu usuario y rota a los 5 MB.
 
