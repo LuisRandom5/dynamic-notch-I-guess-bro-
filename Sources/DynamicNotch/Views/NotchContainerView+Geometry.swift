@@ -468,6 +468,11 @@ extension NotchContainerView {
                 response: isDismissing ? ExitAnimationMetrics.cardDismissResponse : ExitAnimationMetrics.cardOpenResponse,
                 dampingFraction: isDismissing ? ExitAnimationMetrics.cardDismissDamping : ExitAnimationMetrics.cardOpenDamping
             )
+        } else if let activity = activityCenter.currentActivity, activityCenter.dismissingActivityId == nil,
+                  activity.style == .airpodsPill || (activity.style == .pill && activity.customView != nil) {
+            // Como la Isla del iPhone al conectar los AirPods o el cargador: se abre a los lados con un rebote
+            // elástico (el volumen y el brillo siguen sin rebote)
+            return speedManager.spring(response: 0.46, dampingFraction: 0.7)
         } else if activityCenter.currentActivity != nil || activityCenter.dismissingActivityId != nil {
             return speedManager.spring(
                 response: ExitAnimationMetrics.sliderDismissResponse,

@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 
 /// ¿El usuario no puede ver la pantalla? (bloqueada, pantallas dormidas o sesión de otro usuario). Mientras
 /// tanto los sondeos que sólo sirven para lo que se ve en pantalla (WhatsApp, avisos, llamadas por
@@ -20,6 +21,15 @@ public enum SystemIdleState {
 
     public static func start() {
         guard observers.isEmpty else { return }
+        // Estado al arrancar: si la app se abre con la Mac ya bloqueada o la pantalla dormida, no llega ningún aviso
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        update {
+            screenLocked = (session?["CGSSessionScreenIsLocked"] as? Bool) ?? false
+            screensAsleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
+        }
+        // Ninguna llamada de accesibilidad espera más de 1 s (con la Mac bloqueada Safari tardaba >6 s en
+        // contestar y el sondeo de WhatsApp se quedaba colgado)
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
         let workspace = NSWorkspace.shared.notificationCenter
         let distributed = DistributedNotificationCenter.default()
         let entries: [(Notification.Name, (Bool) -> Void, Bool)] = [

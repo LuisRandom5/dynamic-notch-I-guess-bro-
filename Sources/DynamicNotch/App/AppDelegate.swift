@@ -14,6 +14,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Antes que cualquier sondeo: pantalla bloqueada o dormida → los sondeos de pantalla se pausan
+        SystemIdleState.start()
         // Reducir transparencia / Aumentar contraste cambian el vidrio por negro OLED al instante (no sólo al
         // reabrir la app): AppState.effectiveAppearanceMode los consulta en cada redibujo
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -423,8 +425,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         FrameHitchMonitor.shared.start()
         // Notch oculto mientras se ve algo a pantalla completa
         FullScreenMediaMonitor.shared.start()
-        // Pantalla bloqueada o dormida: los sondeos de pantalla se pausan
-        SystemIdleState.start()
         // Vidrio legible: detecta si detrás del notch hay algo claro (regular) o el fondo de pantalla (clear)
         BackdropBrightnessMonitor.shared.start()
         

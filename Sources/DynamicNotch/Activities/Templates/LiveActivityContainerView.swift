@@ -13,7 +13,14 @@ public struct LiveActivityContainerView: View {
             Group {
                 switch activity.style {
                 case .pill:
-                    ActivityPillView(activity: activity)
+                    Group {
+                        // Una píldora puede traer su propia vista (p. ej. la batería con la animación del iPhone)
+                        if let custom = activity.customView {
+                            custom
+                        } else {
+                            ActivityPillView(activity: activity)
+                        }
+                    }
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if center.dismissingActivityId == nil {

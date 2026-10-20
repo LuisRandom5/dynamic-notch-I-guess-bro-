@@ -85,8 +85,8 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
             labelColor: Color.white.opacity(0.92),
             percentage: percentage,
             tint: tintColor,
-            showBolt: isPluggedIn,
-            duration: 3.0
+            kind: isPluggedIn ? .charging : .fullyCharged,
+            duration: 3.2
         )
     }
 
@@ -98,8 +98,8 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
             labelColor: DesignTokens.red,
             percentage: percentage,
             tint: DesignTokens.red,
-            showBolt: false,
-            duration: 4.0
+            kind: .low,
+            duration: 4.5
         )
         AppState.shared.hapticService.triggerAlert()
     }
@@ -112,20 +112,22 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
             labelColor: Color.white.opacity(0.92),
             percentage: 100,
             tint: DesignTokens.green,
-            showBolt: false,
-            duration: 3.0
+            kind: .fullyCharged,
+            duration: 3.2
         )
     }
 
     /// Aviso breve en las alas de la isla (como el volumen o Bloq Mayús): entra de inmediato, todo lo demás se
     /// recoge y regresa al terminar
     private func publishBatteryNotice(id: String, label: String, labelColor: Color, percentage: Int, tint: Color,
-                                      showBolt: Bool, duration: TimeInterval) {
+                                      kind: BatteryNoticePillView.Kind, duration: TimeInterval) {
+        let wing = BatteryNoticePillView.wingWidth(for: label)
         var notice = LiveActivity(
             id: id,
             priority: ActivityRelevance.systemStatus,
             style: .pill,
             title: label,
+            // (Por si se muestra en otro lado, p. ej. la tarjeta expandida)
             leading: AnyView(
                 Text(label)
                     .font(.system(size: 12.5, weight: .semibold))
@@ -133,17 +135,17 @@ public final class ChargingActivityProvider: ActivityProvider, ObservableObject 
                     .lineLimit(1)
                     .fixedSize()
             ),
-            trailing: AnyView(ChargingTrailingView(percentage: percentage, tintColor: tint, showBolt: showBolt, compact: true)),
-            bolitaVariant: .color(bgColor: tint.opacity(0.22), fgColor: tint, iconName: showBolt ? "bolt.fill" : "battery.25"),
+            trailing: AnyView(ChargingTrailingView(percentage: percentage, tintColor: tint, showBolt: kind == .charging, compact: true)),
+            // En la isla: la vista con la animación del iPhone (se abre a los lados como con los AirPods)
+            customView: AnyView(BatteryNoticePillView(activityId: id, kind: kind, label: label, labelColor: labelColor,
+                                                      percentage: percentage, tint: tint, wingWidth: wing)),
+            bolitaVariant: .color(bgColor: tint.opacity(0.22), fgColor: tint, iconName: kind == .charging ? "bolt.fill" : (kind == .low ? "battery.25" : "battery.100")),
             tint: tint,
             duration: duration,
             isUrgent: true
         )
         notice.isSystemNotice = true
-        // Alas un poco más anchas cuando el texto es largo ("Batería baja")
-        if label.count > 9 {
-            notice.customExpandedWidth = ScreenService.shared.currentGeometry.width + 200
-        }
+        notice.customExpandedWidth = ScreenService.shared.currentGeometry.width + wing * 2
         ActivityCenter.shared.publish(notice)
     }
 }
