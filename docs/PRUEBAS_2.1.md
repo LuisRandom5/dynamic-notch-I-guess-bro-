@@ -53,6 +53,9 @@ Conecta el ASUS. En **Isla Dinámica › Dónde se ve** elige su pantalla, y en 
 21. **Inglés:** en Ajustes del Sistema › General › Idioma y región, en "Aplicaciones", agrega Dynamic Notch en English. Al reabrirla, Ajustes, menú y avisos deben verse en inglés. Luego quítalo.
 22. **Bordes de color en las bolitas:** con la Mac en modo oscuro y la apariencia OLED, cada bolita tiene un borde fino de su color.
 
+22b. **AirPods:** conecta tus AirPods. La primera vez la app baja la animación oficial; desde la segunda conexión, o con **Animación AirPods 4** en el menú de demos, el estuche se abre en la isla como en el iPhone.
+22c. **Tus propios mensajes:** responde un WhatsApp desde el celular mientras ves el aviso; tu respuesta no debe salir como aviso nuevo.
+
 ## C. Pendientes que dependen de ti
 
 23. **WhatsApp con la pestaña de fondo:**

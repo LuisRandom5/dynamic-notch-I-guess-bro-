@@ -296,6 +296,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         mu:icons.some(function(x){return /mute/.test(x);}),
         p:icons.some(function(x){return /pin/.test(x);}),
         o:icons.some(function(x){return /check|msg-time/.test(x);}),
+        s:r.getAttribute('aria-selected')==='true'||!!r.querySelector('[aria-selected=true]'),
         i:icons.filter(function(x){return !/mute|pin|check|msg-time|default-|down|chevron|ephemeral/.test(x);})});
     }
     return JSON.stringify(out);
@@ -397,7 +398,9 @@ public final class WhatsAppWebObserverService: ObservableObject {
             time: item["t"] as? String ?? "",
             unreadCount: item["u"] as? Int ?? 0,
             isMuted: item["mu"] as? Bool ?? false,
-            isPinned: item["p"] as? Bool ?? false
+            isPinned: item["p"] as? Bool ?? false,
+            isOpenChat: item["s"] as? Bool ?? false,
+            isOutgoing: item["o"] as? Bool ?? false
         )
     }
     
@@ -707,6 +710,10 @@ public final class WhatsAppWebObserverService: ObservableObject {
         let unreadCount: Int
         let isMuted: Bool
         let isPinned: Bool
+        /// Es el chat abierto en WhatsApp Web (fila seleccionada)
+        var isOpenChat: Bool = false
+        /// El último mensaje es tuyo (palomitas de enviado/leído; sólo lo sabe la lectura por JavaScript)
+        var isOutgoing: Bool = false
     }
     
     @discardableResult
@@ -804,10 +811,14 @@ public final class WhatsAppWebObserverService: ObservableObject {
                 let isFrontmostBrowser = b == "com.apple.Safari" || b == "com.google.Chrome" || b == "company.thebrowser.Browser" || b == "com.brave.Browser" || b == "net.whatsapp.WhatsApp"
                 
                 let lowerMsg = msg.lowercased()
-                let isOutgoing = lowerMsg.hasPrefix("tú:") || lowerMsg.hasPrefix("tu:") || lowerMsg.hasPrefix("you:") || lowerMsg.hasPrefix("✓")
+                let isOutgoing = row.isOutgoing || lowerMsg.hasPrefix("tú:") || lowerMsg.hasPrefix("tu:") || lowerMsg.hasPrefix("you:") || lowerMsg.hasPrefix("✓")
                 let isTyping = lowerMsg == "escribiendo..." || lowerMsg == "typing..."
                 
-                if !isFrontmostBrowser && !isOutgoing && !isTyping && !isMuted && !msg.isEmpty {
+                // Sin "no leídos" sólo puede ser un mensaje nuevo si el chat está ABIERTO en WhatsApp Web (lo marca
+                // como leído al llegar). En cualquier otro chat significa que el último mensaje es tuyo (lo
+                // mandaste desde el celular) o que lo leíste en otro lado: no se avisa
+                if row.isOpenChat && !isFrontmostBrowser && !isOutgoing && !isTyping && !isMuted && !msg.isEmpty
+                    && !wasSentByUser(contact: contact, message: msg) {
                     if prev.message != msg && Date().timeIntervalSince(prev.lastAlertedAt) >= 2.5 {
                         DNDLogger.log("WhatsAppWebObserverService: 🔔 NUEVO MENSAJE EN CHAT ACTIVO de '\(contact)': \(DNDLogger.redact(msg)) (hora: \(time))")
                         knownChatRecords[contact] = ChatRecord(
@@ -848,6 +859,11 @@ public final class WhatsAppWebObserverService: ObservableObject {
         guard !isMuted else { return }
         let lowerMsg = msg.lowercased()
         guard lowerMsg != "escribiendo..." && lowerMsg != "typing..." else { return }
+        guard !row.isOutgoing, !wasSentByUser(contact: contact, message: msg) else {
+            knownChatRecords[contact] = ChatRecord(message: msg, time: time, unreadCount: unread, isMuted: isMuted,
+                                                   lastAlertedAt: knownChatRecords[contact]?.lastAlertedAt ?? Date())
+            return
+        }
         
         var shouldAlert = false
         if let prev = knownChatRecords[contact] {
@@ -1099,13 +1115,16 @@ public final class WhatsAppWebObserverService: ObservableObject {
         guard !contact.isEmpty else { return nil }
         
         let timeString = (timeIndex >= 0 && timeIndex < rawList.count) ? rawList[timeIndex] : ""
+        var selectedRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(row, kAXSelectedAttribute as CFString, &selectedRef)
         return ParsedChatRow(
             contact: contact,
             message: message.isEmpty ? "Nuevo mensaje" : WhatsAppMessagePreview.describe(message),
             time: timeString,
             unreadCount: unreadCount,
             isMuted: isMuted,
-            isPinned: isPinned
+            isPinned: isPinned,
+            isOpenChat: (selectedRef as? Bool) ?? false
         )
     }
     
@@ -1185,7 +1204,37 @@ public final class WhatsAppWebObserverService: ObservableObject {
     }
     
     /// Envía una respuesta rápida a WhatsApp Web sin redirigir al usuario ni sacarlo de su app actual
+    // MARK: - Lo que respondiste desde la isla (nunca se avisa como mensaje nuevo)
+
+    private var sentReplies: [(contact: String, text: String, at: Date)] = []
+    private let sentRepliesLock = NSLock()
+
+    private func rememberSent(_ text: String, to contact: String) {
+        sentRepliesLock.lock()
+        sentReplies.removeAll { Date().timeIntervalSince($0.at) > 300 }
+        sentReplies.append((contact.lowercased(), Self.normalized(text), Date()))
+        sentRepliesLock.unlock()
+    }
+
+    /// El mensaje que se ve en la lista es uno que acabas de responder desde la isla (5 min)
+    private func wasSentByUser(contact: String, message: String) -> Bool {
+        let text = Self.normalized(message)
+        guard !text.isEmpty else { return false }
+        sentRepliesLock.lock()
+        defer { sentRepliesLock.unlock() }
+        return sentReplies.contains { sent in
+            Date().timeIntervalSince(sent.at) <= 300 && sent.contact == contact.lowercased()
+                && (text == sent.text || text.hasSuffix(sent.text) || sent.text.hasPrefix(text))
+        }
+    }
+
+    private static func normalized(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .replacingOccurrences(of: "tú: ", with: "").replacingOccurrences(of: "you: ", with: "")
+    }
+
     public func deliverQuickReply(message: String, recipient: String) {
+        rememberSent(message, to: recipient)
         let lower = recipient.lowercased()
         guard !lower.contains("carlos") && !lower.contains("demo") else {
             DNDLogger.log("WhatsAppWebObserverService: 🧪 Demo detectada ('\(recipient)'). Envío a WhatsApp Web omitido de forma segura.")

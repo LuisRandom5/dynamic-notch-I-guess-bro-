@@ -15,8 +15,12 @@
 - WhatsApp muestra el mensaje real aunque la pestaña esté en segundo plano y dice cuando es una foto, video, sticker, GIF, mensaje de voz, documento, ubicación, contacto o encuesta. Requiere activar en Safari "Permitir JavaScript desde Apple Events" (Ajustes lo indica).
 - Las bolitas tienen su propia keyline del color de su actividad (modo oscuro + negro OLED), como la isla.
 - Si WhatsApp no puede decir quién escribió, el aviso muestra el ícono de la app en lugar de un monograma.
+- WhatsApp ya no avisa de tus propios mensajes: sin "no leídos" sólo se avisa si el chat está abierto en WhatsApp Web (antes, un mensaje que mandabas desde el celular salía como aviso), y lo que respondes desde la isla nunca se avisa.
 - Mensajes seguidos sin pisarse: otro mensaje del mismo contacto actualiza la tarjeta; uno de otro contacto espera a que el anterior se vea al menos 2.5 s; mientras respondes, los nuevos esperan su turno en lugar de perderse.
 - Carga, carga completa y batería baja como en el iPhone: la isla se abre a los lados con un rebote (igual que al conectar los AirPods) y el contenido sale de la cámara; la batería (dibujada como la del iPhone) se llena con un resorte, el rayo aparece con un rebote al cargar y, con batería baja, sólo el relleno rojo parpadea (el contorno se queda), como la alerta del iPhone. La tarjeta grande de antes ya no sale.
+
+### AirPods con la animación oficial de Apple
+- Al conectar los AirPods, la isla muestra la animación oficial (el estuche que se abre y los auriculares, con fondo transparente), la misma de la tarjeta del iPhone. Como iOS, se baja una vez de los servidores de Apple (catálogo SharingDeviceAssets, ~8 MB por modelo, verificado con su huella SHA-1) y se guarda en la caché de la app; no viene dentro de la app ni del repositorio. Mientras no se baje, sale la animación de antes.
 
 ### Carrusel con la música
 - Deslizar a lo ancho sobre la isla ahora también recorre la música: la siguiente bolita pasa al notch y la música se vuelve una bolita rosa; al seguir deslizando (o tocar su bolita) regresa. Claude y la repisa, que no tienen vista para el notch, se saltan.

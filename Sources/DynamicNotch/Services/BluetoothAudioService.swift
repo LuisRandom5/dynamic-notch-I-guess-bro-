@@ -347,6 +347,8 @@ public final class BluetoothAudioService: ObservableObject {
             self.currentDeviceName = currentDevice
             self.isAirPodsConnected = true
             DNDLogger.log("BluetoothAudioService: Modelo confirmado por ProductID (\(productId)) -> \(detectedModel.rawValue) (\(detectedModel.symbolName))")
+            // Animaciones oficiales del modelo, listas para la próxima vez que se conecten
+            AirPodsAssetService.shared.prefetch(model: detectedModel)
         }
         
         var primary = 100

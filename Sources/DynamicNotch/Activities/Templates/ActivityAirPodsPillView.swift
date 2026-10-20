@@ -103,6 +103,11 @@ public struct ActivityAirPodsPillView: View {
         return nil
     }
     
+    /// Video oficial del modelo conectado (si ya se bajó; si no, empieza a bajarlo para la próxima vez)
+    private var officialClipURL: URL? {
+        AirPodsAssetService.shared.clipURL(.connectEngage, for: BluetoothAudioService.shared.currentAirPodsModel)
+    }
+
     private var batteryColor: Color {
         if batteryLevel >= 30 {
             return appleBatteryGreen
@@ -115,7 +120,11 @@ public struct ActivityAirPodsPillView: View {
         HStack(spacing: 0) {
             // Ala Izquierda (Leading): Animación de los AirPods girando en bucle ampliada a tamaño óptimo (30x26)
             ZStack {
-                if let url = animationURL {
+                if let clip = officialClipURL {
+                    // La animación oficial de Apple (el estuche que se abre), como en el iPhone
+                    ProxCardVideoView(url: clip, rate: 1.4, zoom: 1.5)
+                        .frame(width: 36, height: 34)
+                } else if let url = animationURL {
                     AnimatedGIFView(gifURL: url, size: CGSize(width: 30, height: 26))
                         .frame(width: 30, height: 26)
                         .clipShape(RoundedRectangle(cornerRadius: 4.0, style: .continuous))

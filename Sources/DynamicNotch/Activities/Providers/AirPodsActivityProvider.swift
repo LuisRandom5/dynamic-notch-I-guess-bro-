@@ -15,6 +15,8 @@ public final class AirPodsActivityProvider: ObservableObject {
         duration: TimeInterval = 13.0
     ) {
         guard AppState.shared.enableAirPodsAnimation else { return }
+        // Para la próxima vez: las animaciones oficiales de este modelo (se bajan una vez de Apple)
+        AirPodsAssetService.shared.prefetch(model: BluetoothAudioService.shared.currentAirPodsModel)
         
         let state = AirPodsActivityState(
             name: name,
