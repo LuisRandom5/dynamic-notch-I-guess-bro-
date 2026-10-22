@@ -81,7 +81,7 @@
 - Los deslizadores dicen qué hay en cada punta ("Poco"/"Mucho", "Cerca"/"Lejos"); lo fino quedó en "Más opciones" al final de cada sección.
 - Nuevo: "Abrir al iniciar sesión" y "Revisar permisos…" en General.
 - Las herramientas de prueba se juntaron en la sección "Desarrollo", que la beta no tiene.
-- La bolita de una app ya no se esconde y vuelve a brotar al cambiar de escritorio: la visibilidad se confirma con dos lecturas, y si cambia por el escritorio sólo se desvanece.
+- La bolita de una app ya no se esconde y vuelve a brotar por error al cambiar de escritorio: la visibilidad se revisa cuando termina la transición y se confirma con dos lecturas. Cuando sí cambia, conserva su animación líquida.
 
 ### Menú de la barra rediseñado
 - Al hacer clic en el icono sale un panel como el del Centro de Control, pegado a la barra (el menú anterior salía separado unos 26 pt, como pasa con otras apps en macOS 27).

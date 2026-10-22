@@ -516,8 +516,7 @@ public struct NotchContainerView: View {
                 let sideIsBusy = activityCenter.departingSatellites.contains { departing in
                     departing.placement.isLeft == slot.isLeft && departing.activity.id != activity.id
                 }
-                LiquidSatelliteHost(placement: placementFor(slot.isLeft, slot.index, isFusingThis), phase: .appearing,
-                                    animated: !reduceMotion && !activityCenter.quietSatelliteChanges,
+                LiquidSatelliteHost(placement: placementFor(slot.isLeft, slot.index, isFusingThis), phase: .appearing, animated: !reduceMotion,
                                     delay: sideIsBusy ? LiquidSatelliteHost<EmptyView>.handoverDelay : 0) {
                     NotchBolitaView(activity: activity, side: slot.isLeft ? .left : .right)
                         .scaleEffect(isNotchHovered && !isFusingThis ? 0.88 : 1)
@@ -525,7 +524,7 @@ public struct NotchContainerView: View {
                 }
                 // Al fundirse pasa POR DEBAJO del notch (se reabsorbe en él) en vez de encimarse a las alas
                 .zIndex(isFusingThis ? -1 : 100 - Double(slotIndex))
-                .transition(activityCenter.quietSatelliteChanges ? .opacity : .identity)
+                .transition(.identity)
             }
             // Como la Isla Dinámica, las que no caben esperan en cola sin indicador (se recorren en A-3)
         }

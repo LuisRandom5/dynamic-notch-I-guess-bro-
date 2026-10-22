@@ -19,8 +19,6 @@ public final class AppVisibilityMonitor: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     /// Lectura distinta de la publicada que espera confirmarse con la siguiente (evita parpadeos)
     private var pendingVisible: Set<String>?
-    /// Último cambio de escritorio: lo que cambie por eso se muestra sin la animación líquida (ver ActivityCenter)
-    public private(set) var lastSpaceChange: Date = .distantPast
 
     private init() {}
 
@@ -55,7 +53,6 @@ public final class AppVisibilityMonitor: ObservableObject {
             // escritorios (la app podía "verse" un instante y la bolita se escondía y volvía a salir). Se revisa
             // cuando la transición ya terminó.
             observers.append(center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.lastSpaceChange = Date()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { self?.refresh() }
             })
         }
