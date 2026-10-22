@@ -39,10 +39,17 @@ public final class AppState: ObservableObject {
     @Published public var contentVerticalOverscrollOffset: CGFloat = 0 // Desplazamiento vertical orgánico del contenido
     @Published public var isOverscrolling: Bool = false
     /// Desenfoque mantenido por un gesto del trackpad en curso (0…1): sigue el recorrido de los dedos y se
-    /// queda al máximo desde que el gesto dispara el cambio hasta que el usuario levanta los dedos
-    @Published public var gestureBlurHold: CGFloat = 0
+    /// queda al máximo desde que el gesto dispara el cambio hasta que el usuario levanta los dedos.
+    /// Se guarda en GestureFeedback (no publica en AppState: ver allí por qué)
+    public var gestureBlurHold: CGFloat {
+        get { GestureFeedback.shared.blurHold }
+        set { if GestureFeedback.shared.blurHold != newValue { GestureFeedback.shared.blurHold = newValue } }
+    }
     /// Cierre interactivo (0…1): el reproductor/repisa/tarjeta se encoge hacia el notch siguiendo los dedos
-    @Published public var interactiveCollapseProgress: CGFloat = 0
+    public var interactiveCollapseProgress: CGFloat {
+        get { GestureFeedback.shared.collapseProgress }
+        set { if GestureFeedback.shared.collapseProgress != newValue { GestureFeedback.shared.collapseProgress = newValue } }
+    }
     /// Como en la Isla Dinámica: deslizar de lado sobre el notch cerrado esconde la actividad de música
     /// (queda el notch limpio); otro deslizamiento, o el cambio de canción, la regresa
     @Published public var isCompactMinimized: Bool = false

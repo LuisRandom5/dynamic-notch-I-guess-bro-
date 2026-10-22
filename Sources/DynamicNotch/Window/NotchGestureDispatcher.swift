@@ -196,7 +196,10 @@ public final class NotchGestureDispatcher: TrackpadGestureDelegate {
         // El estiramiento de resorte (topar con pared: no hay más páginas) no se desenfoca.
         let closing = AppState.shared.interactiveCollapseProgress
         // Cambiar de página (reproductor ⇄ repisa, gesto horizontal) tampoco se desenfoca
-        let hold: CGFloat = (triggered && axis == .vertical) ? 1 : (closing > 0 ? min(1, closing * 4) : 0)
+        let raw: CGFloat = (triggered && axis == .vertical) ? 1 : (closing > 0 ? min(1, closing * 4) : 0)
+        // En escalones de 1/8: cada cambio de radio obliga a recalcular el desenfoque de todo el contenido, y con
+        // ocho pasos el ojo no nota la diferencia (antes cambiaba con cada evento del trackpad)
+        let hold = (raw * 8).rounded() / 8
         if AppState.shared.gestureBlurHold != hold {
             AppState.shared.gestureBlurHold = hold
         }

@@ -18,6 +18,9 @@ public struct MorphBlurModifier<Key: Equatable>: ViewModifier {
     let radius: CGFloat
     /// Desenfoque mantenido desde fuera (0…1), p. ej. por un gesto del trackpad en curso
     var hold: CGFloat = 0
+    /// Sigue el gesto en curso (GestureFeedback): sólo este modificador se redibuja con cada movimiento
+    var followsGesture = false
+    @ObservedObject private var gesture = GestureFeedback.shared
 
     @State private var blur: CGFloat = 0
     @State private var token = 0
@@ -25,7 +28,7 @@ public struct MorphBlurModifier<Key: Equatable>: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .blur(radius: (reduceMotion || !AppState.shared.morphBlurEnabled) ? 0 : max(blur, hold * radius))
+            .blur(radius: (reduceMotion || !AppState.shared.morphBlurEnabled) ? 0 : max(blur, (followsGesture ? gesture.blurHold : hold) * radius))
             .onChange(of: key) { _, _ in
                 guard !reduceMotion, AppState.shared.morphBlurEnabled else { return }
                 token += 1
@@ -45,5 +48,10 @@ public extension View {
     /// - hold: desenfoque mantenido (0…1) mientras dura una interacción, p. ej. `AppState.gestureBlurHold`
     func morphBlur<Key: Equatable>(on key: Key, radius: CGFloat = 14, hold: CGFloat = 0) -> some View {
         modifier(MorphBlurModifier(key: key, radius: radius, hold: hold))
+    }
+
+    /// Como `morphBlur`, y además se desenfoca siguiendo el gesto del trackpad en curso (GestureFeedback)
+    func morphBlurFollowingGesture<Key: Equatable>(on key: Key, radius: CGFloat = 14) -> some View {
+        modifier(MorphBlurModifier(key: key, radius: radius, followsGesture: true))
     }
 }

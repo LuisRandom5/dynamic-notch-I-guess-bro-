@@ -279,7 +279,7 @@ public struct NotchContainerView: View {
                     mainModeContentView
                         // Estándar: el contenido se desenfoca un instante mientras la forma se transforma.
                         // Primero el desenfoque y DESPUÉS el recorte: el desenfoque nunca se sale de la forma
-                        .morphBlur(on: morphKey, hold: appState.gestureBlurHold)
+                        .morphBlurFollowingGesture(on: morphKey)
                         .frame(width: cardExpandedWidth, height: cardExpandedHeight, alignment: .top)
                         // Recorte con la misma silueta que el fondo, con el tamaño como dato animable (ver
                         // ElasticPillShape.surfaceSize): el contenido nunca se sale de la isla mientras se transforma
@@ -366,11 +366,7 @@ public struct NotchContainerView: View {
             .scaleEffect(x: scaleX, y: scaleY * dragScaleY, anchor: .top)
             // Cierre interactivo: la tarjeta se recoge hacia el notch siguiendo los dedos (más alto que ancho,
             // como si se guardara en la cámara) y su contenido se apaga un poco
-            .scaleEffect(
-                x: 1 - 0.22 * appState.interactiveCollapseProgress,
-                y: 1 - 0.52 * appState.interactiveCollapseProgress,
-                anchor: .top
-            )
+            .modifier(InteractiveCollapseScale())
             .contentShape(containerPillShape)
             // Gesto de presión con anticipación en 3 fases cuando está colapsado y no hay actividad activa
             .modifier(PillGestureModifier(
@@ -600,4 +596,19 @@ public struct NotchContainerView: View {
         .environment(\.controlActiveState, .key)
     }
     
+}
+
+/// Cierre interactivo: la tarjeta se recoge hacia el notch siguiendo los dedos (más alto que ancho, como si se
+/// guardara en la cámara). Lee GestureFeedback por su cuenta: con cada movimiento sólo se redibuja este
+/// modificador, no todo el notch.
+private struct InteractiveCollapseScale: ViewModifier {
+    @ObservedObject private var gesture = GestureFeedback.shared
+
+    func body(content: Content) -> some View {
+        content.scaleEffect(
+            x: 1 - 0.22 * gesture.collapseProgress,
+            y: 1 - 0.52 * gesture.collapseProgress,
+            anchor: .top
+        )
+    }
 }

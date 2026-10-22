@@ -53,6 +53,7 @@
 - **Próxima reunión:** 5 min antes de un evento sale una bolita con la cuenta regresiva y se expande un momento; botón para unirse con Zoom, Meet, Teams, Webex o FaceTime. Apagada por defecto: pide permiso de Calendario al encenderla.
 
 ### Rendimiento
+- Deslizar para cerrar la isla abierta va fluido: antes cada movimiento de los dedos hacía recalcular casi toda la app (40–55 % de CPU, se sentía trabado con el desenfoque); ahora sólo se redibuja lo que se mueve (≈ 12 %), y el desenfoque cambia en 8 escalones en vez de con cada evento.
 - Con música, el uso de CPU baja de ~22 % a ~13 %.
 - Fuga de memoria: el interceptor de volumen y brillo retenía cada tecla pulsada (miles de eventos por hora que nunca se liberaban).
 - El monitor de "app a la vista" acumulaba observadores cada vez que se reactivaba.

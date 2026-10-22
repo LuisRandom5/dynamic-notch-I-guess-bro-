@@ -469,6 +469,29 @@ public final class AgentIPCService {
                 }
             }
 
+        case ("POST", "/debug/swipe-sim"):
+            // Diagnóstico: imita un cierre deslizando hacia arriba (120 eventos/s) para medir tirones con /debug/hitches.
+            // {"seconds": 1.2, "blur": true}
+            let json = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any]) ?? [:]
+            let seconds = json["seconds"] as? Double ?? 1.2
+            let useBlur = json["blur"] as? Bool ?? true
+            DispatchQueue.main.async {
+                let start = Date()
+                Timer.scheduledTimer(withTimeInterval: 1.0 / 120, repeats: true) { timer in
+                    let t = Date().timeIntervalSince(start) / seconds
+                    // Sube y baja: el dedo avanza y regresa (nunca se suelta, así no se cierra)
+                    let p = CGFloat(t < 0.5 ? t * 2 : max(0, 2 - t * 2)) * 0.3
+                    AppState.shared.interactiveCollapseProgress = p
+                    if useBlur { AppState.shared.gestureBlurHold = (min(1, p * 4) * 8).rounded() / 8 }
+                    if t >= 1 {
+                        timer.invalidate()
+                        AppState.shared.interactiveCollapseProgress = 0
+                        AppState.shared.gestureBlurHold = 0
+                    }
+                }
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
+
         case ("POST", "/debug/render-welcome"):
             // Diagnóstico: la ventana de bienvenida y permisos en /tmp/dn_welcome.png
             DispatchQueue.main.async { WelcomeWindowController.snapshot(to: "/tmp/dn_welcome.png") }
