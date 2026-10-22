@@ -16,308 +16,161 @@ public final class StatusItemManager: NSObject {
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "capsule.fill", accessibilityDescription: "Dynamic Notch")
             button.imagePosition = .imageOnly
+            // Panel propio como los del Centro de Control, pegado a la barra: un NSMenu en `statusItem.menu`
+            // sale separado de la barra (≈ 26 pt) en macOS 27 con notch, igual que en otras apps
+            button.target = self
+            button.action = #selector(togglePanel)
+            button.sendAction(on: [.leftMouseDown, .rightMouseDown])
         }
-        
-        buildMenu()
+    }
+
+    @objc private func togglePanel() {
+        guard let frame = buttonFrameOnScreen else { return }
+        StatusPanelController.shared.toggle(below: frame)
     }
     
-    public func buildMenu() {
-        let menu = NSMenu()
-        
-        // Header
-        let titleItem = NSMenuItem(title: L("Dynamic Notch (macOS Nativo)"), action: nil, keyEquivalent: "")
-        titleItem.isEnabled = false
-        menu.addItem(titleItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        // Toggle expansion
-        let toggleTitle = AppState.shared.mode == .expanded ? "Contraer Notch" : "Expandir Notch"
-        let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleNotch), keyEquivalent: "d")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-        
-        // Isla Dinámica: en qué pantalla, con qué forma y de qué tamaño (Fase B)
-        menu.addItem(islandMenuItem())
-        
-        // Hover toggle
-        let hoverItem = NSMenuItem(
-            title: "Expandir al pasar cursor (Hover)",
-            action: #selector(toggleHover),
-            keyEquivalent: ""
-        )
-        hoverItem.target = self
-        hoverItem.state = AppState.shared.expandOnHover ? .on : .off
-        menu.addItem(hoverItem)
-        
-        // Haptic toggle
-        let hapticItem = NSMenuItem(
-            title: "Vibración háptica (Trackpad)",
-            action: #selector(toggleHaptics),
-            keyEquivalent: ""
-        )
-        hapticItem.target = self
-        hapticItem.state = AppState.shared.enableHaptics ? .on : .off
-        menu.addItem(hapticItem)
-        
-        // Sound feedback toggle
-        let soundItem = NSMenuItem(
-            title: "Sonido inmersivo al regular volumen",
-            action: #selector(toggleSoundFeedback),
-            keyEquivalent: ""
-        )
-        soundItem.target = self
-        soundItem.state = AppState.shared.enableSoundFeedback ? .on : .off
-        menu.addItem(soundItem)
-        
-        // Volume suppression toggle
-        let hasPermission = VolumeInterceptorService.shared.hasAccessibilityPermission
-        
-        let hudSuppressItem = NSMenuItem(
-            title: "Ocultar HUD nativo de macOS (Volumen y Brillo)",
-            action: #selector(toggleSuppressNativeHUD),
-            keyEquivalent: ""
-        )
-        hudSuppressItem.target = self
-        hudSuppressItem.state = VolumeInterceptorService.shared.suppressNativeHUD ? .on : .off
-        menu.addItem(hudSuppressItem)
-        
-        let accessItem = NSMenuItem(
-            title: hasPermission ? L("Permisos…") : L("⚠️ Falta un permiso: Accesibilidad…"),
-            action: #selector(openAccessibilityOnboarding),
-            keyEquivalent: ""
-        )
-        accessItem.target = self
-        menu.addItem(accessItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        // Demostraciones, paneles de prueba y laboratorios: sólo en la compilación de desarrollo (no en la beta)
-        if BuildFlavor.hasDeveloperTools {
-            // Test demos submenu
-            let testMenu = NSMenu()
-        
-            let brightnessTest = NSMenuItem(title: L("Slider Brillo (75%)"), action: #selector(testBrightnessSlider), keyEquivalent: "")
-            brightnessTest.target = self
-            testMenu.addItem(brightnessTest)
-        
-            let volumeTest = NSMenuItem(title: L("Slider Volumen (60%)"), action: #selector(testVolumeSlider), keyEquivalent: "")
-            volumeTest.target = self
-            testMenu.addItem(volumeTest)
-        
-            let muteTest = NSMenuItem(title: L("Slider Volumen Silenciado (Mute)"), action: #selector(testMuteSlider), keyEquivalent: "")
-            muteTest.target = self
-            testMenu.addItem(muteTest)
-        
-            testMenu.addItem(NSMenuItem.separator())
-        
-            let magSafeTest = NSMenuItem(title: L("Animación MagSafe (88%)"), action: #selector(testMagSafe), keyEquivalent: "")
-            magSafeTest.target = self
-            testMenu.addItem(magSafeTest)
-        
-            let airPods4Test = NSMenuItem(title: L("Animación AirPods 4 (88% / 90% / 100%)"), action: #selector(testAirPods4), keyEquivalent: "")
-            airPods4Test.target = self
-            testMenu.addItem(airPods4Test)
-        
-            let airPodsTest = NSMenuItem(title: L("Animación AirPods Pro (95% / 90% / 100%)"), action: #selector(testAirPods), keyEquivalent: "")
-            airPodsTest.target = self
-            testMenu.addItem(airPodsTest)
-        
-            let lockScreenTest = NSMenuItem(title: L("Previsualizar Reproductor Lock Screen (10s)"), action: #selector(testLockScreenPreview), keyEquivalent: "")
-            lockScreenTest.target = self
-            testMenu.addItem(lockScreenTest)
-        
-            let batteryLowTest = NSMenuItem(title: L("Alerta Batería Baja (12%)"), action: #selector(testBatteryLow), keyEquivalent: "")
-            batteryLowTest.target = self
-            testMenu.addItem(batteryLowTest)
-        
-            let musicDemoTest = NSMenuItem(title: L("Canción Demo (Starboy)"), action: #selector(testMusicDemo), keyEquivalent: "")
-            musicDemoTest.target = self
-            testMenu.addItem(musicDemoTest)
-        
-            let airDropTest = NSMenuItem(title: L("Simular AirDrop (Progreso → Éxito)"), action: #selector(testAirDropTransfer), keyEquivalent: "")
-            airDropTest.target = self
-            testMenu.addItem(airDropTest)
-        
-            let shelfTest = NSMenuItem(title: L("Abrir Bandeja de Archivos"), action: #selector(testShelf), keyEquivalent: "")
-            shelfTest.target = self
-            testMenu.addItem(shelfTest)
-        
-            testMenu.addItem(NSMenuItem.separator())
-        
-            let timerCompactTest = NSMenuItem(title: L("Temporizador Compacto (Minutka - 30s)"), action: #selector(testTimerActivity), keyEquivalent: "")
-            timerCompactTest.target = self
-            testMenu.addItem(timerCompactTest)
-        
-            let timerCardTest = NSMenuItem(title: L("Temporizador Expandido (Minutka Card - 30s)"), action: #selector(testTimerCardActivity), keyEquivalent: "")
-            timerCardTest.target = self
-            testMenu.addItem(timerCardTest)
-        
-            let notifTest = NSMenuItem(title: L("Notificación Dinámica (WhatsApp)"), action: #selector(testNotificationActivity), keyEquivalent: "")
-            notifTest.target = self
-            testMenu.addItem(notifTest)
-        
-            testMenu.addItem(NSMenuItem.separator())
-        
-            // Novedades 2.1 (cada una corre su demo sin tocar nada del sistema)
-            let newIn21: [(String, Selector)] = [
-                (L("Carga completa (100 %)"), #selector(testFullCharge)),
-                (L("Concentración activada"), #selector(testFocus)),
-                (L("Próxima reunión (ejemplo con Meet)"), #selector(testMeeting)),
-                (L("WhatsApp: foto"), #selector(testWhatsAppPhoto)),
-                (L("WhatsApp: dos mensajes seguidos (fila)"), #selector(testNotificationQueue)),
-                (L("Actividad de la API (compilando, 10 s)"), #selector(testAPIActivity))
-            ]
-            for (title, action) in newIn21 {
-                let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-                item.target = self
-                testMenu.addItem(item)
-            }
-
-            testMenu.addItem(NSMenuItem.separator())
-
-            let fileDropTest = NSMenuItem(title: L("Simular Soltar Archivo (Card Pop-Up)"), action: #selector(testSimulatedFileDrop), keyEquivalent: "")
-            fileDropTest.target = self
-            testMenu.addItem(fileDropTest)
-        
-            let dragProbeTest = NSMenuItem(title: L("🔍 Sonda Drag & Drop (Paso 0)"), action: #selector(openDragProbeWindow), keyEquivalent: "")
-            dragProbeTest.target = self
-            testMenu.addItem(dragProbeTest)
-        
-            let testSubmenuItem = NSMenuItem(title: L("Demostraciones de prueba"), action: nil, keyEquivalent: "")
-            testSubmenuItem.submenu = testMenu
-            menu.addItem(testSubmenuItem)
-        
-            let debugPanelItem = NSMenuItem(
-                title: "Panel de Pruebas (Live Activities)...",
-                action: #selector(openDebugPanel),
-                keyEquivalent: "p"
-            )
-            debugPanelItem.target = self
-            menu.addItem(debugPanelItem)
-        
-            let studioItem = NSMenuItem(title: L("🎬 Animation Studio (bolitas)"), action: #selector(openAnimationStudio), keyEquivalent: "")
-            studioItem.target = self
-            menu.addItem(studioItem)
-        
-            let spectrumMonitorItem = NSMenuItem(
-                title: "Monitor de Audio Real y Overscroll...",
-                action: #selector(openAudioSpectrumMonitor),
-                keyEquivalent: "m"
-            )
-            spectrumMonitorItem.target = self
-            menu.addItem(spectrumMonitorItem)
-        }
-        
-        let feedbackItem = NSMenuItem(title: L("Enviar comentarios…"), action: #selector(sendFeedback), keyEquivalent: "")
-        feedbackItem.target = self
-        menu.addItem(feedbackItem)
-
-        let settingsItem = NSMenuItem(
-            title: "Ajustes y Preferencias...",
-            action: #selector(openSettingsWindow),
-            keyEquivalent: ","
-        )
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        // Quit
-        let quitItem = NSMenuItem(title: L("Salir de Dynamic Notch"), action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-        
-        statusItem?.menu = menu
-    }
+    /// Demostraciones, paneles de prueba y laboratorios (sólo en la compilación de desarrollo)
+    func developerMenu() -> NSMenu {
+        // Test demos submenu
+        let testMenu = NSMenu()
     
-    @objc private func openSettingsWindow() {
-        SettingsWindowController.shared.show()
+        let brightnessTest = NSMenuItem(title: L("Slider Brillo (75%)"), action: #selector(testBrightnessSlider), keyEquivalent: "")
+        brightnessTest.target = self
+        testMenu.addItem(brightnessTest)
+    
+        let volumeTest = NSMenuItem(title: L("Slider Volumen (60%)"), action: #selector(testVolumeSlider), keyEquivalent: "")
+        volumeTest.target = self
+        testMenu.addItem(volumeTest)
+    
+        let muteTest = NSMenuItem(title: L("Slider Volumen Silenciado (Mute)"), action: #selector(testMuteSlider), keyEquivalent: "")
+        muteTest.target = self
+        testMenu.addItem(muteTest)
+    
+        testMenu.addItem(NSMenuItem.separator())
+    
+        let magSafeTest = NSMenuItem(title: L("Animación MagSafe (88%)"), action: #selector(testMagSafe), keyEquivalent: "")
+        magSafeTest.target = self
+        testMenu.addItem(magSafeTest)
+    
+        let airPods4Test = NSMenuItem(title: L("Animación AirPods 4 (88% / 90% / 100%)"), action: #selector(testAirPods4), keyEquivalent: "")
+        airPods4Test.target = self
+        testMenu.addItem(airPods4Test)
+    
+        let airPodsTest = NSMenuItem(title: L("Animación AirPods Pro (95% / 90% / 100%)"), action: #selector(testAirPods), keyEquivalent: "")
+        airPodsTest.target = self
+        testMenu.addItem(airPodsTest)
+    
+        let lockScreenTest = NSMenuItem(title: L("Previsualizar Reproductor Lock Screen (10s)"), action: #selector(testLockScreenPreview), keyEquivalent: "")
+        lockScreenTest.target = self
+        testMenu.addItem(lockScreenTest)
+    
+        let batteryLowTest = NSMenuItem(title: L("Alerta Batería Baja (12%)"), action: #selector(testBatteryLow), keyEquivalent: "")
+        batteryLowTest.target = self
+        testMenu.addItem(batteryLowTest)
+    
+        let musicDemoTest = NSMenuItem(title: L("Canción Demo (Starboy)"), action: #selector(testMusicDemo), keyEquivalent: "")
+        musicDemoTest.target = self
+        testMenu.addItem(musicDemoTest)
+    
+        let airDropTest = NSMenuItem(title: L("Simular AirDrop (Progreso → Éxito)"), action: #selector(testAirDropTransfer), keyEquivalent: "")
+        airDropTest.target = self
+        testMenu.addItem(airDropTest)
+    
+        let shelfTest = NSMenuItem(title: L("Abrir Bandeja de Archivos"), action: #selector(testShelf), keyEquivalent: "")
+        shelfTest.target = self
+        testMenu.addItem(shelfTest)
+    
+        testMenu.addItem(NSMenuItem.separator())
+    
+        let timerCompactTest = NSMenuItem(title: L("Temporizador Compacto (Minutka - 30s)"), action: #selector(testTimerActivity), keyEquivalent: "")
+        timerCompactTest.target = self
+        testMenu.addItem(timerCompactTest)
+    
+        let timerCardTest = NSMenuItem(title: L("Temporizador Expandido (Minutka Card - 30s)"), action: #selector(testTimerCardActivity), keyEquivalent: "")
+        timerCardTest.target = self
+        testMenu.addItem(timerCardTest)
+    
+        let notifTest = NSMenuItem(title: L("Notificación Dinámica (WhatsApp)"), action: #selector(testNotificationActivity), keyEquivalent: "")
+        notifTest.target = self
+        testMenu.addItem(notifTest)
+    
+        testMenu.addItem(NSMenuItem.separator())
+    
+        // Novedades 2.1 (cada una corre su demo sin tocar nada del sistema)
+        let newIn21: [(String, Selector)] = [
+            (L("Carga completa (100 %)"), #selector(testFullCharge)),
+            (L("Concentración activada"), #selector(testFocus)),
+            (L("Próxima reunión (ejemplo con Meet)"), #selector(testMeeting)),
+            (L("WhatsApp: foto"), #selector(testWhatsAppPhoto)),
+            (L("WhatsApp: dos mensajes seguidos (fila)"), #selector(testNotificationQueue)),
+            (L("Actividad de la API (compilando, 10 s)"), #selector(testAPIActivity))
+        ]
+        for (title, action) in newIn21 {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            testMenu.addItem(item)
+        }
+
+        testMenu.addItem(NSMenuItem.separator())
+
+        let fileDropTest = NSMenuItem(title: L("Simular Soltar Archivo (Card Pop-Up)"), action: #selector(testSimulatedFileDrop), keyEquivalent: "")
+        fileDropTest.target = self
+        testMenu.addItem(fileDropTest)
+    
+        let dragProbeTest = NSMenuItem(title: L("🔍 Sonda Drag & Drop (Paso 0)"), action: #selector(openDragProbeWindow), keyEquivalent: "")
+        dragProbeTest.target = self
+        testMenu.addItem(dragProbeTest)
+    
+        testMenu.addItem(NSMenuItem.separator())
+    
+        let debugPanelItem = NSMenuItem(
+            title: "Panel de Pruebas (Live Activities)...",
+            action: #selector(openDebugPanel),
+            keyEquivalent: "p"
+        )
+        debugPanelItem.target = self
+        testMenu.addItem(debugPanelItem)
+    
+        let studioItem = NSMenuItem(title: L("🎬 Animation Studio (bolitas)"), action: #selector(openAnimationStudio), keyEquivalent: "")
+        studioItem.target = self
+        testMenu.addItem(studioItem)
+    
+        let spectrumMonitorItem = NSMenuItem(
+            title: "Monitor de Audio Real y Overscroll...",
+            action: #selector(openAudioSpectrumMonitor),
+            keyEquivalent: "m"
+        )
+        spectrumMonitorItem.target = self
+        testMenu.addItem(spectrumMonitorItem)
+        return testMenu
     }
+
+    
+    /// Diagnóstico: abre el menú como si se hiciera clic en el icono (/debug/status-menu)
+    public func openMenuForDiagnostics() {
+        togglePanel()
+    }
+
+    /// Dónde está el icono en la pantalla (para capturar el menú)
+    public var buttonFrameOnScreen: NSRect? {
+        guard let button = statusItem?.button, let window = button.window else { return nil }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+    }
+
     
     @objc private func openAudioSpectrumMonitor() {
         AudioSpectrumTestWindowController.shared.show()
     }
     
-    private func islandMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: L("Isla Dinámica"), action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        let app = AppState.shared
-        func add(_ title: String, _ action: Selector, tag: Int = 0, on: Bool, enabled: Bool = true) {
-            let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            entry.target = self
-            entry.tag = tag
-            entry.state = on ? .on : .off
-            entry.isEnabled = enabled
-            submenu.addItem(entry)
-        }
-        let header = NSMenuItem(title: L("Dónde se ve"), action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        submenu.addItem(header)
-        let hasPlainScreen = NSScreen.screens.contains { $0.auxiliaryTopLeftArea == nil }
-        add("En el notch de la MacBook", #selector(setIslandPlacement(_:)), tag: 0, on: app.islandScreenPlacement == .automatic)
-        add("En el monitor sin notch", #selector(setIslandPlacement(_:)), tag: 1, on: app.islandScreenPlacement == .withoutNotch, enabled: hasPlainScreen)
-        add("Seguir al cursor", #selector(setIslandPlacement(_:)), tag: 2, on: app.islandScreenPlacement == .followCursor)
-        submenu.addItem(NSMenuItem.separator())
-        let shapeHeader = NSMenuItem(title: L("Forma en pantallas sin notch"), action: nil, keyEquivalent: "")
-        shapeHeader.isEnabled = false
-        submenu.addItem(shapeHeader)
-        add("Isla flotante (como el iPhone)", #selector(setIslandStyle(_:)), tag: 0, on: app.islandStyle == .floating)
-        add("Notch pegado al borde", #selector(setIslandStyle(_:)), tag: 1, on: app.islandStyle == .hanging)
-        submenu.addItem(NSMenuItem.separator())
-        add("Del alto de la barra de menús", #selector(toggleIslandFitsMenuBar), on: app.islandFitsMenuBar)
-        add("Visible en reposo", #selector(toggleIslandVisibleAtRest), on: app.islandVisibleAtRest)
-        add("Ocultar bolitas de la app que estás viendo", #selector(toggleHideWhileVisible), on: app.hideActivityWhileAppVisible)
-        item.submenu = submenu
-        return item
-    }
 
-    @objc private func setIslandPlacement(_ sender: NSMenuItem) {
-        let placements: [SurfaceGeometry.ScreenPlacement] = [.automatic, .withoutNotch, .followCursor]
-        AppState.shared.islandScreenPlacement = placements[max(0, min(2, sender.tag))]
-        buildMenu()
-    }
 
-    @objc private func setIslandStyle(_ sender: NSMenuItem) {
-        AppState.shared.islandStyle = sender.tag == 0 ? .floating : .hanging
-        buildMenu()
-    }
 
-    @objc private func toggleIslandFitsMenuBar() {
-        AppState.shared.islandFitsMenuBar.toggle()
-        buildMenu()
-    }
 
-    @objc private func toggleIslandVisibleAtRest() {
-        AppState.shared.islandVisibleAtRest.toggle()
-        buildMenu()
-    }
 
-    @objc private func toggleHideWhileVisible() {
-        AppState.shared.hideActivityWhileAppVisible.toggle()
-        buildMenu()
-    }
 
-    @objc private func toggleNotch() {
-        AppState.shared.toggleExpand()
-        buildMenu()
-    }
     
-    @objc private func toggleHover() {
-        AppState.shared.expandOnHover.toggle()
-        buildMenu()
-    }
     
-    @objc private func toggleHaptics() {
-        AppState.shared.enableHaptics.toggle()
-        HapticService.shared.isEnabled = AppState.shared.enableHaptics
-        buildMenu()
-    }
     
-    @objc private func toggleSoundFeedback() {
-        AppState.shared.enableSoundFeedback.toggle()
-        buildMenu()
-    }
     
     @objc private func testMagSafe() {
         ChargingActivityProvider.shared.publishChargingActivity(percentage: 88, isLowPower: false, isPluggedIn: true)
@@ -449,18 +302,8 @@ public final class StatusItemManager: NSObject {
         DragProbeDebugWindowController.shared.toggleWindow()
     }
     
-    @objc private func toggleSuppressNativeHUD() {
-        VolumeInterceptorService.shared.suppressNativeHUD.toggle()
-        buildMenu()
-    }
     
-    @objc private func openAccessibilityOnboarding() {
-        WelcomeWindowController.showAlways()
-    }
 
-    @objc private func sendFeedback() {
-        FeedbackService.exportDiagnostics()
-    }
     
     @objc private func testBrightnessSlider() {
         BrightnessService.shared.publishBrightnessActivity(0.75)
@@ -503,7 +346,4 @@ public final class StatusItemManager: NSObject {
         }
     }
     
-    @objc private func quitApp() {
-        NSApplication.shared.terminate(nil)
-    }
 }

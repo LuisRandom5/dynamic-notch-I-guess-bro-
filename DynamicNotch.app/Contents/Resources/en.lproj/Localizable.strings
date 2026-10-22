@@ -751,3 +751,21 @@
 "Mensajes" = "Messages";
 "Repisa" = "Shelf";
 "Sombra" = "Shadow";
+
+/* Panel de la barra de menús */
+"Falta un permiso" = "Missing Permission";
+"Sin Accesibilidad no salen el volumen ni el brillo." = "Without Accessibility, volume and brightness won't show.";
+"Arreglar" = "Fix";
+"Volumen en la isla" = "Volume on Island";
+"Música junto al notch" = "Music by the Notch";
+"Abrir al acercar" = "Open on Approach";
+"Vibración" = "Haptics";
+"Cerrar la isla" = "Close the Island";
+"Abrir la isla" = "Open the Island";
+"La isla se ve en" = "Island shows on";
+"El notch" = "The notch";
+"El monitor" = "The display";
+"Donde esté el puntero" = "Wherever the pointer is";
+"Ajustes…" = "Settings…";
+"Herramientas de desarrollo" = "Developer Tools";
+"Encendido" = "On";

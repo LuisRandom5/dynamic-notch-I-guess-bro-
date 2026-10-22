@@ -455,6 +455,20 @@ public final class AgentIPCService {
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
 
+        case ("POST", "/debug/status-menu"):
+            // Diagnóstico: abre el menú de la barra (se cierra con Escape) y dice dónde está el icono
+            DispatchQueue.main.async {
+                let frame = StatusItemManager.shared.buttonFrameOnScreen ?? .zero
+                self.sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK",
+                                      jsonObject: ["x": frame.minX, "y": frame.minY, "w": frame.width, "h": frame.height])
+                let hidePanel = (((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["hidePanel"] as? Bool) ?? false
+                if hidePanel { NotchWindowManager.shared.panel?.orderOut(nil) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    StatusItemManager.shared.openMenuForDiagnostics()
+                    if hidePanel { NotchWindowManager.shared.panel?.orderFrontRegardless() }
+                }
+            }
+
         case ("POST", "/debug/render-welcome"):
             // Diagnóstico: la ventana de bienvenida y permisos en /tmp/dn_welcome.png
             DispatchQueue.main.async { WelcomeWindowController.snapshot(to: "/tmp/dn_welcome.png") }

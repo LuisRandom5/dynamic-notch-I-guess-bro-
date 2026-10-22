@@ -83,6 +83,11 @@
 - Las herramientas de prueba se juntaron en la sección "Desarrollo", que la beta no tiene.
 - La bolita de una app ya no se esconde y vuelve a brotar al cambiar de escritorio: la visibilidad se confirma con dos lecturas, y si cambia por el escritorio sólo se desvanece.
 
+### Menú de la barra rediseñado
+- Al hacer clic en el icono sale un panel como el del Centro de Control, pegado a la barra (el menú anterior salía separado unos 26 pt, como pasa con otras apps en macOS 27).
+- Mosaicos para lo más usado (volumen en la isla, música junto al notch, abrir al acercar el puntero, vibración), "Abrir la isla", Ajustes, Permisos y Salir.
+- Avisa si falta el permiso de Accesibilidad; las demostraciones de prueba quedaron en "Herramientas de desarrollo" (no en la beta).
+
 ### Beta para probadores (nuevo)
 - `./scripts/build_app.sh --beta` arma un `.zip` con la app y una guía de instalación, sin las herramientas de desarrollo:
   - Fuera: demostraciones de prueba, paneles, Animation Studio, laboratorios, cámara lenta, disparadores de prueba y rutas `/debug`.
