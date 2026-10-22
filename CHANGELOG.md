@@ -75,6 +75,14 @@
   - Al cerrarse un mensaje ya no se asoma el texto viejo por fuera de la isla.
   - El borde fino de color aparece cuando la forma ya llegó, en vez de verse como una píldora fantasma más grande.
 
+### Ajustes rediseñados
+- Como los Ajustes del Sistema: barra lateral con 11 secciones (General, Apariencia, Música, Avisos, AirPods, Repisa…) y opciones agrupadas en tarjetas.
+- Cada sección dice para qué sirve, y cada opción tiene un nombre corto y una línea en lenguaje sencillo (sin "HUD", "FFT", "Keyline" ni "Liquid Glass").
+- Los deslizadores dicen qué hay en cada punta ("Poco"/"Mucho", "Cerca"/"Lejos"); lo fino quedó en "Más opciones" al final de cada sección.
+- Nuevo: "Abrir al iniciar sesión" y "Revisar permisos…" en General.
+- Las herramientas de prueba se juntaron en la sección "Desarrollo", que la beta no tiene.
+- La bolita de una app ya no se esconde y vuelve a brotar al cambiar de escritorio: la visibilidad se confirma con dos lecturas, y si cambia por el escritorio sólo se desvanece.
+
 ### Beta para probadores (nuevo)
 - `./scripts/build_app.sh --beta` arma un `.zip` con la app y una guía de instalación, sin las herramientas de desarrollo:
   - Fuera: demostraciones de prueba, paneles, Animation Studio, laboratorios, cámara lenta, disparadores de prueba y rutas `/debug`.

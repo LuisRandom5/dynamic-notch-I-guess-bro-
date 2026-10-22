@@ -33,6 +33,8 @@ public final class ActivityCenter: ObservableObject {
     /// Bolitas que se están reabsorbiendo en el notch (dejaron de estar a la vista): se siguen dibujando
     /// mientras dura la absorción (ver LiquidSatelliteHost)
     @Published public internal(set) var departingSatellites: [DepartingSatellite] = []
+    /// Cambios de bolitas sin animación líquida (sólo un desvanecido), p. ej. al cambiar de escritorio
+    @Published public internal(set) var quietSatelliteChanges = false
     /// Lado de cada bolita visible (estable mientras siga a la vista, ver PresentationEngine.assignSides)
     @Published public internal(set) var satelliteLayout: [String: SatellitePlacement] = [:]
     /// El swipe a lo ancho recorre el carrusel: esa vez los lados siguen el orden nuevo (no la memoria)
@@ -552,7 +554,8 @@ public final class ActivityCenter: ObservableObject {
         let newKeys = Set(newLayout.map { "\($0.key)|\($0.value.sideKey)" })
         // Si vuelve a su lado antes de terminar de irse, deja de irse
         departingSatellites.removeAll { newKeys.contains("\($0.activity.id)|\($0.placement.sideKey)") }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, expandedActivity == nil, !isFusing else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, expandedActivity == nil, !isFusing,
+              !quietSatelliteChanges else { return }
         let notchIsOpen = AppState.shared.mode == .expanded || AppState.shared.mode == .shelf
         for activity in old {
             guard let placement = oldLayout[activity.id], !newKeys.contains("\(activity.id)|\(placement.sideKey)") else { continue }
@@ -587,7 +590,18 @@ public final class ActivityCenter: ObservableObject {
         appVisibilityObserver = AppVisibilityMonitor.shared.$visibleBundleIds
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.recalculateRoles() }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Si cambió por un cambio de escritorio, la bolita sólo se desvanece (sin brotar ni reabsorberse):
+                // si no, cada vez que cambias de escritorio salía la animación completa
+                guard Date().timeIntervalSince(AppVisibilityMonitor.shared.lastSpaceChange) < 2 else {
+                    self.recalculateRoles()
+                    return
+                }
+                self.quietSatelliteChanges = true
+                withAnimation(.easeInOut(duration: 0.2)) { self.recalculateRoles() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.quietSatelliteChanges = false }
+            }
     }
     
     /// Traduce una actividad a lo que necesita el motor de presentación

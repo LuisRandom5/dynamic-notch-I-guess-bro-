@@ -17,6 +17,10 @@ public final class AppVisibilityMonitor: ObservableObject {
     private var timer: Timer?
     private var watched: Set<String> = []
     private var observers: [NSObjectProtocol] = []
+    /// Lectura distinta de la publicada que espera confirmarse con la siguiente (evita parpadeos)
+    private var pendingVisible: Set<String>?
+    /// Último cambio de escritorio: lo que cambie por eso se muestra sin la animación líquida (ver ActivityCenter)
+    public private(set) var lastSpaceChange: Date = .distantPast
 
     private init() {}
 
@@ -40,13 +44,20 @@ public final class AppVisibilityMonitor: ObservableObject {
             RunLoop.main.add(timer, forMode: .common)
             self.timer = timer
             let center = NSWorkspace.shared.notificationCenter
-            for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification,
+            for name in [NSWorkspace.didActivateApplicationNotification,
                          NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
                 observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                     // El cambio de ventanas tarda un instante en reflejarse
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self?.refresh() }
                 })
             }
+            // Cambio de escritorio: mientras dura la transición de macOS salen en pantalla ventanas de los dos
+            // escritorios (la app podía "verse" un instante y la bolita se escondía y volvía a salir). Se revisa
+            // cuando la transición ya terminó.
+            observers.append(center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.lastSpaceChange = Date()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { self?.refresh() }
+            })
         }
         refresh()
     }
@@ -60,8 +71,20 @@ public final class AppVisibilityMonitor: ObservableObject {
         queue.async { [weak self] in
             let visible = Self.visibleBundles(pidsByBundle: pidsByBundle)
             DispatchQueue.main.async {
-                guard let self = self, visible != self.visibleBundleIds else { return }
-                self.visibleBundleIds = visible
+                guard let self = self else { return }
+                guard visible != self.visibleBundleIds else {
+                    self.pendingVisible = nil
+                    return
+                }
+                // Un cambio cuenta sólo si dos lecturas seguidas coinciden: una ventana a medio animar (cambio de
+                // escritorio, Mission Control, minimizar) no hace brincar la bolita
+                if self.pendingVisible == visible {
+                    self.pendingVisible = nil
+                    self.visibleBundleIds = visible
+                } else {
+                    self.pendingVisible = visible
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.refresh() }
+                }
             }
         }
     }

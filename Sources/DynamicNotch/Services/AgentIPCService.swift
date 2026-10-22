@@ -363,7 +363,7 @@ public final class AgentIPCService {
             let json = (try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any]) ?? [:]
             let tabName = json["tab"] as? String ?? "Apariencia"
             DispatchQueue.main.async {
-                let tab = SettingsView.SettingsTab(rawValue: tabName) ?? .appearance
+                let tab = SettingsView.SettingsTab(rawValue: tabName) ?? .general
                 SettingsWindowController.shared.snapshot(tab: tab, to: "/tmp/dn_settings.png")
             }
             sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
@@ -447,6 +447,13 @@ public final class AgentIPCService {
                 catch { result = ["error": error.localizedDescription] }
                 self.sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: result)
             }
+
+        case ("POST", "/debug/settings-bare"):
+            let tabName = ((try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any])?["tab"] as? String ?? "General"
+            DispatchQueue.main.async {
+                SettingsWindowController.shared.snapshotBare(tab: SettingsView.SettingsTab(rawValue: tabName) ?? .general, to: "/tmp/dn_settings_bare.png")
+            }
+            sendHTTPResponse(connection: connection, statusCode: 200, statusText: "OK", jsonObject: ["status": "ok"])
 
         case ("POST", "/debug/render-welcome"):
             // Diagnóstico: la ventana de bienvenida y permisos en /tmp/dn_welcome.png
