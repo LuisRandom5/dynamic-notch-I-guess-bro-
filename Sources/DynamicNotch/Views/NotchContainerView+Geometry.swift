@@ -395,7 +395,12 @@ extension NotchContainerView {
     var morphKey: String {
         // Reproductor y repisa cuentan como la misma "página abierta": cambiar entre ellas no desenfoca
         let page = (appState.mode == .expanded || appState.mode == .shelf) ? "open" : "\(appState.mode)"
-        return "\(page)|\(appState.isPlayerDetailExpanded)|\(activityCenter.expandedActivity?.id ?? "-")|\(activityCenter.currentActivity?.id ?? "-")|\(agentProvider.isProgressHUDExpanded)"
+        // La actividad del notch cerrado sólo cuenta si es lo que se ve: con el reproductor, la repisa o una tarjeta
+        // abiertos, que empiece o cambie una actividad por debajo (p. ej. tocar un tiempo del temporizador desde su
+        // tarjeta) no transforma nada y no debe desenfocar
+        let showsClosedActivity = page != "open" && activityCenter.expandedActivity == nil && !agentProvider.isProgressHUDExpanded
+        let closedActivity = showsClosedActivity ? (activityCenter.currentActivity?.id ?? "-") : "-"
+        return "\(page)|\(appState.isPlayerDetailExpanded)|\(activityCenter.expandedActivity?.id ?? "-")|\(closedActivity)|\(agentProvider.isProgressHUDExpanded)"
     }
     
     /// El notch muestra su superficie desplegada (vidrio en los modos de cristal, negro en OLED)

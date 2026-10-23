@@ -70,6 +70,7 @@
 ### Diseño
 - En la isla flotante (sin cámara) las tarjetas de mensaje quedan parejas arriba y abajo, como en el iPhone.
 - El color del avatar de un contacto ya no cambia en cada arranque.
+- Tocar un tiempo del temporizador (o que empiece una actividad) con la isla abierta ya no desenfoca todo: sólo se desenfoca cuando la isla de verdad cambia de forma.
 - Transformaciones de la isla sin cuadros rotos (revisadas cuadro a cuadro a 60 fps):
   - Al abrir el reproductor o llegar un aviso (carga, AirPods, volumen, WhatsApp), la isla ya no se ve doble ni translúcida a media animación: se transforma como una sola forma.
   - El contenido ya no se sale de la forma mientras crece o se encoge.
