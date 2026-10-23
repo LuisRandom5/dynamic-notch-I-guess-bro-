@@ -77,6 +77,11 @@
   - Al cerrarse un mensaje ya no se asoma el texto viejo por fuera de la isla.
   - El borde fino de color aparece cuando la forma ya llegó, en vez de verse como una píldora fantasma más grande.
 
+### Responder WhatsApp desde la isla
+- La respuesta llega al chat de quien te escribió: antes, si estabas en el chat de A y respondías a B desde la isla, a veces terminaba en el chat de A. Ahora se abre el chat de B, se confirma que es el abierto y sólo entonces se envía.
+- Si no se puede abrir su chat, no se manda a ningún otro: la respuesta queda copiada y la isla avisa.
+- Las respuestas a un contacto real llamado "Carlos" ya no se pierden (ese nombre estaba reservado para la demostración).
+
 ### Ajustes rediseñados
 - Como los Ajustes del Sistema: barra lateral con 11 secciones (General, Apariencia, Música, Avisos, AirPods, Repisa…) y opciones agrupadas en tarjetas.
 - Cada sección dice para qué sirve, y cada opción tiene un nombre corto y una línea en lenguaje sencillo (sin "HUD", "FFT", "Keyline" ni "Liquid Glass").

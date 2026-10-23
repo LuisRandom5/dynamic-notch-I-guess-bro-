@@ -326,6 +326,7 @@ public final class StatusItemManager: NSObject {
     }
     
     @objc private func testNotificationActivity() {
+        DemoMessages.mark("WhatsApp: Carlos")
         NotificationActivityProvider.shared.showNotification(
             title: "WhatsApp: Carlos",
             message: "¡Hola! El nuevo Dynamic Notch quedó impresionante 🚀",

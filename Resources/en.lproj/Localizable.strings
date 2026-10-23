@@ -769,3 +769,8 @@
 "Ajustes…" = "Settings…";
 "Herramientas de desarrollo" = "Developer Tools";
 "Encendido" = "On";
+
+/* Respuesta de WhatsApp que no se pudo enviar */
+"Respuesta sin enviar" = "Reply Not Sent";
+"No pude abrir el chat de %@. Tu respuesta quedó copiada: pégala ahí." = "Couldn't open %@'s chat. Your reply was copied: paste it there.";
+"No supe a qué chat mandarla. Tu respuesta quedó copiada." = "Couldn't tell which chat to send it to. Your reply was copied.";

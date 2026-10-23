@@ -1235,8 +1235,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
 
     public func deliverQuickReply(message: String, recipient: String) {
         rememberSent(message, to: recipient)
-        let lower = recipient.lowercased()
-        guard !lower.contains("carlos") && !lower.contains("demo") else {
+        guard !DemoMessages.isDemo(recipient) else {
             DNDLogger.log("WhatsAppWebObserverService: 🧪 Demo detectada ('\(recipient)'). Envío a WhatsApp Web omitido de forma segura.")
             return
         }
@@ -1247,36 +1246,83 @@ public final class WhatsAppWebObserverService: ObservableObject {
             $0.isActive && $0.bundleIdentifier != Bundle.main.bundleIdentifier
         })
         
+        // Nunca se escribe "a ciegas" en el chat que esté abierto: primero se abre el chat de quien escribió y se
+        // confirma que es el abierto. Antes, si no se encontraba su chat en la lista, la respuesta terminaba en la
+        // conversación que tuvieras abierta (respondías a B y le llegaba a A).
+        let knowsRecipient = !recipient.trimmingCharacters(in: .whitespaces).isEmpty && recipient != "WhatsApp"
         scriptQueue.async { [weak self] in
             guard let self = self else { return }
-            
-            // 1. Intentar entrega 100% silenciosa vía Accessibility API (sin activar Safari/Chrome ni cambiar de espacio)
-            if self.deliverViaAccessibility(message: message, recipient: recipient) {
+            guard knowsRecipient else {
+                self.keepReplyForManualSend(message: message, recipient: nil)
+                return
+            }
+
+            // 1. Entrega silenciosa vía accesibilidad (sin activar el navegador ni cambiar de escritorio)
+            switch self.deliverViaAccessibility(message: message, recipient: recipient) {
+            case .sent:
                 DNDLogger.log("WhatsAppWebObserverService: ✅ Respuesta enviada silenciosamente vía AXUIElement")
                 return
+            case .wrongChat:
+                self.keepReplyForManualSend(message: message, recipient: recipient)
+                return
+            case .unavailable:
+                break
             }
-            
-            // 2. Si falla AX, intentar inyección DOM silenciosa vía JavaScript
-            let escapedJS = message
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "'", with: "\\'")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "")
-            let jsSnippet = "(function(){var box=document.querySelector('#main footer div[contenteditable=\\\"true\\\"]')||document.querySelector('div[contenteditable=\\\"true\\\"][data-tab=\\\"10\\\"]');if(!box)return 'NO_BOX';box.focus();document.execCommand('selectAll',false,null);document.execCommand('insertText',false,'\(escapedJS)');setTimeout(function(){var btn=document.querySelector('#main footer button[aria-label=\\\"Enviar\\\"]')||document.querySelector('#main footer button[aria-label=\\\"Send\\\"]')||document.querySelector('#main footer span[data-icon=\\\"send\\\"]')||document.querySelector('#main footer span[data-icon=\\\"wds-ic-send-filled\\\"]');if(btn){(btn.closest('button')||btn).click();}else{box.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));}},60);return 'SENT_SILENT';})()"
-            
-            if self.trySilentDOMSend(jsSnippet: jsSnippet) {
+
+            // 2. JavaScript en la pestaña de WhatsApp Web: abre el chat, confirma y envía
+            switch self.deliverViaDOM(message: message, recipient: recipient) {
+            case .sent:
                 DNDLogger.log("WhatsAppWebObserverService: ✅ Respuesta enviada silenciosamente vía DOM JS")
                 return
+            case .wrongChat:
+                self.keepReplyForManualSend(message: message, recipient: recipient)
+                return
+            case .unavailable:
+                break
             }
-            
-            // 3. Fallback: pegar, enviar y restaurar el foco inmediatamente a la aplicación previa
+
+            // 3. Último recurso: abrir WhatsApp, seleccionar su chat y pegar (sólo si se confirmó el chat)
             DNDLogger.log("WhatsAppWebObserverService: Entregando respuesta con System Events y restaurando foco...")
             self.activatePasteAndRestore(message: message, recipient: recipient, previousApp: previousApp)
         }
     }
-    
-    private func deliverViaAccessibility(message: String, recipient: String) -> Bool {
+
+    enum ReplyDelivery { case sent, wrongChat, unavailable }
+
+    /// ¿El nombre de un chat es el de quien escribió? Sin acentos, mayúsculas, espacios dobles ni las marcas de
+    /// dirección invisibles que WhatsApp mete en los nombres
+    static func chatNamesMatch(_ a: String, _ b: String) -> Bool {
+        func clean(_ text: String) -> String {
+            let invisible = CharacterSet(charactersIn: "\u{200E}\u{200F}\u{202A}\u{202B}\u{202C}\u{202D}\u{202E}\u{2068}\u{2069}\u{FEFF}")
+            let stripped = String(String.UnicodeScalarView(text.unicodeScalars.filter { !invisible.contains($0) }))
+            return stripped.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil)
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        }
+        let x = clean(a), y = clean(b)
+        return !x.isEmpty && x == y
+    }
+
+    /// No se pudo abrir el chat correcto: la respuesta no se manda a otro lado; queda copiada y se avisa
+    private func keepReplyForManualSend(message: String, recipient: String?) {
+        DNDLogger.log("WhatsAppWebObserverService: ⚠️ No se confirmó el chat de \(recipient.map { "'\($0)'" } ?? "quien escribió"); la respuesta queda copiada y no se envía")
+        DispatchQueue.main.async {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message, forType: .string)
+            ActivityCenter.shared.publish(LiveActivity(
+                id: "whatsapp_reply_not_sent",
+                kind: .generic,
+                style: .card,
+                title: L("Respuesta sin enviar"),
+                subtitle: recipient.map { String(format: L("No pude abrir el chat de %@. Tu respuesta quedó copiada: pégala ahí."), $0) }
+                    ?? L("No supe a qué chat mandarla. Tu respuesta quedó copiada."),
+                tint: Color(red: 0.15, green: 0.78, blue: 0.45),
+                duration: 6,
+                onTap: { WhatsAppWebObserverService.shared.activateWhatsAppWeb() }
+            ))
+        }
+    }
+
+    private func deliverViaAccessibility(message: String, recipient: String) -> ReplyDelivery {
         let runningApps = NSWorkspace.shared.runningApplications
         let targetBundleIds = [
             "com.apple.Safari",
@@ -1286,53 +1332,60 @@ public final class WhatsAppWebObserverService: ObservableObject {
             "com.microsoft.edgemac",
             "net.whatsapp.WhatsApp"
         ]
-        
+        var sawChatList = false
+
         for bundleId in targetBundleIds {
             guard let app = runningApps.first(where: { $0.bundleIdentifier == bundleId }) else { continue }
             let appRef = AXUIElementCreateApplication(app.processIdentifier)
             exposeWebContent(of: app)
-            
+
             var winRef: CFTypeRef?
             guard AXUIElementCopyAttributeValue(appRef, kAXMainWindowAttribute as CFString, &winRef) == .success,
-                  let win = winRef as! AXUIElement? else { continue }
-            
-            // 1. Si conocemos el destinatario, seleccionarlo en la tabla de chats
-            if !recipient.isEmpty && recipient != "WhatsApp" {
-                if let table = findAXChatTable(win) {
-                    var rowsRef: CFTypeRef?
-                    if AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
-                       let rows = rowsRef as? [AnyObject] {
-                        for r in rows.prefix(15) {
-                            let row = r as! AXUIElement
-                            if let p = parseChatRow(row), p.contact.lowercased() == recipient.lowercased() {
-                                clickAXElement(row)
-                                Thread.sleep(forTimeInterval: 0.12)
-                                break
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 2. Buscar el área de texto
+                  let win = winRef as! AXUIElement?,
+                  let table = findAXChatTable(win) else { continue }
+            sawChatList = true
+
+            // 1. Abrir el chat de quien escribió (si no está en la lista, no se escribe en ningún otro)
+            guard selectChat(recipient, in: table) else { continue }
+
+            // 2. Buscar el área de texto y escribir
             guard let textArea = findAXTextArea(win) else { continue }
-            
-            // 3. Escribir el mensaje en el área de texto vía AX
-            let setRes = AXUIElementSetAttributeValue(textArea, kAXValueAttribute as CFString, message as CFTypeRef)
-            guard setRes == .success else { continue }
-            
+            guard AXUIElementSetAttributeValue(textArea, kAXValueAttribute as CFString, message as CFTypeRef) == .success else { continue }
             Thread.sleep(forTimeInterval: 0.10)
-            
-            // 4. Localizar y presionar el botón Enviar exacto
-            if let sendBtn = findAXSendButton(win) {
-                if clickAXElement(sendBtn) {
-                    return true
-                }
+
+            // 3. Enviar
+            if let sendBtn = findAXSendButton(win), clickAXElement(sendBtn) {
+                return .sent
             }
         }
-        return false
+        // Se vio la lista de chats pero en ninguna estaba (o no se pudo abrir) el de quien escribió
+        return sawChatList ? .wrongChat : .unavailable
     }
-    
+
+    /// Selecciona la fila del chat y confirma que quedó seleccionada (si la tabla lo dice)
+    private func selectChat(_ recipient: String, in table: AXUIElement) -> Bool {
+        var rowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
+              let rows = rowsRef as? [AnyObject] else { return false }
+        guard let row = rows.prefix(40).map({ $0 as! AXUIElement }).first(where: { row in
+            parseChatRow(row).map { Self.chatNamesMatch($0.contact, recipient) } ?? false
+        }) else { return false }
+        clickAXElement(row)
+        Thread.sleep(forTimeInterval: 0.25)
+        var selectedRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(table, kAXSelectedRowsAttribute as CFString, &selectedRef) == .success,
+           let selected = selectedRef as? [AnyObject], let first = selected.first {
+            return parseChatRow(first as! AXUIElement).map { Self.chatNamesMatch($0.contact, recipient) } ?? false
+        }
+        var isSelected: CFTypeRef?
+        if AXUIElementCopyAttributeValue(row, kAXSelectedAttribute as CFString, &isSelected) == .success,
+           let value = isSelected as? Bool {
+            return value
+        }
+        // La tabla no dice qué fila está seleccionada: se confía en el clic sobre la fila correcta
+        return true
+    }
+
     private func findAXTextArea(_ elem: AXUIElement, depth: Int = 0) -> AXUIElement? {
         if depth > 15 { return nil }
         var roleRef: CFTypeRef?
@@ -1380,7 +1433,44 @@ public final class WhatsAppWebObserverService: ObservableObject {
         return nil
     }
     
-    private func trySilentDOMSend(jsSnippet: String) -> Bool {
+    /// Los dos JavaScript de la respuesta: abrir el chat de quien escribió y, ya confirmado, escribir y enviar
+    static func replyScripts(message: String, recipient: String) -> (open: String, send: String) {
+        func jsString(_ text: String) -> String {
+            text.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "")
+        }
+        let normJS = "function norm(s){return (s||'').normalize('NFD').replace(/[\\u0300-\\u036f\\u200e\\u200f\\u202a-\\u202e\\u2068\\u2069\\ufeff]/g,'').replace(/\\s+/g,' ').trim().toLowerCase();}"
+        let headerJS = "function openName(){var h=document.querySelector('#main header span[title]')||document.querySelector('#main header span[dir=\"auto\"]');return h?norm(h.getAttribute('title')||h.textContent):'';}"
+        let want = "norm('\(jsString(recipient))')"
+
+        // 1. Abrir el chat de quien escribió desde la lista de chats
+        let openJS = "(function(){\(normJS)\(headerJS)var want=\(want);if(openName()===want)return 'ALREADY';var spans=document.querySelectorAll('#pane-side span[title]');for(var i=0;i<spans.length;i++){if(norm(spans[i].getAttribute('title'))===want){var row=spans[i].closest('[role=\"listitem\"],[role=\"row\"],[tabindex]')||spans[i];['mousedown','mouseup','click'].forEach(function(t){row.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window}));});return 'OPENED';}}return 'NO_CHAT';})()"
+
+        // 2. Confirmar que el chat abierto es el suyo y enviar
+        let sendJS = "(function(){\(normJS)\(headerJS)if(openName()!==\(want))return 'WRONG_CHAT';var box=document.querySelector('#main footer div[contenteditable=\"true\"]');if(!box)return 'NO_BOX';box.focus();document.execCommand('selectAll',false,null);document.execCommand('insertText',false,'\(jsString(message))');setTimeout(function(){var btn=document.querySelector('#main footer button[aria-label=\"Enviar\"]')||document.querySelector('#main footer button[aria-label=\"Send\"]')||document.querySelector('#main footer span[data-icon=\"send\"]')||document.querySelector('#main footer span[data-icon=\"wds-ic-send-filled\"]');if(btn){(btn.closest('button')||btn).click();}else{box.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));}},60);return 'SENT_SILENT';})()"
+        return (openJS, sendJS)
+    }
+
+    private func deliverViaDOM(message: String, recipient: String) -> ReplyDelivery {
+        let (openJS, sendJS) = Self.replyScripts(message: message, recipient: recipient)
+        guard let opened = runInWhatsAppTab(openJS) else { return .unavailable }
+        guard opened == "OPENED" || opened == "ALREADY" else {
+            // La pestaña respondió pero su chat no está en la lista: no se escribe en otro
+            return opened == "NO_CHAT" ? .wrongChat : .unavailable
+        }
+        if opened == "OPENED" { Thread.sleep(forTimeInterval: 0.45) }
+
+        switch runInWhatsAppTab(sendJS) {
+        case "SENT_SILENT": return .sent
+        case "WRONG_CHAT": return .wrongChat
+        default: return .unavailable
+        }
+    }
+
+    /// Ejecuta JavaScript en la pestaña de WhatsApp Web (Chrome, Brave, Arc, Edge o Safari) y devuelve el resultado
+    private func runInWhatsAppTab(_ jsSnippet: String) -> String? {
         let appleScriptEscapedJS = jsSnippet
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
@@ -1406,9 +1496,8 @@ public final class WhatsAppWebObserverService: ObservableObject {
             end tell
             """
             var err: NSDictionary?
-            if let res = NSAppleScript(source: script)?.executeAndReturnError(&err).stringValue,
-               res == "SENT_SILENT" {
-                return true
+            if let res = NSAppleScript(source: script)?.executeAndReturnError(&err).stringValue {
+                return res
             }
         }
         
@@ -1425,13 +1514,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
             end tell
             """
             var err: NSDictionary?
-            if let res = NSAppleScript(source: script)?.executeAndReturnError(&err).stringValue,
-               res == "SENT_SILENT" {
-                return true
+            if let res = NSAppleScript(source: script)?.executeAndReturnError(&err).stringValue {
+                return res
             }
         }
         
-        return false
+        return nil
     }
     
     private func activatePasteAndRestore(message: String, recipient: String, previousApp: NSRunningApplication?) {
@@ -1443,10 +1531,12 @@ public final class WhatsAppWebObserverService: ObservableObject {
         activateWhatsAppWebSync()
         Thread.sleep(forTimeInterval: 0.12)
         
-        if !recipient.isEmpty && recipient != "WhatsApp" {
-            selectChatViaAX(recipient: recipient)
-            Thread.sleep(forTimeInterval: 0.10)
+        // Sin confirmar el chat de quien escribió no se pega nada (el texto queda copiado para pegarlo a mano)
+        guard selectChatViaAX(recipient: recipient) else {
+            keepReplyForManualSend(message: message, recipient: recipient)
+            return
         }
+        Thread.sleep(forTimeInterval: 0.10)
         
         let pasteScript = """
         tell application "System Events"
@@ -1477,7 +1567,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
         }
     }
     
-    private func selectChatViaAX(recipient: String) {
+    private func selectChatViaAX(recipient: String) -> Bool {
         let runningApps = NSWorkspace.shared.runningApplications
         for app in runningApps where app.bundleIdentifier == "com.apple.Safari" ||
                                      app.bundleIdentifier == "com.google.Chrome" ||
@@ -1487,22 +1577,14 @@ public final class WhatsAppWebObserverService: ObservableObject {
             var winRef: CFTypeRef?
             if AXUIElementCopyAttributeValue(appRef, kAXMainWindowAttribute as CFString, &winRef) == .success,
                let win = winRef as! AXUIElement?,
-               let table = findAXChatTable(win) {
-                var rowsRef: CFTypeRef?
-                if AXUIElementCopyAttributeValue(table, kAXRowsAttribute as CFString, &rowsRef) == .success,
-                   let rows = rowsRef as? [AnyObject] {
-                    for r in rows.prefix(15) {
-                        let row = r as! AXUIElement
-                        if let p = parseChatRow(row), p.contact.lowercased() == recipient.lowercased() {
-                            clickAXElement(row)
-                            return
-                        }
-                    }
-                }
+               let table = findAXChatTable(win),
+               selectChat(recipient, in: table) {
+                return true
             }
         }
+        return false
     }
-    
+
     @discardableResult
     private func clickAXElement(_ elem: AXUIElement) -> Bool {
         var actionsRef: CFArray?
@@ -1627,6 +1709,7 @@ public final class WhatsAppWebObserverService: ObservableObject {
     /// Simula una notificación interactiva de WhatsApp para pruebas de UI y Quick Reply
     public func simulateTestNotification(sender: String = "Carlos", message: String = "¡Hola! ¿Cómo va el nuevo reproductor de pantalla de bloqueo?") {
         DNDLogger.log("WhatsAppWebObserverService.simulateTestNotification CALLED")
+        DemoMessages.mark(sender)
         NotificationActivityProvider.shared.showNotification(
             title: sender,
             message: message,

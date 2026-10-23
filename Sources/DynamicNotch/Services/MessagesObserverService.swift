@@ -558,6 +558,7 @@ public final class MessagesObserverService: ObservableObject {
     
     // MARK: - Simulación para Pruebas
     public func simulateTestNotification() {
+        DemoMessages.mark("Hermano")
         let contactInfo = ContactLookupService.shared.lookupContact(name: "Hermano")
         NotificationActivityProvider.shared.showNotification(
             title: "Hermano",

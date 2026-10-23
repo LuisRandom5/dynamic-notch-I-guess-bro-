@@ -23,8 +23,7 @@ public final class MessageReplyService {
         
         print("[MessageReplyService] ✅ Respuesta redactada para '\(recipient)' vía \(app): \"\(trimmed)\"")
         
-        let lower = recipient.lowercased()
-        if lower.contains("carlos") || lower.contains("demo") {
+        if DemoMessages.isDemo(recipient) {
             print("[MessageReplyService] 🧪 Modo demostración ('\(recipient)'): respuesta simulada localmente, omitiendo WhatsApp Web.")
             return
         }

@@ -542,9 +542,7 @@ public struct QuickReplyNotificationView: View {
         isSentSuccess = true
         AppState.shared.hapticService.triggerSnap()
         
-        let isDemo = handle.lowercased().contains("carlos") ||
-                     handle.lowercased().contains("demo") ||
-                     title.lowercased().contains("carlos")
+        let isDemo = DemoMessages.isDemo(handle) || DemoMessages.isDemo(title)
         
         if isDemo {
             DNDLogger.log("QuickReplyNotificationView: 🧪 Demo detectada ('\(handle)'). Respuesta simulada: '\(textToSend)'. Envío omitido.")
