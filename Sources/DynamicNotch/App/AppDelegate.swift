@@ -175,6 +175,54 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             CalendarActivityProvider.shared.showSample()
         }
 
+        // Casa contra el servidor de prueba de la librería connectlife (defaults homeConnectLifeTestServer):
+        // conecta una cuenta de prueba, pregunta ya y abre la mini app
+        notifCenter.observe("com.luisrandom.DynamicNotch.testHomeConnect") { _ in
+            guard UserDefaults.standard.string(forKey: "homeConnectLifeTestServer") != nil else { return }
+            Task { @MainActor in
+                _ = await HomeStore.shared.connect(email: "prueba@example.com", password: "prueba")
+            }
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.testTVCard") { _ in
+            TVNotifier.shared.notify(.init(title: L("La ropa está lista"), message: L("Algodón · 40° · 1000 rpm"),
+                                           symbol: "washer.fill", tint: DesignTokens.green, duration: 10))
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.openTVRemote") { _ in
+            AppState.shared.autoCollapseOnHoverExit = false
+            TVRemote.shared.isShowingRemote = true
+            AppState.shared.openWithMiniApp(.home)
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.openTestBench") { _ in
+            TestBenchWindow.shared.show()
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.testTVSearch") { _ in
+            TVNotifier.shared.search()
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.testHomeFridgeDoor") { _ in
+            HomeActivityProvider.shared.simulate(.fridgeDoor)
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.testHomeRefresh") { _ in
+            HomeStore.shared.refreshNow()
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.testHomeDisconnect") { _ in
+            guard HomeStore.shared.account == "prueba@example.com" else { return }
+            HomeStore.shared.disconnect()
+        }
+        notifCenter.observe("com.luisrandom.DynamicNotch.openHome") { _ in
+            AppState.shared.autoCollapseOnHoverExit = false
+            HomeStore.shared.showsFridgeControls = false
+            AppState.shared.openWithMiniApp(.home)
+        }
+        // Controles del refri: abre la tarjeta, sube 1° el refri y cambia el enfriamiento rápido
+        notifCenter.observe("com.luisrandom.DynamicNotch.testHomeFridge") { _ in
+            guard let fridge = HomeStore.shared.fridge else { return }
+            AppState.shared.autoCollapseOnHoverExit = false
+            HomeStore.shared.showsFridgeControls = true
+            AppState.shared.openWithMiniApp(.home)
+            HomeStore.shared.setFridge(.fridgeTemperature((fridge.fridgeTarget ?? 4) + 1))
+            HomeStore.shared.setFridge(.superCool(!fridge.superCool))
+        }
+
         // Canción de demostración sin audio (para probar el notch y el carrusel con música)
         notifCenter.observe("com.luisrandom.DynamicNotch.testMusicDemo") { _ in
             MusicService.shared.setDemoTrack(MusicTrack(
@@ -421,6 +469,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         SystemStatusActivityProvider.shared.start()
         DownloadsActivityProvider.shared.start()
         CalendarActivityProvider.shared.start()
+        // Casa: la lavadora y el refri de ConnectLife (sólo si hay una cuenta conectada)
+        HomeStore.shared.start()
         
         // Barras que siguen la música: captura de audio sólo mientras algo se reproduce
         AudioSpectrumEngine.shared.startPlaybackGatedCapture()

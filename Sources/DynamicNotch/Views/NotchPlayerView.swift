@@ -173,6 +173,11 @@ public struct NotchPlayerView: View {
                                 .buttonStyle(.plain)
                                 .help("Monitor de Espectro FFT en Tiempo Real")
                             }
+
+                            // Casa: sólo con una cuenta de ConnectLife conectada (observa el estado por su cuenta)
+                            HomeMiniAppButton {
+                                isShowingAirPlayPicker = false
+                            }
                         }
                     }
                 }
@@ -192,6 +197,13 @@ public struct NotchPlayerView: View {
                             }
                         case .audioMonitor:
                             AudioMonitorMiniAppOverlayView {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    appState.activeMiniAppOverlay = nil
+                                }
+                                appState.hapticService.triggerSnap()
+                            }
+                        case .home:
+                            HomeMiniAppView {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     appState.activeMiniAppOverlay = nil
                                 }

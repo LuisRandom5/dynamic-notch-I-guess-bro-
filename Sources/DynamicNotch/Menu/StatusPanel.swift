@@ -198,6 +198,10 @@ struct StatusPanelView: View {
                     }
                 }
                 if BuildFlavor.hasDeveloperTools {
+                    PanelRow(icon: "testtube.2", title: "Banco de pruebas…") {
+                        close()
+                        TestBenchWindow.shared.show()
+                    }
                     PanelRow(icon: "hammer", title: "Herramientas de desarrollo", trailing: "chevron.right") {
                         close()
                         let location = NSEvent.mouseLocation

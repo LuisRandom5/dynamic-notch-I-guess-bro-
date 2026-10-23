@@ -59,6 +59,13 @@ Conecta el ASUS. En **Isla Dinámica › Dónde se ve** elige su pantalla, y en 
     - Con la tapa del estuche abierta cerca de la Mac, la tarjeta también marca qué se está cargando.
 22c. **Tus propios mensajes:** responde un WhatsApp desde el celular mientras ves el aviso; tu respuesta no debe salir como aviso nuevo.
 
+22d. **Casa (lavadora, refri y tele):**
+    - Ajustes › Casa: conecta tu cuenta de ConnectLife; deben salir la lavadora y el refri.
+    - Pon una lavada: en un minuto sale la bolita con el anillo; al terminar, "La ropa está lista" en la isla y en la tele; deja la puerta cerrada 15 min y sale "La ropa sigue en la lavadora"; al abrirla, la bolita se va.
+    - Deja abierta la puerta del refri: al minuto (o cuando pite) sale el aviso en la isla y en la tele, y se va al cerrarla.
+    - Toca la tarjeta del refri en Casa: cambia una temperatura y un modo, y revisa que la app ConnectLife lo muestre igual.
+    - Menú de la barra › Banco de pruebas › "Casa y tele": revisa cada aviso, en la isla y sólo en la tele, y dime cuál cambiar.
+
 ## C. Pendientes que dependen de ti
 
 23. **WhatsApp con la pestaña de fondo:**

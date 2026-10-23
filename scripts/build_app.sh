@@ -123,6 +123,18 @@ cat << 'EOF' > "${STAGE_BUNDLE}/Contents/Info.plist"
     <string>Dynamic Notch necesita Bluetooth para detectar la conexión de tus AirPods y mostrar la animación correspondiente.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
     <string>Dynamic Notch utiliza Bluetooth para monitorear el estado de conexión de tus AirPods y accesorios de audio.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Para encontrar tu tele en la red de tu casa y mostrar en ella los avisos de Casa (la lavadora terminó, la puerta del refri).</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_androidtvremote2._tcp</string>
+    </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- La tele recibe los avisos por HTTP dentro de la red local (PiPup, puerto 7979) -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
 EOF

@@ -17,11 +17,18 @@ public struct SettingsView: View {
     @ObservedObject var lockScreenBridge = LockScreenSkyLightBridge.shared
     @ObservedObject var lockScreenManager = LockScreenManager.shared
     @ObservedObject var glassManager = GlassClearManager.shared
+    @ObservedObject var homeStore = HomeStore.shared
+    @ObservedObject var homeActivities = HomeActivityProvider.shared
+    @ObservedObject var tvNotifier = TVNotifier.shared
 
     @ObservedObject private var navigation = SettingsNavigation.shared
     @State private var noiseGateDB: Double = Double(SpectrumMetrics.noiseGateDB)
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
+    @State private var homeEmail = ""
+    @State private var homePassword = ""
+    @State private var homeError: String?
+    @State private var homeConnecting = false
 
     public enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
@@ -35,6 +42,7 @@ public struct SettingsView: View {
         case gestures = "Gestos"
         case shelf = "Repisa de archivos"
         case extras = "Temporizador y más"
+        case home = "Casa"
         case developer = "Desarrollo"
 
         public var id: String { rawValue }
@@ -57,6 +65,7 @@ public struct SettingsView: View {
             case .gestures: return "hand.draw.fill"
             case .shelf: return "tray.and.arrow.down.fill"
             case .extras: return "timer"
+            case .home: return "house.fill"
             case .developer: return "hammer.fill"
             }
         }
@@ -74,6 +83,7 @@ public struct SettingsView: View {
             case .gestures: return .orange
             case .shelf: return .cyan
             case .extras: return .orange
+            case .home: return .green
             case .developer: return .brown
             }
         }
@@ -92,6 +102,7 @@ public struct SettingsView: View {
             case .gestures: return "Qué pasa al deslizar o acercar el puntero a la isla."
             case .shelf: return "Arrastra archivos a la isla para guardarlos un rato y usarlos después."
             case .extras: return "Temporizador, cronómetro y el medidor de audio, dentro de la isla."
+            case .home: return "Tu lavadora y tu refri (ConnectLife: Hisense, Gorenje, ASKO) en la isla."
             case .developer: return "Herramientas para probar y ajustar la app. No aparecen en la beta."
             }
         }
@@ -151,6 +162,7 @@ public struct SettingsView: View {
         case .gestures: gesturesSection
         case .shelf: shelfSection
         case .extras: extrasSection
+        case .home: homeSection
         case .developer: developerSection
         }
     }
@@ -684,6 +696,130 @@ public struct SettingsView: View {
         }
     }
 
+    // MARK: - Casa
+
+    @ViewBuilder
+    private var homeSection: some View {
+        if let account = homeStore.account {
+            SettingsGroup("Cuenta de ConnectLife") {
+                SettingRow(account, homeConnectionText) {
+                    HStack {
+                        Button(L("Actualizar")) { homeStore.refreshNow() }
+                        Button(L("Desconectar"), role: .destructive) { homeStore.disconnect() }
+                    }
+                }
+                // Un solo ForEach: con dos, sus filas compartían identidad (0, 1…) y el refri salía como lavadora
+                ForEach(homeApplianceRows, id: \.id) { row in
+                    SettingRow(row.name, row.detail) {
+                        Image(systemName: row.icon).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } else {
+            SettingsGroup("Conectar ConnectLife") {
+                Text(L("Usa el correo y la contraseña de la app ConnectLife. Si entras a la app con Apple, crea otra cuenta con correo y contraseña y compártele tus aparatos desde la app."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField(L("Correo"), text: $homeEmail)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(.username)
+                SecureField(L("Contraseña"), text: $homePassword)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(.password)
+                    .onSubmit(connectHome)
+                HStack {
+                    Button(L("Conectar"), action: connectHome)
+                        .disabled(homeConnecting || homeEmail.isEmpty || homePassword.isEmpty)
+                    if homeConnecting { ProgressView().controlSize(.small) }
+                }
+                if let homeError {
+                    Text(homeError)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+
+        SettingsGroup("En la isla") {
+            SettingToggle("Lavadora",
+                          "Mientras lava, una bolita con lo que le falta; al terminar te avisa con sonido y, si en 15 minutos nadie abrió la puerta, te lo recuerda.",
+                          isOn: $homeActivities.washerActivityEnabled)
+            SettingToggle("Avisos del refri",
+                          "Si una puerta se queda abierta, o si el refri o el congelador se calientan durante 15 minutos.",
+                          isOn: $homeActivities.fridgeAlertsEnabled)
+            Button(L("Abrir Casa en la isla")) { appState.openWithMiniApp(.home) }
+                .disabled(homeStore.account == nil)
+        }
+
+        SettingsGroup("En la tele") {
+            SettingToggle("Avisos en la tele",
+                          "Los avisos de la lavadora y el refri también salen en la pantalla de tu tele, encima de lo que estés viendo. Necesita la app PiPup en la tele.",
+                          isOn: $tvNotifier.isEnabled)
+            SettingRow(tvNotifier.tvName ?? L("Ninguna tele elegida"),
+                       tvNotifier.tvHost.map { String(format: L("En %@"), $0) } ?? L("Busca tu tele con Google TV en la red de tu casa.")) {
+                HStack {
+                    if tvNotifier.isSearching { ProgressView().controlSize(.small) }
+                    Button(L("Buscar tele")) { tvNotifier.search() }
+                        .disabled(tvNotifier.isSearching)
+                }
+            }
+            ForEach(tvNotifier.found.filter { $0.name != tvNotifier.tvName || $0.host != tvNotifier.tvHost }) { tv in
+                SettingRow(tv.name, tv.host) {
+                    Button(L("Usar esta")) { tvNotifier.choose(tv) }
+                }
+            }
+            if !tvNotifier.isSearching && tvNotifier.found.isEmpty && tvNotifier.tvHost == nil {
+                Text(L("Toca Buscar tele con la tele prendida."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            SettingPicker("Dónde aparece", nil, selection: $tvNotifier.corner) { $0.title }
+            SettingRow(L("Probar"), tvNotifier.lastResult) {
+                Button(L("Mandar aviso de prueba")) { tvNotifier.sendTest() }
+                    .disabled(tvNotifier.tvHost == nil)
+            }
+        }
+
+        Notice(icon: "info.circle", color: .secondary, text: "ConnectLife no tiene una API pública: se usa la misma que la app. Si Hisense la cambia, Casa deja de actualizarse hasta que se arregle. La contraseña se guarda en el Llavero de tu Mac.")
+    }
+
+    private var homeApplianceRows: [(id: String, name: String, detail: String, icon: String)] {
+        let washers = homeStore.snapshot.washers.enumerated().map { index, washer in
+            (id: "washer-\(index)", name: washer.name,
+             detail: [washer.model, washer.statusTitle].filter { !$0.isEmpty }.joined(separator: " · "), icon: "washer.fill")
+        }
+        let fridges = homeStore.snapshot.fridges.enumerated().map { index, fridge in
+            (id: "fridge-\(index)", name: fridge.name,
+             detail: [fridge.model, fridge.fridgeTarget.map { "\($0)°" }, fridge.freezerTarget.map { "\($0)°" }]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "refrigerator.fill")
+        }
+        return washers + fridges
+    }
+
+    private var homeConnectionText: String {
+        switch homeStore.connection {
+        case .notConfigured: return L("Sin conectar")
+        case .connecting: return L("Conectando…")
+        case .connected:
+            let count = homeStore.snapshot.washers.count + homeStore.snapshot.fridges.count
+            return count == 0 ? L("Conectada, sin aparatos compatibles") : String(format: L("Conectada · %d aparato(s)"), count)
+        case .failed(let error): return error
+        }
+    }
+
+    private func connectHome() {
+        guard !homeConnecting, !homeEmail.isEmpty, !homePassword.isEmpty else { return }
+        homeConnecting = true
+        homeError = nil
+        Task {
+            let error = await homeStore.connect(email: homeEmail, password: homePassword)
+            homeConnecting = false
+            homeError = error
+            if error == nil { homePassword = "" }
+        }
+    }
+
     // MARK: - Temporizador y más
 
     @ViewBuilder
@@ -728,7 +864,8 @@ public struct SettingsView: View {
     private var developerSection: some View {
         if BuildFlavor.hasDeveloperTools {
             SettingsGroup("Ventanas de prueba") {
-                Button("Panel de pruebas y bisección de capas…") { ActivityDebugWindow.shared.show() }
+                Button("Banco de pruebas…") { TestBenchWindow.shared.show() }
+                Button("Vidrio y capas (panel avanzado)…") { ActivityDebugWindow.shared.show() }
                 Button("Animation Studio (bolitas)…") { AnimationStudioWindow.shared.show() }
                 Button("Laboratorio de espectro FFT y calibración…") { AudioSpectrumTestWindowController.shared.show() }
                 Button("Sonda de drag & drop…") { DragProbeDebugWindowController.shared.toggleWindow() }

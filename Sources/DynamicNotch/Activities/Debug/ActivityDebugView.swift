@@ -904,12 +904,12 @@ public struct ActivityDebugView: View {
     
     // MARK: - Métodos de Simulación de Live Activities y Fusión
     
-    private func launchTimerActivity(isUrgent: Bool = false) {
+    func launchTimerActivity(isUrgent: Bool = false) {
         let duration: TimeInterval = isUrgent ? 60 : 900
         TimerActivityProvider.shared.startTimer(duration: duration, title: "Temporizador", asCard: isUrgent)
     }
     
-    private func launchCallActivity() {
+    func launchCallActivity() {
         let call = LiveActivity(
             id: "sim_call",
             kind: .call,
@@ -973,7 +973,7 @@ public struct ActivityDebugView: View {
         center.publish(call)
     }
     
-    private func launchRecordingActivity() {
+    func launchRecordingActivity() {
         let rec = LiveActivity(
             id: "sim_rec",
             kind: .recording,
@@ -1038,7 +1038,7 @@ public struct ActivityDebugView: View {
         center.publish(rec)
     }
     
-    private func launchVPNActivity() {
+    func launchVPNActivity() {
         let vpn = LiveActivity(
             id: "sim_vpn",
             kind: .vpn,
@@ -1101,7 +1101,7 @@ public struct ActivityDebugView: View {
         center.publish(vpn)
     }
     
-    private func launchAIActivity() {
+    func launchAIActivity() {
         let steps = [
             AgentLiveStep(title: "Read NotchContainerView.swift", isCompleted: true),
             AgentLiveStep(title: "Edit NotchBolitaView.swift", isCompleted: true),
@@ -1125,7 +1125,7 @@ public struct ActivityDebugView: View {
         AgentActivityProvider.shared.showProgress(payload: payload)
     }
     
-    private func launchAllFiveActivities() {
+    func launchAllFiveActivities() {
         launchCallActivity()
         launchTimerActivity()
         launchAIActivity()
@@ -1133,3 +1133,4 @@ public struct ActivityDebugView: View {
         launchVPNActivity()
     }
 }
+

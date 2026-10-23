@@ -36,18 +36,22 @@ public enum VisualizerColorStyle: String, CaseIterable, Identifiable {
 public enum MiniAppKind: String, CaseIterable, Identifiable {
     case timer = "timer"
     case audioMonitor = "audioMonitor"
+    /// La lavadora y el refri (HomeStore)
+    case home = "home"
     
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .timer: return "Cronómetro y Temporizador"
         case .audioMonitor: return "Monitor de Audio FFT"
+        case .home: return "Casa"
         }
     }
     public var icon: String {
         switch self {
         case .timer: return "timer"
         case .audioMonitor: return "waveform.badge.magnifyingglass"
+        case .home: return "house.fill"
         }
     }
 }
